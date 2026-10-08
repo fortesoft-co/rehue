@@ -330,7 +330,8 @@ fn rotate_composes_after_distribution() {
 
 #[test]
 fn stale_register_keys_are_rejected() {
-    let err = serde_json::from_str::<MapConfig>("{\"registers\":{\"fg\":{\"hue-blend\":0.5}}}")
+    // The pre-v0.2 vocabulary fails loudly instead of aliasing.
+    let err = serde_json::from_str::<MapConfig>("{\"registers\":{\"fg\":{\"harmonize\":0.5}}}")
         .expect_err("renamed knobs are not silently ignored");
     assert!(err.to_string().contains("unknown field"));
 }
@@ -362,8 +363,8 @@ fn map_wal_is_deterministic() {
     let pixels = rgb.as_raw();
 
     let config = rehue::map_wal::RemapConfig {
-        harmonize: 0.8,
-        quantize: 0.4,
+        blend_hue: Some(0.8),
+        blend_chroma: Some(0.4),
         ..Default::default()
     };
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
@@ -423,7 +424,7 @@ fn wal_arrangement_and_per_register_knobs_are_deterministic() {
         "surfaces".to_string(),
         WalRegisterConfig {
             distribution: Some(Distribution::Auto(true)),
-            quantize: Some(0.7),
+            blend_chroma: Some(0.7),
             ..Default::default()
         },
     );
@@ -431,7 +432,7 @@ fn wal_arrangement_and_per_register_knobs_are_deterministic() {
         "accents".to_string(),
         WalRegisterConfig {
             rotate: Some(1),
-            harmonize: Some(1.0),
+            blend_hue: Some(1.0),
             light: Some(0.02),
             ..Default::default()
         },
@@ -450,38 +451,47 @@ fn wal_arrangement_and_per_register_knobs_are_deterministic() {
 }
 
 #[test]
-fn quantize_split_resolution() {
+fn blend_dial_resolution() {
     let mut config = rehue::map_wal::RemapConfig::default();
-    config.quantize = 0.5;
-    config.quantize_light = Some(0.3);
+    config.harmonize = 0.5;
+    config.blend_light = 0.3;
     config.registers.insert(
         "accents".to_string(),
         WalRegisterConfig {
-            quantize_chroma: Some(0.1),
+            blend_chroma: Some(0.1),
             ..Default::default()
         },
     );
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
     let knobs = rehue::map_wal::slot_knobs(&regs);
+    // accents: the register's explicit chroma dial wins over the facade;
+    // hue follows the facade and light is decoupled from it.
     let accents = knobs[8];
-    assert!((accents.quantize - 0.5).abs() < 1e-9);
-    assert!((accents.quantize_light - 0.3).abs() < 1e-9);
-    assert!((accents.quantize_chroma - 0.1).abs() < 1e-9);
-    // surfaces inherit the scalar when the split dials are absent.
+    assert!((accents.blend_hue - 0.5).abs() < 1e-9);
+    assert!((accents.blend_light - 0.3).abs() < 1e-9);
+    assert!((accents.blend_chroma - 0.1).abs() < 1e-9);
+    // surfaces inherit the facade for hue and chroma; light stays where
+    // the config put it (never facade-seeded).
     let surfaces = knobs[1];
-    assert!((surfaces.quantize - 0.5).abs() < 1e-9);
-    assert!((surfaces.quantize_light - 0.3).abs() < 1e-9);
-    assert!((surfaces.quantize_chroma - 0.5).abs() < 1e-9);
+    assert!((surfaces.blend_hue - 0.5).abs() < 1e-9);
+    assert!((surfaces.blend_light - 0.3).abs() < 1e-9);
+    assert!((surfaces.blend_chroma - 0.5).abs() < 1e-9);
+    // An explicitly set dial beats the facade for every register.
+    config.blend_hue = Some(1.0);
+    let knobs_strict = rehue::map_wal::slot_knobs(
+        &rehue::map_wal::resolved_registers(&config).expect("valid config"),
+    );
+    assert!((knobs_strict[1].blend_hue - 1.0).abs() < 1e-9);
+    assert!((knobs_strict[8].blend_hue - 1.0).abs() < 1e-9);
 }
 
 #[test]
-fn dithering_varies_full_quantize_and_is_deterministic() {
+fn dithering_varies_full_blend_and_is_deterministic() {
     let (_, slots) = solarized();
     let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
     let image = gradient_image((64, 64));
     let rgb = image.to_rgb8();
     let mut config = rehue::map_wal::RemapConfig::default();
-    config.quantize = 1.0;
     config.harmonize = 1.0;
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
     let knobs = rehue::map_wal::slot_knobs(&regs);
@@ -505,11 +515,16 @@ fn dither_modes_differ_and_each_is_deterministic() {
     let image = gradient_image((64, 64));
     let rgb = image.to_rgb8();
     let mut config = rehue::map_wal::RemapConfig::default();
-    config.quantize = 1.0;
+    // Partial adoption is what separates the kernels: at full strength
+    // l2/c2 are the adopted targets themselves - independent of the
+    // diffused residual - so every diffusion kernel would emit identical
+    // pixels (and in soft territory the weighted-mean target absorbs the
+    // residual entirely).  Full hue with half L/C keeps a residual field
+    // the kernels actually fight over.
+    config.blend_hue = Some(1.0);
+    config.blend_light = 0.5;
+    config.blend_chroma = Some(0.5);
     config.dithering = 1.0;
-    // Kernel differences only surface in hard territory: at full-strength
-    // soft adoption every pixel's output is its soft target, which
-    // absorbs any diffused residual.
     config.territory = Some(Territory::Hard);
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
     let knobs = rehue::map_wal::slot_knobs(&regs);
@@ -562,11 +577,10 @@ fn soft_territory_blends_between_slots() {
     });
     let pixels = [pixel[0], pixel[1], pixel[2]];
     let base = rehue::map_wal::RemapConfig {
-        harmonize: 1.0,
-        harmonize_threshold_deg: 180.0,
-        quantize_threshold_deg: 180.0,
-        quantize_light: Some(0.0),
-        quantize_chroma: Some(0.0),
+        blend_hue: Some(1.0),
+        reach_deg: 180.0,
+        blend_light: 0.0,
+        blend_chroma: Some(0.0),
         ..Default::default()
     };
     let run = |territory: Option<Territory>| {

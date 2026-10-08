@@ -1,5 +1,5 @@
 //! The register pipeline: assign (legacy policy or distribution) -> rotate
-//! -> harmonize -> grade -> legibility guard.  Every stage is
+//! -> blend-hue -> grade -> legibility guard.  Every stage is
 //! deterministic and the wallpaper supplies hues only, so every slot's
 //! lightness and chroma targets come from the reference scheme.
 //!
@@ -117,7 +117,7 @@ impl DistributionState {
 pub struct RegisterConfig {
     pub distribution: Option<Distribution>,
     pub rotate: Option<i64>,
-    pub harmonize: Option<f64>,
+    pub blend_hue: Option<f64>,
     pub light: Option<f64>,
     pub chroma: Option<f64>,
 }
@@ -127,18 +127,31 @@ pub struct RegisterConfig {
 pub struct RegisterSettings {
     pub distribution: DistributionState,
     pub rotate: i64,
-    pub harmonize: f64,
+    pub blend_hue: f64,
     pub light: f64,
     pub chroma: f64,
 }
 
-/// Map-scheme configuration: extraction knobs + register overrides.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(default)]
+/// Map-scheme configuration: extraction knobs, `reach-deg` (the accent
+/// claim gate: how far a family hue may sit from an accent slot's hue and
+/// still claim it) and register overrides.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
 pub struct MapConfig {
     #[serde(flatten)]
     pub extraction: ExtractionParams,
+    pub reach_deg: f64,
     pub registers: HashMap<String, RegisterConfig>,
+}
+
+impl Default for MapConfig {
+    fn default() -> Self {
+        Self {
+            extraction: ExtractionParams::default(),
+            reach_deg: 45.0,
+            registers: HashMap::new(),
+        }
+    }
 }
 
 /// Static validation of one register's `distribution` against its slot
@@ -192,12 +205,12 @@ pub fn resolved_registers(
             given.distribution.or_else(|| all.distribution.clone()),
         )?;
         let rotate = given.rotate.or(all.rotate).unwrap_or(0);
-        let harmonize = given.harmonize.or(all.harmonize).unwrap_or(1.0);
+        let blend_hue = given.blend_hue.or(all.blend_hue).unwrap_or(1.0);
         let light = given.light.or(all.light).unwrap_or(0.0);
         let chroma = given.chroma.or(all.chroma).unwrap_or(1.0);
-        if !(0.0..=1.0).contains(&harmonize) {
+        if !(0.0..=1.0).contains(&blend_hue) {
             return Err(format!(
-                "registers.{}.harmonize must be within [0, 1]",
+                "registers.{}.blend-hue must be within [0, 1]",
                 name
             ));
         }
@@ -209,7 +222,7 @@ pub fn resolved_registers(
             RegisterSettings {
                 distribution,
                 rotate,
-                harmonize,
+                blend_hue,
                 light,
                 chroma,
             },
@@ -374,13 +387,7 @@ pub fn retint(
                 hues[pos]
             } else if name == "accents" && !eligible.is_empty() {
                 // A matched cluster wins; a near miss keeps the scheme colour.
-                choose_cluster(
-                    &eligible,
-                    anchor.h,
-                    &mut used,
-                    config.extraction.hue_match_threshold_deg,
-                )
-                .unwrap_or(anchor.h)
+                choose_cluster(&eligible, anchor.h, &mut used, config.reach_deg).unwrap_or(anchor.h)
             } else {
                 // Neutrals (and accents with no eligible vivid family) adopt
                 // the heaviest family.
@@ -406,11 +413,11 @@ pub fn retint(
         }
     }
 
-    // -- harmonize: circular hue interpolation toward the scheme's own hue --
+    // -- blend-hue: circular hue interpolation toward the scheme's own hue --
     for i in 0..BASE_SLOTS.len() {
         let settings = &regs[register_of_slot(BASE_SLOTS[i])];
-        if settings.harmonize < 1.0 {
-            let blended = circ_lerp(lch_of(i).h, assigned[&i], settings.harmonize);
+        if settings.blend_hue < 1.0 {
+            let blended = circ_lerp(lch_of(i).h, assigned[&i], settings.blend_hue);
             assigned.insert(i, blended);
         }
     }

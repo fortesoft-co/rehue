@@ -30,8 +30,6 @@ pub struct ExtractionParams {
     pub min_cluster_weight: f64,
     #[serde(alias = "accent_chroma_floor")]
     pub accent_chroma_floor: f64,
-    #[serde(alias = "hue_match_threshold_deg")]
-    pub hue_match_threshold_deg: f64,
     #[serde(alias = "fg_contrast_floor")]
     pub fg_contrast_floor: f64,
 }
@@ -48,7 +46,6 @@ impl Default for ExtractionParams {
             merge_deg: 18.0,
             min_cluster_weight: 0.02,
             accent_chroma_floor: 0.06,
-            hue_match_threshold_deg: 30.0,
             fg_contrast_floor: 0.25,
         }
     }

@@ -1,18 +1,20 @@
-//! Per-pixel palette remap: arrange (distribution + rotate), then
-//! harmonize (hue-only), quantize (adopt the slot's lightness/chroma),
+//! Per-pixel palette remap: arrange (distribution + rotate), then blend
+//! toward the palette (hue, light and chroma channel fidelity), then
 //! per-register grading, then image-wide grading.  Deterministic and
 //! sandbox-pure.
 //!
-//! Quantize splits into independent hue (`quantize`), lightness
-//! (`quantize-light`) and chroma (`quantize-chroma`) adoption dials, all
-//! defaulting to the scalar.  The adopted lightness/chroma share can be
-//! dithered so full-strength adoption doesn't band: `dithering` scales an
-//! ordered-dither threshold (blue-noise or Bayer mask) in ordered modes,
-//! and the fraction of residual actually diffused in the error-diffusion
-//! modes (Floyd-Steinberg, Atkinson; serpentine scan, fixed order - no
-//! RNG).  Anchoring always happens on the raw pixel, so slot membership -
-//! the territories - is independent of the dither; diffusion only feeds
-//! the mix, not the anchor.  Dithering is inert at zero adoption.
+//! The `harmonize` facade is the one-dial surface: it seeds `blend-hue`
+//! and `blend-chroma` wherever they are left unset, while explicit dials
+//! win and `blend-light` stays decoupled (default 0 - photographic
+//! lightness, since adopting lightness flattens contrast).  The adopted
+//! lightness/chroma share can be dithered so full-strength adoption
+//! doesn't band: `dithering` scales an ordered-dither threshold
+//! (blue-noise or Bayer mask) in ordered modes, and the fraction of
+//! residual actually diffused in the error-diffusion modes
+//! (Floyd-Steinberg, Atkinson; serpentine scan, fixed order - no RNG).
+//! Anchoring always happens on the raw pixel, so slot membership - the
+//! territories - is independent of the dither; diffusion only feeds the
+//! mix, not the anchor.  Dithering is inert at zero adoption.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -74,7 +76,7 @@ impl DitherMode {
 
 /// The `territory` knob: how pixels relate to the palette.
 ///
-/// **hard** (default): every pixel anchors to its nearest slot and adopts
+/// **hard** (opt-in): every pixel anchors to its nearest slot and adopts
 /// that slot's constants - fast, stylized, and exactly the mechanism that
 /// bands and hard edges come from.
 ///
@@ -82,9 +84,9 @@ impl DitherMode {
 /// (circular hue distance for chromatic pixels, lightness distance for
 /// achromatic ones); every target is the weighted mean over the palette.
 /// Boundaries between slots become smooth crossings and the flat-constant
-/// posterize largely disappears by construction.  The hard-mode threshold
-/// gates are unused here: `harmonize-threshold-deg` acts as the falloff
-/// temperature and must be positive; `quantize-threshold-deg` is inert.
+/// posterize largely disappears by construction.  Soft bypasses the
+/// hard-mode cutoffs: `reach-deg` acts as the falloff temperature there
+/// (and must be positive), and as the influence cutoff in hard mode.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Territory {
@@ -112,16 +114,14 @@ impl Territory {
 pub struct WalRegisterConfig {
     pub distribution: Option<Distribution>,
     pub rotate: Option<i64>,
-    pub harmonize: Option<f64>,
-    pub quantize: Option<f64>,
-    pub quantize_light: Option<f64>,
-    pub quantize_chroma: Option<f64>,
+    pub blend_hue: Option<f64>,
+    pub blend_light: Option<f64>,
+    pub blend_chroma: Option<f64>,
     pub light: Option<f64>,
     pub chroma: Option<f64>,
 }
 
-/// Remap knobs; every one is opt-in.  Canonical keys kebab-case, with
-/// underscore aliases where the old nix wrapper had parameter names.  The
+/// Remap knobs; every one is opt-in.  Canonical keys kebab-case.  The
 /// flattened extraction section feeds the arrangement stage's family
 /// resolution (only needed when a register sets `distribution`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -129,18 +129,21 @@ pub struct WalRegisterConfig {
 pub struct RemapConfig {
     #[serde(flatten)]
     pub extraction: ExtractionParams,
+    /// Facade: seeds `blend-hue` and `blend-chroma` where they are unset
+    /// (see [`facade_defaults`]).
     pub harmonize: f64,
-    #[serde(alias = "harmonize_threshold_deg")]
-    pub harmonize_threshold_deg: f64,
-    pub quantize: f64,
-    #[serde(alias = "quantize_threshold_deg")]
-    pub quantize_threshold_deg: f64,
-    /// Adoption dials defaulting to `quantize` when unset.
-    pub quantize_light: Option<f64>,
-    pub quantize_chroma: Option<f64>,
+    /// Falloff width in `soft` territory (degrees on the hue wheel; must
+    /// be positive there), influence cutoff for the blend and adoption
+    /// gates in `hard` territory.
+    pub reach_deg: f64,
+    /// Channel-fidelity dials; defaults filled from the facade.
+    pub blend_hue: Option<f64>,
+    pub blend_chroma: Option<f64>,
+    /// Lightness adoption is decoupled from the facade and defaults to 0
+    /// (photographic lightness).
+    pub blend_light: f64,
     /// Dithering strength (0 off; scales the mask offsets, resp. the
     /// diffusion).
-    #[serde(alias = "dithering")]
     pub dithering: f64,
     /// Which ordered mask / diffusion kernel the strength applies to.
     pub dithering_mode: Option<DitherMode>,
@@ -159,11 +162,10 @@ impl Default for RemapConfig {
         Self {
             extraction: ExtractionParams::default(),
             harmonize: 0.0,
-            harmonize_threshold_deg: 30.0,
-            quantize: 0.0,
-            quantize_threshold_deg: 30.0,
-            quantize_light: None,
-            quantize_chroma: None,
+            reach_deg: 45.0,
+            blend_hue: None,
+            blend_chroma: None,
+            blend_light: 0.0,
             dithering: 0.0,
             dithering_mode: None,
             territory: None,
@@ -180,12 +182,22 @@ impl Default for RemapConfig {
 pub struct WalRegisterSettings {
     pub distribution: DistributionState,
     pub rotate: i64,
-    pub harmonize: f64,
-    pub quantize: f64,
-    pub quantize_light: f64,
-    pub quantize_chroma: f64,
+    pub blend_hue: f64,
+    pub blend_light: f64,
+    pub blend_chroma: f64,
     pub light: f64,
     pub chroma: f64,
+}
+
+/// The facade's seed rule: where the config leaves `blend-hue` /
+/// `blend-chroma` unset they adopt `harmonize`; explicit dials win and
+/// `blend-light` never follows the facade.  Returns (hue, light, chroma).
+pub fn facade_defaults(config: &RemapConfig) -> (f64, f64, f64) {
+    (
+        config.blend_hue.unwrap_or(config.harmonize),
+        config.blend_light,
+        config.blend_chroma.unwrap_or(config.harmonize),
+    )
 }
 
 /// The `globals // all // register` resolution, with validation.
@@ -196,12 +208,11 @@ pub fn resolved_registers(
         return Err("dithering must be within [0, 1]".to_string());
     }
     let territory = config.territory.unwrap_or(Territory::Soft);
-    if territory == Territory::Soft && config.harmonize_threshold_deg <= 0.0 {
-        return Err(
-            "territory 'soft' needs a positive temperature (harmonize-threshold-deg)".to_string(),
-        );
+    if territory == Territory::Soft && config.reach_deg <= 0.0 {
+        return Err("territory 'soft' needs a positive reach (reach-deg)".to_string());
     }
     let all = config.registers.get("all").cloned().unwrap_or_default();
+    let (seed_hue, seed_light, seed_chroma) = facade_defaults(config);
     let mut out = BTreeMap::new();
     for name in REGISTER_NAMES {
         let given = config.registers.get(name).cloned().unwrap_or_default();
@@ -210,41 +221,29 @@ pub fn resolved_registers(
             given.distribution.or_else(|| all.distribution.clone()),
         )?;
         let rotate = given.rotate.or(all.rotate).unwrap_or(0);
-        let harmonize = given
-            .harmonize
-            .or(all.harmonize)
-            .unwrap_or(config.harmonize);
-        let quantize = given.quantize.or(all.quantize).unwrap_or(config.quantize);
-        let quantize_light = given
-            .quantize_light
-            .or(all.quantize_light)
-            .or(config.quantize_light)
-            .unwrap_or(config.quantize);
-        let quantize_chroma = given
-            .quantize_chroma
-            .or(all.quantize_chroma)
-            .or(config.quantize_chroma)
-            .unwrap_or(config.quantize);
+        let blend_hue = given.blend_hue.or(all.blend_hue).unwrap_or(seed_hue);
+        let blend_light = given.blend_light.or(all.blend_light).unwrap_or(seed_light);
+        let blend_chroma = given
+            .blend_chroma
+            .or(all.blend_chroma)
+            .unwrap_or(seed_chroma);
         let light = given.light.or(all.light).unwrap_or(config.light);
         let chroma = given.chroma.or(all.chroma).unwrap_or(config.chroma);
-        if !(0.0..=1.0).contains(&harmonize) {
+        if !(0.0..=1.0).contains(&blend_hue) {
             return Err(format!(
-                "registers.{}.harmonize must be within [0, 1]",
+                "registers.{}.blend-hue must be within [0, 1]",
                 name
             ));
         }
-        if !(0.0..=1.0).contains(&quantize) {
-            return Err(format!("registers.{}.quantize must be within [0, 1]", name));
-        }
-        if !(0.0..=1.0).contains(&quantize_light) {
+        if !(0.0..=1.0).contains(&blend_light) {
             return Err(format!(
-                "registers.{}.quantize-light must be within [0, 1]",
+                "registers.{}.blend-light must be within [0, 1]",
                 name
             ));
         }
-        if !(0.0..=1.0).contains(&quantize_chroma) {
+        if !(0.0..=1.0).contains(&blend_chroma) {
             return Err(format!(
-                "registers.{}.quantize-chroma must be within [0, 1]",
+                "registers.{}.blend-chroma must be within [0, 1]",
                 name
             ));
         }
@@ -256,10 +255,9 @@ pub fn resolved_registers(
             WalRegisterSettings {
                 distribution,
                 rotate,
-                harmonize,
-                quantize,
-                quantize_light,
-                quantize_chroma,
+                blend_hue,
+                blend_light,
+                blend_chroma,
                 light,
                 chroma,
             },
@@ -278,10 +276,9 @@ pub struct SlotPalette {
 /// Per-slot mix/grade knobs: the slot's register's resolved settings.
 #[derive(Debug, Clone, Copy)]
 pub struct SlotKnobs {
-    pub harmonize: f64,
-    pub quantize: f64,
-    pub quantize_light: f64,
-    pub quantize_chroma: f64,
+    pub blend_hue: f64,
+    pub blend_light: f64,
+    pub blend_chroma: f64,
     pub light: f64,
     pub chroma: f64,
 }
@@ -293,10 +290,9 @@ pub fn slot_knobs(regs: &BTreeMap<&'static str, WalRegisterSettings>) -> Vec<Slo
         .map(|slot| {
             let s = &regs[register_of_slot(slot)];
             SlotKnobs {
-                harmonize: s.harmonize,
-                quantize: s.quantize,
-                quantize_light: s.quantize_light,
-                quantize_chroma: s.quantize_chroma,
+                blend_hue: s.blend_hue,
+                blend_light: s.blend_light,
+                blend_chroma: s.blend_chroma,
                 light: s.light,
                 chroma: s.chroma,
             }
@@ -354,23 +350,22 @@ pub struct RemapOutput {
 }
 
 /// True when no knob is active anywhere: the output is then a re-encoded
-/// passthrough of the input (matching the documented contract).
-/// Dithering alone is inert (it only alters the adopted quantize share),
-/// so it does not decide passivity.
+/// passthrough of the input (matching the documented contract).  Decided
+/// on the resolved values only - dithering is inert at zero adoption and
+/// does not decide passivity.
 pub fn is_passive(
-    config: &RemapConfig,
     regs: &BTreeMap<&'static str, WalRegisterSettings>,
+    image_light: f64,
+    image_chroma: f64,
 ) -> bool {
-    let globals_idle = config.harmonize == 0.0
-        && config.quantize == 0.0
-        && config.light == 0.0
-        && (config.chroma - 1.0).abs() < 1e-9;
-    globals_idle
+    image_light == 0.0
+        && (image_chroma - 1.0).abs() < 1e-9
         && regs.values().all(|r| {
             matches!(r.distribution, DistributionState::Off)
                 && r.rotate == 0
-                && r.harmonize == 0.0
-                && r.quantize == 0.0
+                && r.blend_hue == 0.0
+                && r.blend_light == 0.0
+                && r.blend_chroma == 0.0
                 && r.light == 0.0
                 && (r.chroma - 1.0).abs() < 1e-9
         })
@@ -393,10 +388,9 @@ impl PixelCore<'_> {
     /// Returns the final (l, c, h) before the 8-bit render, plus the
     /// anchor slot index.
     fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, usize) {
-        let h_threshold = self.config.harmonize_threshold_deg;
-        let q_threshold = self.config.quantize_threshold_deg;
+        let reach = self.config.reach_deg;
         let gray_floor = self.config.gray_chroma_floor;
-        let (mut l2, mut c2, mut h2);
+        let (mut l2, mut c2, h2);
         let best_index;
         if raw.c < gray_floor {
             // Achromatic: keyed to the scheme's low-chroma slots by raw
@@ -415,13 +409,12 @@ impl PixelCore<'_> {
             let n = self.knobs[best];
             // In soft mode the target is the palette's weighted mean over
             // the neutral slots (by lightness closeness), not one slot's
-            // constants - the lightness ramp blends smoothly.
-            let (target_l, target_c, target_h) = if self.territory == Territory::Soft {
-                let t = h_threshold.max(1e-3);
+            // the constant - the lightness ramp blends smoothly.
+            let (target_l, target_c) = if self.territory == Territory::Soft {
+                let t = reach.max(1e-3);
                 let mut ls = Vec::new();
                 let mut cs = Vec::new();
                 let mut ws = Vec::new();
-                let mut hs = Vec::new();
                 let mut total = 0.0f64;
                 for &idx in self.neutral_slots {
                     let s = self.slots[idx].lch;
@@ -429,34 +422,31 @@ impl PixelCore<'_> {
                     let v = (-(d * d) / (t * t)).exp();
                     ls.push(s.l);
                     cs.push(s.c);
-                    hs.push(s.h);
                     ws.push(v);
                     total += v;
                 }
                 let mix = |xs: &Vec<f64>| {
                     xs.iter().zip(ws.iter()).map(|(x, w)| x * w).sum::<f64>() / total
                 };
-                (mix(&ls), mix(&cs), weighted_circ_mean(&hs, &ws))
+                (mix(&ls), mix(&cs))
             } else {
-                (slots_target.l, slots_target.c, slots_target.h)
+                (slots_target.l, slots_target.c)
             };
             l2 = l_in;
-            if n.quantize_light > 0.0 {
-                l2 = l_in + (target_l - l_in) * n.quantize_light * jitter;
+            if n.blend_light > 0.0 {
+                l2 = l_in + (target_l - l_in) * n.blend_light * jitter;
             }
-            if n.quantize_chroma > 0.0 {
-                c2 = (c_in + (target_c - c_in) * n.quantize_chroma * jitter).max(0.0);
+            if n.blend_chroma > 0.0 {
+                c2 = (c_in + (target_c - c_in) * n.blend_chroma * jitter).max(0.0);
             } else {
                 c2 = c_in;
             }
-            if n.quantize > 0.0 {
-                h2 = circ_lerp(raw.h, target_h, n.quantize.min(1.0));
-            } else {
-                h2 = raw.h;
-            }
+            // Achromatic pixels keep their raw hue: blending hue on a
+            // colour with no chroma would be noise.
+            h2 = raw.h;
         } else {
             // Chromatic: nearest slot by raw hue (first minimum), then
-            // the opt-in harmonize / quantize moves, threshold-gated.
+            // the opt-in blend moves, reach-gated in hard territory.
             let mut best = 0usize;
             let mut best_d = f64::INFINITY;
             for (idx, slots_target) in self.slots.iter().enumerate() {
@@ -471,10 +461,10 @@ impl PixelCore<'_> {
             let n = self.knobs[best];
             // In soft mode the targets are the palette's weighted means
             // over all slots by circular hue distance; influence falls off
-            // with distance instead of cutting off at the thresholds, so
-            // the hard-mode gates are bypassed.
+            // with distance instead of cutting off at the reach, so the
+            // hard-mode cutoff is bypassed.
             let (hue_t, l_t, c_t) = if self.territory == Territory::Soft {
-                let t = h_threshold.max(1e-3);
+                let t = reach.max(1e-3);
                 let mut hues = Vec::new();
                 let mut ls = Vec::new();
                 let mut cs = Vec::new();
@@ -500,17 +490,16 @@ impl PixelCore<'_> {
             } else {
                 (target.h, target.l, target.c)
             };
-            if n.harmonize > 0.0 && (self.territory == Territory::Soft || best_d <= h_threshold) {
-                h2 = circ_lerp(raw.h, hue_t, n.harmonize);
+            if n.blend_hue > 0.0 && (self.territory == Territory::Soft || best_d <= reach) {
+                h2 = circ_lerp(raw.h, hue_t, n.blend_hue);
             } else {
                 h2 = raw.h;
             }
-            if (n.quantize > 0.0 || n.quantize_light > 0.0 || n.quantize_chroma > 0.0)
-                && (self.territory == Territory::Soft || best_d <= q_threshold)
+            if (n.blend_light > 0.0 || n.blend_chroma > 0.0)
+                && (self.territory == Territory::Soft || best_d <= reach)
             {
-                h2 = circ_lerp(h2, hue_t, n.quantize.min(1.0));
-                l2 = l_in + (l_t - l_in) * n.quantize_light * jitter;
-                c2 = (c_in + (c_t - c_in) * n.quantize_chroma * jitter).max(0.0);
+                l2 = l_in + (l_t - l_in) * n.blend_light * jitter;
+                c2 = (c_in + (c_t - c_in) * n.blend_chroma * jitter).max(0.0);
             } else {
                 l2 = l_in;
                 c2 = c_in;

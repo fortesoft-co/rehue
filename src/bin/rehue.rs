@@ -201,11 +201,11 @@ fn run_map_scheme(
     for name in register::REGISTER_NAMES {
         let settings = &regs[name];
         println!(
-            "  {:<8} distribution {:<12} rotate {}  harmonize {:.2}  light {:+.3}  chroma {:.2}",
+            "  {:<8} distribution {:<12} rotate {}  blend-hue {:.2}  light {:+.3}  chroma {:.2}",
             name,
             settings.distribution.describe(),
             settings.rotate,
-            settings.harmonize,
+            settings.blend_hue,
             settings.light,
             settings.chroma
         );
@@ -278,7 +278,7 @@ fn run_map_wal(
 
     std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {}", out.display(), e))?;
 
-    let passive = map_wal::is_passive(&config, &regs);
+    let passive = map_wal::is_passive(&regs, config.light, config.chroma);
     let (remapped_rgb, coverage) = if passive {
         // Contract: output is always wallpaper.png (here = input, re-encoded).
         (source.clone(), vec![0u64; 16])
@@ -298,14 +298,18 @@ fn run_map_wal(
             Vec::new()
         };
 
+        let (seed_hue, seed_light, seed_chroma) = map_wal::facade_defaults(&config);
         println!(
-            "rehue map-wal: territory {}  harmonize {:.2}  quantize {:.2}  dithering {:.2} ({})  light {:+.3}  chroma {:.2}",
+            "rehue map-wal: territory {}  harmonize {:.2}  blend-hue {:.2}  blend-light {:.2}  blend-chroma {:.2}  reach {}  dithering {:.2} ({})  light {:+.3}  chroma {:.2}",
             config
                 .territory
                 .unwrap_or(map_wal::Territory::Soft)
                 .describe(),
             config.harmonize,
-            config.quantize,
+            seed_hue,
+            seed_light,
+            seed_chroma,
+            config.reach_deg,
             config.dithering,
             config
                 .dithering_mode
@@ -318,20 +322,20 @@ fn run_map_wal(
             let s = &regs[name];
             let non_default = !matches!(s.distribution, DistributionState::Off)
                 || s.rotate != 0
-                || (s.harmonize - config.harmonize).abs() > 1e-9
-                || (s.quantize - config.quantize).abs() > 1e-9
+                || (s.blend_hue - seed_hue).abs() > 1e-9
+                || (s.blend_light - seed_light).abs() > 1e-9
+                || (s.blend_chroma - seed_chroma).abs() > 1e-9
                 || (s.light - config.light).abs() > 1e-9
                 || (s.chroma - config.chroma).abs() > 1e-9;
             if non_default {
                 println!(
-                    "  {:<8} distribution {:<12} rotate {}  harmonize {:.2}  quantize {:.2}  q-light {:.2}  q-chroma {:.2}  light {:+.3}  chroma {:.2}",
+                    "  {:<8} distribution {:<12} rotate {}  blend-hue {:.2}  blend-light {:.2}  blend-chroma {:.2}  light {:+.3}  chroma {:.2}",
                     name,
                     s.distribution.describe(),
                     s.rotate,
-                    s.harmonize,
-                    s.quantize,
-                    s.quantize_light,
-                    s.quantize_chroma,
+                    s.blend_hue,
+                    s.blend_light,
+                    s.blend_chroma,
                     s.light,
                     s.chroma
                 );
