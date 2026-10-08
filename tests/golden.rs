@@ -6,9 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use rehue::color::{Lch, circ_dist, circ_lerp, hex_to_oklch, oklch_to_hex};
+use rehue::color::{Lch, circ_dist, circ_lerp, hex_to_oklch, oklch_to_hex, oklch_to_rgb};
 use rehue::extract::Cluster;
-use rehue::map_wal::{SlotPalette, WalRegisterConfig};
+use rehue::map_wal::{SlotPalette, Territory, WalRegisterConfig};
 use rehue::register::{Distribution, MapConfig, RegisterConfig, retint};
 use rehue::scheme::{BASE_SLOTS, Scheme};
 
@@ -507,6 +507,10 @@ fn dither_modes_differ_and_each_is_deterministic() {
     let mut config = rehue::map_wal::RemapConfig::default();
     config.quantize = 1.0;
     config.dithering = 1.0;
+    // Kernel differences only surface in hard territory: at full-strength
+    // soft adoption every pixel's output is its soft target, which
+    // absorbs any diffused residual.
+    config.territory = Some(Territory::Hard);
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
     let knobs = rehue::map_wal::slot_knobs(&regs);
     let mut run = |mode: rehue::map_wal::DitherMode| {
@@ -528,4 +532,65 @@ fn dither_modes_differ_and_each_is_deterministic() {
     assert_ne!(bayer, blue, "distinct masks give distinct dithers");
     assert_ne!(fs, blue, "diffusion differs from ordered");
     assert_ne!(fs, atkinson, "kernels differ");
+}
+
+#[test]
+fn soft_territory_blends_between_slots() {
+    let slots: Vec<SlotPalette> = (0..16)
+        .map(|i| SlotPalette {
+            slot: BASE_SLOTS[i],
+            lch: if i < 8 {
+                Lch {
+                    l: 0.2 + 0.03 * f64::from(i as u32),
+                    c: 0.005,
+                    h: 0.0,
+                }
+            } else {
+                Lch {
+                    l: 0.55,
+                    c: 0.2,
+                    h: if i % 2 == 0 { 0.0 } else { 90.0 },
+                }
+            },
+        })
+        .collect();
+    let neutral: Vec<usize> = (0..8).collect();
+    let pixel = oklch_to_rgb(&Lch {
+        l: 0.55,
+        c: 0.15,
+        h: 60.0,
+    });
+    let pixels = [pixel[0], pixel[1], pixel[2]];
+    let base = rehue::map_wal::RemapConfig {
+        harmonize: 1.0,
+        harmonize_threshold_deg: 180.0,
+        quantize_threshold_deg: 180.0,
+        quantize_light: Some(0.0),
+        quantize_chroma: Some(0.0),
+        ..Default::default()
+    };
+    let run = |territory: Option<Territory>| {
+        let mut cfg = base.clone();
+        cfg.territory = territory;
+        let regs = rehue::map_wal::resolved_registers(&cfg).expect("valid config");
+        let knobs = rehue::map_wal::slot_knobs(&regs);
+        rehue::map_wal::apply(&pixels, 1, 1, &slots, &neutral, &knobs, &cfg)
+    };
+    let hard = run(Some(Territory::Hard));
+    let soft = run(Some(Territory::Soft));
+    let soft_again = run(Some(Territory::Soft));
+    assert_eq!(soft.pixels, soft_again.pixels, "soft stays deterministic");
+    let hue_of = |buf: &[u8]| rehue::color::rgb_to_oklch(&[buf[0], buf[1], buf[2]]).h;
+    let hard_h = hue_of(&hard.pixels);
+    let soft_h = hue_of(&soft.pixels);
+    assert!(
+        circ_dist(hard_h, 90.0) < 6.0,
+        "hard snaps to the nearest slot hue (90), got {hard_h}"
+    );
+    let to0 = circ_dist(soft_h, 0.0);
+    let to90 = circ_dist(soft_h, 90.0);
+    assert!(
+        to0 > 5.0 && to90 > 5.0 && to0 + to90 < 91.0,
+        "soft blends strictly between the two slot hues, got {soft_h}"
+    );
 }

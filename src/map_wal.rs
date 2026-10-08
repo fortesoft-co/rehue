@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use serde::{Deserialize, Serialize};
 
 use crate::bluenoise::BLUE_NOISE64;
-use crate::color::{Lch, circ_dist, circ_lerp, oklch_to_rgb, rgb_to_oklch};
+use crate::color::{Lch, circ_dist, circ_lerp, oklch_to_rgb, rgb_to_oklch, weighted_circ_mean};
 use crate::extract::{Cluster, ExtractionParams};
 use crate::register::{
     Distribution, DistributionState, REGISTER_NAMES, distribution_hues, family_indices,
@@ -72,6 +72,38 @@ impl DitherMode {
     }
 }
 
+/// The `territory` knob: how pixels relate to the palette.
+///
+/// **hard** (default): every pixel anchors to its nearest slot and adopts
+/// that slot's constants - fast, stylized, and exactly the mechanism that
+/// bands and hard edges come from.
+///
+/// **soft**: slot influence falls off with distance instead of cutting off
+/// (circular hue distance for chromatic pixels, lightness distance for
+/// achromatic ones); every target is the weighted mean over the palette.
+/// Boundaries between slots become smooth crossings and the flat-constant
+/// posterize largely disappears by construction.  The hard-mode threshold
+/// gates are unused here: `harmonize-threshold-deg` acts as the falloff
+/// temperature and must be positive; `quantize-threshold-deg` is inert.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Territory {
+    /// The default: continuous weighted mixing (palette as influence field).
+    Soft,
+    /// Opt-in stylized mode: nearest-slot snapping + flat-constant
+    /// adoption (the flat-look with posterize and hard edges, by design).
+    Hard,
+}
+
+impl Territory {
+    pub fn describe(&self) -> &'static str {
+        match self {
+            Self::Soft => "soft",
+            Self::Hard => "hard",
+        }
+    }
+}
+
 /// Per-register override; every field optional (the
 /// `globals // all // register` merge fills the gaps).  Canonical keys are
 /// kebab-case in the config JSON.
@@ -112,6 +144,9 @@ pub struct RemapConfig {
     pub dithering: f64,
     /// Which ordered mask / diffusion kernel the strength applies to.
     pub dithering_mode: Option<DitherMode>,
+    /// Territory mode: soft weighted mixing (default) or hard stylized
+    /// snapping.
+    pub territory: Option<Territory>,
     #[serde(alias = "gray_chroma_floor")]
     pub gray_chroma_floor: f64,
     pub light: f64,
@@ -131,6 +166,7 @@ impl Default for RemapConfig {
             quantize_chroma: None,
             dithering: 0.0,
             dithering_mode: None,
+            territory: None,
             gray_chroma_floor: 0.02,
             light: 0.0,
             chroma: 1.0,
@@ -158,6 +194,12 @@ pub fn resolved_registers(
 ) -> Result<BTreeMap<&'static str, WalRegisterSettings>, String> {
     if !(0.0..=1.0).contains(&config.dithering) {
         return Err("dithering must be within [0, 1]".to_string());
+    }
+    let territory = config.territory.unwrap_or(Territory::Soft);
+    if territory == Territory::Soft && config.harmonize_threshold_deg <= 0.0 {
+        return Err(
+            "territory 'soft' needs a positive temperature (harmonize-threshold-deg)".to_string(),
+        );
     }
     let all = config.registers.get("all").cloned().unwrap_or_default();
     let mut out = BTreeMap::new();
@@ -344,6 +386,7 @@ struct PixelCore<'a> {
     neutral_slots: &'a [usize],
     knobs: &'a [SlotKnobs],
     config: &'a RemapConfig,
+    territory: Territory,
 }
 
 impl PixelCore<'_> {
@@ -370,17 +413,44 @@ impl PixelCore<'_> {
             best_index = best;
             let slots_target = self.slots[best].lch;
             let n = self.knobs[best];
+            // In soft mode the target is the palette's weighted mean over
+            // the neutral slots (by lightness closeness), not one slot's
+            // constants - the lightness ramp blends smoothly.
+            let (target_l, target_c, target_h) = if self.territory == Territory::Soft {
+                let t = h_threshold.max(1e-3);
+                let mut ls = Vec::new();
+                let mut cs = Vec::new();
+                let mut ws = Vec::new();
+                let mut hs = Vec::new();
+                let mut total = 0.0f64;
+                for &idx in self.neutral_slots {
+                    let s = self.slots[idx].lch;
+                    let d = (s.l - raw.l).abs();
+                    let v = (-(d * d) / (t * t)).exp();
+                    ls.push(s.l);
+                    cs.push(s.c);
+                    hs.push(s.h);
+                    ws.push(v);
+                    total += v;
+                }
+                let mix = |xs: &Vec<f64>| {
+                    xs.iter().zip(ws.iter()).map(|(x, w)| x * w).sum::<f64>() / total
+                };
+                (mix(&ls), mix(&cs), weighted_circ_mean(&hs, &ws))
+            } else {
+                (slots_target.l, slots_target.c, slots_target.h)
+            };
             l2 = l_in;
             if n.quantize_light > 0.0 {
-                l2 = l_in + (slots_target.l - l_in) * n.quantize_light * jitter;
+                l2 = l_in + (target_l - l_in) * n.quantize_light * jitter;
             }
             if n.quantize_chroma > 0.0 {
-                c2 = (c_in + (slots_target.c - c_in) * n.quantize_chroma * jitter).max(0.0);
+                c2 = (c_in + (target_c - c_in) * n.quantize_chroma * jitter).max(0.0);
             } else {
                 c2 = c_in;
             }
             if n.quantize > 0.0 {
-                h2 = circ_lerp(raw.h, slots_target.h, n.quantize.min(1.0));
+                h2 = circ_lerp(raw.h, target_h, n.quantize.min(1.0));
             } else {
                 h2 = raw.h;
             }
@@ -399,19 +469,48 @@ impl PixelCore<'_> {
             best_index = best;
             let target = self.slots[best].lch;
             let n = self.knobs[best];
-            if n.harmonize > 0.0 && best_d <= h_threshold {
-                h2 = circ_lerp(raw.h, target.h, n.harmonize);
+            // In soft mode the targets are the palette's weighted means
+            // over all slots by circular hue distance; influence falls off
+            // with distance instead of cutting off at the thresholds, so
+            // the hard-mode gates are bypassed.
+            let (hue_t, l_t, c_t) = if self.territory == Territory::Soft {
+                let t = h_threshold.max(1e-3);
+                let mut hues = Vec::new();
+                let mut ls = Vec::new();
+                let mut cs = Vec::new();
+                let mut ws = Vec::new();
+                let mut total = 0.0f64;
+                for s in self.slots.iter() {
+                    let d = circ_dist(raw.h, s.lch.h);
+                    let v = (-(d * d) / (t * t)).exp();
+                    hues.push(s.lch.h);
+                    ls.push(s.lch.l);
+                    cs.push(s.lch.c);
+                    ws.push(v);
+                    total += v;
+                }
+                if total > 1e-12 {
+                    let mix = |xs: &Vec<f64>| {
+                        xs.iter().zip(ws.iter()).map(|(x, w)| x * w).sum::<f64>() / total
+                    };
+                    (weighted_circ_mean(&hues, &ws), mix(&ls), mix(&cs))
+                } else {
+                    (target.h, target.l, target.c)
+                }
+            } else {
+                (target.h, target.l, target.c)
+            };
+            if n.harmonize > 0.0 && (self.territory == Territory::Soft || best_d <= h_threshold) {
+                h2 = circ_lerp(raw.h, hue_t, n.harmonize);
             } else {
                 h2 = raw.h;
             }
-            if (n.quantize > 0.0
-                || self.knobs[best].quantize_light > 0.0
-                || self.knobs[best].quantize_chroma > 0.0)
-                && best_d <= q_threshold
+            if (n.quantize > 0.0 || n.quantize_light > 0.0 || n.quantize_chroma > 0.0)
+                && (self.territory == Territory::Soft || best_d <= q_threshold)
             {
-                h2 = circ_lerp(h2, target.h, n.quantize.min(1.0));
-                l2 = l_in + (target.l - l_in) * n.quantize_light * jitter;
-                c2 = (c_in + (target.c - c_in) * n.quantize_chroma * jitter).max(0.0);
+                h2 = circ_lerp(h2, hue_t, n.quantize.min(1.0));
+                l2 = l_in + (l_t - l_in) * n.quantize_light * jitter;
+                c2 = (c_in + (c_t - c_in) * n.quantize_chroma * jitter).max(0.0);
             } else {
                 l2 = l_in;
                 c2 = c_in;
@@ -480,6 +579,7 @@ pub fn apply(
         neutral_slots,
         knobs,
         config,
+        territory: config.territory.unwrap_or(Territory::Soft),
     };
     let dither = config.dithering.clamp(0.0, 1.0);
     let mode = config.dithering_mode.unwrap_or(DitherMode::BlueNoise);

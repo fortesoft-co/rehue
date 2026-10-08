@@ -299,7 +299,11 @@ fn run_map_wal(
         };
 
         println!(
-            "rehue map-wal: harmonize {:.2}  quantize {:.2}  dithering {:.2} ({})  light {:+.3}  chroma {:.2}",
+            "rehue map-wal: territory {}  harmonize {:.2}  quantize {:.2}  dithering {:.2} ({})  light {:+.3}  chroma {:.2}",
+            config
+                .territory
+                .unwrap_or(map_wal::Territory::Soft)
+                .describe(),
             config.harmonize,
             config.quantize,
             config.dithering,
@@ -373,6 +377,9 @@ fn run_map_wal(
     } else {
         let total: u64 = coverage.iter().sum();
         println!("rehue map-wal: remapped {} px", total);
+        if total == 0 {
+            println!("rehue map-wal: no families - nothing remapped");
+        }
         let mut ranked: Vec<(&str, u64)> = BASE_SLOTS
             .iter()
             .copied()
@@ -380,12 +387,14 @@ fn run_map_wal(
             .map(|(slot, count)| (slot, *count))
             .collect();
         ranked.sort_by(|a, b| b.1.cmp(&a.1));
-        for (slot, count) in ranked.iter().take(6) {
-            println!(
-                "   pixel coverage {}: {:>5.1}%",
-                slot,
-                100.0 * f64::from(*count as u32) / f64::from(total as u32)
-            );
+        if total > 0 {
+            for (slot, count) in ranked.iter().take(6) {
+                println!(
+                    "   pixel coverage {}: {:>5.1}%",
+                    slot,
+                    100.0 * f64::from(*count as u32) / f64::from(total as u32)
+                );
+            }
         }
     }
     println!("rehue map-wal: wrote wallpaper.png, compare.png, report.json");
