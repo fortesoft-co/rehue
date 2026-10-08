@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use image::{imageops, DynamicImage, ImageReader};
+use image::{DynamicImage, ImageReader, imageops};
 
 use crate::color::{circ_dist, floor_mod, rgb_to_oklch, weighted_circ_mean};
 
@@ -95,9 +95,8 @@ pub fn extract_hues(path: &Path, params: &ExtractionParams) -> Result<Vec<Cluste
 /// Extraction from an image already in memory (used by tests).
 pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> Vec<Cluster> {
     let rgb = image.to_rgb8();
-    let scale = 1.0f64.min(
-        f64::from(params.image_max_dimension) / f64::from(rgb.width().max(rgb.height())),
-    );
+    let scale = 1.0f64
+        .min(f64::from(params.image_max_dimension) / f64::from(rgb.width().max(rgb.height())));
     let resized: image::RgbImage = if scale < 1.0 {
         let w = 1u32.max((f64::from(rgb.width()) * scale).round_ties_even() as u32);
         let h = 1u32.max((f64::from(rgb.height()) * scale).round_ties_even() as u32);
@@ -135,7 +134,11 @@ pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> 
         // Keep the heaviest cluster, promoted to the whole palette.
         let heaviest = records
             .iter()
-            .max_by(|a, b| a.mass.partial_cmp(&b.mass).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                a.mass
+                    .partial_cmp(&b.mass)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .expect("records are non-empty at this point");
         survivors.push(Cluster {
             hue: heaviest.hue,
@@ -147,7 +150,11 @@ pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> 
         b.weight
             .partial_cmp(&a.weight)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.hue.partial_cmp(&b.hue).unwrap_or(std::cmp::Ordering::Equal))
+            .then(
+                a.hue
+                    .partial_cmp(&b.hue)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
     });
     survivors.truncate(params.max_hues);
     survivors

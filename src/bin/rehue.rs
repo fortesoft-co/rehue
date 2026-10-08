@@ -299,8 +299,8 @@ fn run_map_wal(
         };
 
         println!(
-            "rehue map-wal: harmonize {:.2}  quantize {:.2}  light {:+.3}  chroma {:.2}",
-            config.harmonize, config.quantize, config.light, config.chroma
+            "rehue map-wal: harmonize {:.2}  quantize {:.2}  dithering {:.2}  light {:+.3}  chroma {:.2}",
+            config.harmonize, config.quantize, config.dithering, config.light, config.chroma
         );
         for name in register::REGISTER_NAMES {
             let s = &regs[name];
@@ -312,12 +312,14 @@ fn run_map_wal(
                 || (s.chroma - config.chroma).abs() > 1e-9;
             if non_default {
                 println!(
-                    "  {:<8} distribution {:<12} rotate {}  harmonize {:.2}  quantize {:.2}  light {:+.3}  chroma {:.2}",
+                    "  {:<8} distribution {:<12} rotate {}  harmonize {:.2}  quantize {:.2}  q-light {:.2}  q-chroma {:.2}  light {:+.3}  chroma {:.2}",
                     name,
                     s.distribution.describe(),
                     s.rotate,
                     s.harmonize,
                     s.quantize,
+                    s.quantize_light,
+                    s.quantize_chroma,
                     s.light,
                     s.chroma
                 );
@@ -328,6 +330,8 @@ fn run_map_wal(
         let arranged = map_wal::arrange_palette(&slots, &clusters, &regs)?;
         let result = map_wal::apply(
             source.as_raw(),
+            source.width(),
+            source.height(),
             &arranged,
             &neutral_slots,
             &map_wal::slot_knobs(&regs),

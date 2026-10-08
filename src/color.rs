@@ -80,11 +80,7 @@ pub fn rgb_to_oklab(rgb: &[u8; 3]) -> [f64; 3] {
     let l = dot(&OKLAB_M1[0], &lin);
     let m = dot(&OKLAB_M1[1], &lin);
     let s = dot(&OKLAB_M1[2], &lin);
-    let lms = [
-        l.powf(1.0 / 3.0),
-        m.powf(1.0 / 3.0),
-        s.powf(1.0 / 3.0),
-    ];
+    let lms = [l.powf(1.0 / 3.0), m.powf(1.0 / 3.0), s.powf(1.0 / 3.0)];
     [
         dot(&OKLAB_M2[0], &lms),
         dot(&OKLAB_M2[1], &lms),
@@ -104,11 +100,7 @@ pub fn oklab_to_rgb(lab: &[f64; 3]) -> [u8; 3] {
 /// Floor-modulo: Python's `%`, not Rust's truncating remainder.
 pub fn floor_mod(a: f64, m: f64) -> f64 {
     let r = a % m;
-    if r < 0.0 {
-        r + m
-    } else {
-        r
-    }
+    if r < 0.0 { r + m } else { r }
 }
 
 /// Circular angular distance in degrees (0..180).
@@ -159,8 +151,7 @@ pub fn oklch_to_hex(lch: &Lch) -> String {
 
 pub fn hex_to_rgb(hex: &str) -> Result<[u8; 3], String> {
     let part = |i: usize| {
-        u8::from_str_radix(&hex[i..i + 2], 16)
-            .map_err(|_| format!("bad hex colour {}", hex))
+        u8::from_str_radix(&hex[i..i + 2], 16).map_err(|_| format!("bad hex colour {}", hex))
     };
     Ok([part(0)?, part(2)?, part(4)?])
 }

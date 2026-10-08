@@ -13,8 +13,8 @@ use crate::color;
 
 /// Lowercase base16 slot names, in the canonical order.
 pub const BASE_SLOTS: [&str; 16] = [
-    "base00", "base01", "base02", "base03", "base04", "base05", "base06", "base07",
-    "base08", "base09", "base0a", "base0b", "base0c", "base0d", "base0e", "base0f",
+    "base00", "base01", "base02", "base03", "base04", "base05", "base06", "base07", "base08",
+    "base09", "base0a", "base0b", "base0c", "base0d", "base0e", "base0f",
 ];
 
 #[derive(Debug, Default, Clone)]
@@ -49,12 +49,7 @@ impl Scheme {
     /// Python-style truthiness lookup: first non-empty among the candidates,
     /// else the fallback.  (`or()` alone would not skip empty strings.)
     pub fn pick(&self, first: &str, second: &str, fallback: &str) -> String {
-        let get = |k: &str| {
-            self.attrs
-                .get(k)
-                .map(|s| s.to_string())
-                .unwrap_or_default()
-        };
+        let get = |k: &str| self.attrs.get(k).map(|s| s.to_string()).unwrap_or_default();
         let (a, b) = (get(first), get(second));
         if !a.is_empty() {
             a

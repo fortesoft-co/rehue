@@ -5,6 +5,6 @@
 
 pub mod color;
 pub mod extract;
-pub mod register;
 pub mod map_wal;
+pub mod register;
 pub mod scheme;

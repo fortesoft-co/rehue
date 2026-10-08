@@ -368,8 +368,8 @@ fn map_wal_is_deterministic() {
     };
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
     let knobs = rehue::map_wal::slot_knobs(&regs);
-    let first = rehue::map_wal::apply(pixels, &slots, &neutral, &knobs, &config);
-    let second = rehue::map_wal::apply(pixels, &slots, &neutral, &knobs, &config);
+    let first = rehue::map_wal::apply(pixels, 64, 64, &slots, &neutral, &knobs, &config);
+    let second = rehue::map_wal::apply(pixels, 64, 64, &slots, &neutral, &knobs, &config);
     assert_eq!(first.pixels, second.pixels);
     assert_eq!(first.coverage, second.coverage);
 }
@@ -443,8 +443,57 @@ fn wal_arrangement_and_per_register_knobs_are_deterministic() {
     let image = gradient_image((64, 64));
     let rgb = image.to_rgb8();
     let knobs = rehue::map_wal::slot_knobs(&regs);
-    let first = rehue::map_wal::apply(rgb.as_raw(), &arranged, &neutral, &knobs, &config);
-    let second = rehue::map_wal::apply(rgb.as_raw(), &arranged, &neutral, &knobs, &config);
+    let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &arranged, &neutral, &knobs, &config);
+    let second = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &arranged, &neutral, &knobs, &config);
     assert_eq!(first.pixels, second.pixels);
     assert_eq!(first.coverage, second.coverage);
+}
+
+#[test]
+fn quantize_split_resolution() {
+    let mut config = rehue::map_wal::RemapConfig::default();
+    config.quantize = 0.5;
+    config.quantize_light = Some(0.3);
+    config.registers.insert(
+        "accents".to_string(),
+        WalRegisterConfig {
+            quantize_chroma: Some(0.1),
+            ..Default::default()
+        },
+    );
+    let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
+    let knobs = rehue::map_wal::slot_knobs(&regs);
+    let accents = knobs[8];
+    assert!((accents.quantize - 0.5).abs() < 1e-9);
+    assert!((accents.quantize_light - 0.3).abs() < 1e-9);
+    assert!((accents.quantize_chroma - 0.1).abs() < 1e-9);
+    // surfaces inherit the scalar when the split dials are absent.
+    let surfaces = knobs[1];
+    assert!((surfaces.quantize - 0.5).abs() < 1e-9);
+    assert!((surfaces.quantize_light - 0.3).abs() < 1e-9);
+    assert!((surfaces.quantize_chroma - 0.5).abs() < 1e-9);
+}
+
+#[test]
+fn dithering_varies_full_quantize_and_is_deterministic() {
+    let (_, slots) = solarized();
+    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
+    let image = gradient_image((64, 64));
+    let rgb = image.to_rgb8();
+    let mut config = rehue::map_wal::RemapConfig::default();
+    config.quantize = 1.0;
+    config.harmonize = 1.0;
+    let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
+    let knobs = rehue::map_wal::slot_knobs(&regs);
+
+    config.dithering = 0.0;
+    let plain = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+    config.dithering = 1.0;
+    let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+    let second = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+    assert_eq!(first.pixels, second.pixels);
+    assert!(
+        first.pixels != plain.pixels,
+        "dithering must change the output"
+    );
 }
