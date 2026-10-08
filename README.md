@@ -2,45 +2,162 @@
 
 *re-hue (verb): to color again differently.*
 
-**rehue** maps **base16 color schemes and wallpapers onto each other**,
-deterministically:
+**rehue** maps **base16 color schemes and wallpapers onto each
+other**: a terminal palette painted with your wallpaper's hues, or a
+wallpaper repainted with the palette your terminal uses. Deterministic
+and legibility-preserving, with the two outputs built to close back on
+each other.
 
-- `rehue map-scheme` - **wallpaper → scheme**. Extracts the wallpaper's
-  hue families, and paints those hues onto a structural reference scheme
-  (Solarized, Gruvbox, Rosé Pine - any tinted-scheme YAML), freezing the
-  reference's lightness and chroma per slot, so the scheme's designed
-  contrast is inherited by construction. Slots are grouped into registers
-  (`bg`, `surfaces`, `fg`, `accents`), each with its own controls.
-- `rehue map-wal` - **scheme → wallpaper**. The inverse: repaints a wallpaper
-  with a scheme's palette so the image on screen belongs to the palette it
-  generated. `harmonize` re-keys hues only (photographic texture survives);
-  `quantize` adopts the palette's full tonal shape; both are threshold-gated
-  and opt-in. Works with any base16 YAML - a favourite hand-picked scheme
-  drives the wallpaper too, no image editor involved.
+**`rehue map-scheme`** — scheme + wallpaper → scheme. It takes the *hues* from
+your wallpaper and leaves everything that made the scheme readable
+(lightness, chroma, contrast) exactly as a designer built it. The
+palette feels like your wallpaper but behaves like the scheme.
 
-The intended consumer is [Stylix](https://github.com/nix-community/stylix):
-the mapped palette feeds `stylix.base16Scheme`, the remapped wallpaper feeds
-`stylix.image`, and GTK/Firefox/Zed/terminals/GNOME all restyle from one
-store path. The loop closes: divergence between the scheme and the picture
-it came from becomes structurally impossible.
+**`rehue map-wal`** — wallpaper + scheme → wallpaper. The inverse. Any wallpaper,
+any base16 scheme — the wallpaper comes back repainted with the
+scheme's palette. No more hunting for that perfect wallpaper — the
+picture you love is now the one that matches.
 
-## Guarantees
+And using both together unlocks something interesting: the remapped scheme can
+go straight back into the image — repaint the wallpaper with the palette
+it generated itself.
 
-- **Deterministic** - no RNG, no timestamps, no network in the build; the
-  same inputs produce byte-identical outputs. Cluster seeding is
-  histogram-driven (no random k-means initialisation).
-- **Pure** - all colour work happens inside the build sandbox; nothing
-  reads global config state.
-- **Legibility preserving** - slots adopt the reference scheme's
-  lightness/chroma and only change them through the explicit grade dials;
-  a guard restores fg-vs-bg contrast before rendering.
+## Why
+
+Most wallpaper ↔ color scheme tools try to generate a palette from raw
+image clusters, with no contrast guarantees — the results are
+frequently muddy. rehue separates the two things a theming tool
+actually needs: *which hues* come from the wallpaper, and *how the hues
+are shaped* (lightness, chroma, contrast) comes from a scheme a
+designer already built — Solarized, Gruvbox, Rosé Pine, any
+[tinted-scheme](https://github.com/tinted-theming/schemes) YAML. 
+The divergence between the scheme and the picture it came
+from becomes structurally impossible.
+
+Guarantees, because a theme generator that can't be trusted is a
+hobby, not a tool:
+
+- **Deterministic** — no RNG anywhere (cluster seeding included); the
+  same inputs produce byte-identical outputs.
+- **Legibility preserving** — slots adopt the reference scheme's
+  lightness/chroma and only change them through explicit dials; a guard
+  restores fg-vs-bg contrast before rendering.
+
+## Examples
+
+All inputs are in-repo assets (CC0, see
+[assets/attribution.md](assets/attribution.md)).
+
+### Rainbow glitter → Gruvbox Light
+
+One dial: `{"harmonize": 1.0}`. The facade re-keys hue *and* chroma of
+every pixel toward the palette; lightness stays photographic, so the
+glitter keeps its sparkle and loses its rainbow.
+
+```sh
+rehue map-wal \
+  --wallpaper assets/vidsplay-rainbow-glitter.webp \
+  --scheme gruvbox-light.yaml \
+  --out glitter \
+  --config harmonize.json
+```
+
+with `harmonize.json`:
+
+```json
+{ "harmonize": 1.0 }
+```
+
+![rainbow glitter before/after the gruvbox light repaint](assets/examples/glitter-facade1-pair.webp)
+
+Coverage lands spread wide (the scheme's brightest surface carried 39%
+of the pixels, the next slots in single digits) — one palette, still a
+photograph.
+
+### Rosé Pine Dawn → Butterfly
+
+Defaults do the work: the butterfly's hues are extracted by
+chroma-weighted mass and adopted slot by slot. Rosé Pine Dawn's
+lightness, chroma and contrast carry through untouched.
+
+```sh
+rehue map-scheme \
+  --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
+  --scheme rose-pine-dawn.yaml \
+  --out mapped
+```
+
+![kelly-ishmael butterfly closeup original](assets/kelly-ishmael-butterfly-closeup.webp)
+
+![rose-pine-dawn before/after, painted with the butterfly's hue families](assets/examples/butterfly-rose-pine-dawn.png)
+
+### The full round trip
+
+Map-scheme first: paint Solarized Dark with the hues of a wallpaper.
+Here with distribution sculpting per register — `bg` pinned to the
+magenta family, `surfaces` spanning magenta → blue, `fg` pinned to the
+olive family, accents on the four-family ramp, all with a chroma lift
+so the hue rotation reads in the swatches:
+
+```sh
+rehue inspect \
+  --wallpaper assets/bango-renders-3d-abstract.webp \
+  --out inspect
+
+rehue map-scheme \
+  --wallpaper assets/bango-renders-3d-abstract.webp \
+  --scheme solarized-dark.yaml \
+  --out mapped \
+  --config roundtrip.json
+```
+
+with `roundtrip.json`:
+
+```json
+{
+  "registers": {
+    "all": {"blend-hue": 1.0},
+    "bg": {"distribution": 1, "chroma": 1.6},
+    "surfaces": {"distribution": [1, 3], "chroma": 1.6},
+    "fg": {"distribution": 0, "chroma": 1.6},
+    "accents": {"distribution": [0, 1, 2, 3], "chroma": 0.75}
+  }
+}
+```
+
+Scheme before (top) / after (bottom) — solarized's structure kept,
+only hues move:
+
+![solarized-dark before/after, painted with the wallpaper's hue families](assets/examples/bango-schemes-roundtrip.png)
+
+Then feed it back into the image:
+
+```sh
+rehue map-wal \
+  --wallpaper assets/bango-renders-3d-abstract.webp \
+  --scheme mapped/scheme.yaml \
+  --out repainted \
+  --config harmonize.json
+```
+
+![bango before/after repainting through its own recolored scheme](assets/examples/bango-roundtrip-pair.webp)
+
+The loop closed: the palette your terminal uses is now the palette the
+picture was painted with.
+
+`map-scheme` writes `scheme.yaml` + `preview.png` (before/after
+swatches) + `clusters.json`; `map-wal` writes `wallpaper.png` +
+`compare.png` (side-by-side thumbnails) + `report.json` (per-slot pixel
+coverage).
 
 ## Usage
 
 ### With cargo
 
-The crate is plain cargo, and the image codecs (png/jpeg) are pure Rust -
-a stock Rust toolchain is the only requirement.
+The crate is plain cargo, and the image codecs (png/jpeg/webp) are pure
+Rust — a stock Rust toolchain is the only requirement. Requires 1.85 or
+newer (edition 2024); rustup handles that automatically via
+[`rust-toolchain.toml`](rust-toolchain.toml).
 
 ```sh
 git clone https://github.com/fortesoft-co/rehue
@@ -52,24 +169,21 @@ cargo run --release -- map-scheme \
 # mapped/scheme.yaml + preview.png + clusters.json
 
 cargo install --path .          # installs the `rehue` binary
-rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out map-wal
+rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --config remap.json
 ```
 
-```sh
-rehue map-scheme --wallpaper wal.jpg --scheme solarized-dark.yaml --out mapped
-rehue map-wal    --wallpaper wal.jpg --scheme mapped/scheme.yaml --out map-wal --config map-wal.json
-```
-
-`cargo test` runs the test suite: output snapshots and determinism checks.
-Scheme inputs
-are plain tinted-scheme YAML files - grab one from the
+Scheme inputs are plain tinted-scheme YAML files — grab one from the
 [tinted-theming/schemes](https://github.com/tinted-theming/schemes)
-collection. Requires any rustup toolchain at 1.85 or newer (edition 2024);
-rustup handles that automatically via [`rust-toolchain.toml`](rust-toolchain.toml).
+collection. `cargo test` runs the test suite: snapshot and
+determinism checks.
 
 ### With Nix
 
-The flake exposes the same flows plus Stylix-wiring helpers:
+The flake exposes the same flows plus builders a consumer flake can
+import directly — the Stylix wiring is four lines: the remapped
+palette feeds `stylix.base16Scheme`, the repainted wallpaper feeds
+`stylix.image`, and GTK/Firefox/Zed/terminals/GNOME all restyle from
+one store path.
 
 ```nix
 inputs.rehue.url = "github:fortesoft-co/rehue";
@@ -77,59 +191,70 @@ inputs.rehue.url = "github:fortesoft-co/rehue";
 # in a module:
 let
   mapped = rehue.lib.${system}.mapScheme {
-    wallpaper = ./assets/cave-sunset-view.png;
-    scheme = "${pkgs.base16-schemes}/share/themes/rose-pine.yaml";
-    # registers = { fg = { hue-blend = 0.4; chroma = 0.85; }; };
+    wallpaper = ./assets/glitter.webp;
+    scheme = "${pkgs.base16-schemes}/share/themes/gruvbox-light.yaml";
+    # registers = { fg = { blend-hue = 0.4; chroma = 0.85; }; };
   };
-  remapped = rehue.lib.${system}.mapWal {
-    wallpaper = ./assets/cave-sunset-view.png;
+  repainted = rehue.lib.${system}.mapWal {
+    wallpaper = ./assets/glitter.webp;
     scheme = "${mapped}/scheme.yaml";
     config = { harmonize = 1.0; };
   };
 in {
   stylix.base16Scheme = "${mapped}/scheme.yaml";
-  stylix.image = "${remapped}/wallpaper.png";
+  stylix.image = "${repainted}/wallpaper.png";
 }
 ```
 
-Outputs: `map-scheme` writes `scheme.yaml` + `preview.png` (before/after
-swatches) + `clusters.json`; `map-wal` writes `wallpaper.png` +
-`compare.png` (side-by-side thumbnails) + `report.json` (per-slot pixel
-coverage).
+Every builder's output is a plain store path: the colour work happens
+inside the build sandbox (nothing reads global config state, nothing
+calls out), and the results — a scheme YAML, a PNG, the extraction
+report — commit and diff like the rest of your config.
 
 ## Knobs
 
-Registers (`bg` = base00, `surfaces` = base01-03, `fg` = base04-07,
-`accents` = base08-0F); an `all` record seeds every register:
+Every knob is opt-in; absent config is the sane default. Both flows
+share registers (`bg` = base00, `surfaces` = base01-03, `fg` =
+base04-07, `accents` = base08-0F) with an `all` record seeding every
+register.
+
+### Shared arrangement (both flows)
 
 | knob | semantics |
 | --- | --- |
-| `hue-blend` | 0 = reference hue verbatim, 1 = full wallpaper mapping (shortest-arc circular interpolation between) |
-| `rotate` | integer; rotates the register's assigned hues across its slots (`1` = one slot right, wraps; no-op while the register's slots share one hue) |
-| `family-offset` | integer; which-ranked wallpaper family (heaviest = 0, wraps) seeds the register's hue; no-op for accents, which anchor-match instead |
-| `light` | additive OKLCH lightness shift for the register's slots |
-| `chroma` | multiplicative OKLCH chroma ratio for the register's slots (0.8 muted, 1.3 vivid) |
+| `distribution` | how the register's slots adopt the wallpaper's hue families: `true` = weight-ordered ramp, integer = pin to one family, array = explicit stops (family indices; duplicates give flat runs) |
+| `rotate` | integer; rotates the register's assigned hues across its slots (`1` = one slot right, wraps) |
 
-Extraction (`map-scheme --config`): `image-max-dimension`,
-`chroma-pixel-floor`, `lightness-window`, `max-hues`,
-`seed-separation-deg`, `cluster-iterations`, `merge-deg`,
-`min-cluster-weight`, `accent-chroma-floor`, `hue-match-threshold-deg`,
-`fg-contrast-floor`.
+### map-scheme (wallpaper → scheme)
 
-Map-wal (`map-wal --config`), all opt-in: `harmonize` (0..1 strength),
-`harmonize-threshold-deg`, `quantize` (0..1 strength),
-`quantize-threshold-deg`, `gray-chroma-floor`, then image-wide `light`
-(additive) and `chroma` (multiplicative). Absent config = passthrough
-(re-encoded).
+| knob | semantics |
+| --- | --- |
+| `blend-hue` | 0 = reference hue verbatim, 1 = full wallpaper mapping (default 1; shortest-arc circular interpolation between) |
+| `reach-deg` | accent claim gate: how far (in hue-degrees) a wallpaper family may sit from an accent slot's hue and still claim it (default 45) |
+| `light` / `chroma` | per-register additive lightness shift / multiplicative chroma ratio (0.8 muted, 1.3 vivid) |
 
-## Why
+Extraction (`map-scheme --config` / `rehue inspect --config`):
+`image-max-dimension`, `chroma-pixel-floor`, `lightness-window`,
+`max-hues`, `seed-separation-deg`, `cluster-iterations`, `merge-deg`,
+`min-cluster-weight`, `accent-chroma-floor`, `fg-contrast-floor`.
 
-Stylix's built-in palette generator is a genetic algorithm over raw image
-clusters, with no contrast guarantees - the results are frequently muddy.
-rehue separates the two things a theming tool actually needs: *which hues*
-come from the wallpaper, and *how the hues are shaped* (lightness, chroma,
-contrast) comes from a scheme a designer already built. `rehue map-wal` then
-repaints the wallpaper to match whatever palette was derived or chosen.
+### map-wal (scheme → wallpaper)
+
+| knob | semantics |
+| --- | --- |
+| `territory` | `soft` (default): every pixel's target is the palette's weighted mean under a smooth influence field — boundaries become smooth crossings, posterize disappears by construction. `hard`: nearest-slot snapping, exact palette colours, flat-constant look |
+| `harmonize` | the one-dial default, 0..1 (default 0). Seeds `blend-hue` + `blend-chroma` wherever they're unset; explicit dials win |
+| `blend-hue` / `blend-chroma` | how far hue / chroma move toward the palette (0 = raw pixel, 1 = full adoption) |
+| `blend-light` | lightness adoption, default 0 and never facade-seeded — photographic lightness survives by design |
+| `reach-deg` | hue-wheel falloff width (`soft`) / influence cutoff (`hard`), default 45 |
+| `gray-chroma-floor` | chroma below which pixels count as achromatic (default 0.02; they key to the scheme's neutrals by lightness and keep their raw hue) |
+| `dithering` / `dithering-mode` | 0..1 strength; `blue-noise` (default) / `bayer` / `floyd-steinberg` / `atkinson` / `none` |
+| `light` / `chroma` | image-wide grading, applied last (additive L, multiplicative C) |
+
+Per-register overrides accept every dial except `dithering`, which is
+global. Dithering is inert at zero adoption and at full-strength
+adoption (the target swallows the residual); it exists for the partial
+-adopt look.
 
 ## Repository
 
@@ -137,10 +262,11 @@ repaints the wallpaper to match whatever palette was derived or chosen.
 src/color.rs     sRGB/OKLab/OKLCH + circular-hue math (one source of truth)
 src/scheme.rs    base16 YAML parse/render + slot access
 src/extract.rs   chroma^2 hue histogram + deterministic circular k-means
-src/register.rs  the register pipeline and its knobs
-src/map_wal.rs   per-pixel harmonize/quantize/grade
+src/register.rs  map-scheme: the register pipeline and its knobs
+src/map_wal.rs   map-wal: per-pixel blend/grade + territory + dithering
+src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
 src/bin/rehue.rs the CLI
-tests/golden.rs  output snapshots + determinism checks
+tests/golden.rs  snapshot + determinism + vocabulary-contract checks
 ```
 
 ## Development
@@ -159,17 +285,10 @@ nix build .#rehue
 Both paths are equivalent; `rust-toolchain.toml` pins the toolchain for
 rustup users, the devshell does the same through Nix.
 
-Parity note: rust's resize kernel (`Lanczos3`) and Pillow's `LANCZOS`
-produce slightly different 8-bit pixels, so raw extraction can differ by
-fractions of a degree and ±2/255 on affected slots. The engine itself is
-pin-tested byte-exact via injected clusters (see `tests/golden.rs`).
-
 ## Roadmap
 
-- Dithering for full-strength `quantize` (gradients currently band).
 - base24 slot coverage (base10-17).
-- A `nixosModule` exposing options wired directly to Stylix.
-- Swatch-strip/preview-sheet renderer in the library.
+- Better cli ergonomics with named params (no more passing configs json)
 
 ## License
 
