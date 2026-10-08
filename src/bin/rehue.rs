@@ -299,8 +299,16 @@ fn run_map_wal(
         };
 
         println!(
-            "rehue map-wal: harmonize {:.2}  quantize {:.2}  dithering {:.2}  light {:+.3}  chroma {:.2}",
-            config.harmonize, config.quantize, config.dithering, config.light, config.chroma
+            "rehue map-wal: harmonize {:.2}  quantize {:.2}  dithering {:.2} ({})  light {:+.3}  chroma {:.2}",
+            config.harmonize,
+            config.quantize,
+            config.dithering,
+            config
+                .dithering_mode
+                .unwrap_or(map_wal::DitherMode::BlueNoise)
+                .describe(),
+            config.light,
+            config.chroma
         );
         for name in register::REGISTER_NAMES {
             let s = &regs[name];

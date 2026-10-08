@@ -5,15 +5,20 @@
 //!
 //! Quantize splits into independent hue (`quantize`), lightness
 //! (`quantize-light`) and chroma (`quantize-chroma`) adoption dials, all
-//! defaulting to the scalar; the adopted share can be dithered with an
-//! 8x8 Bayer matrix (`dithering`) so full-strength adoption doesn't band.
-//! Dithering rides only on the adopted share, so it is inert at zero
-//! quantize.
+//! defaulting to the scalar.  The adopted lightness/chroma share can be
+//! dithered so full-strength adoption doesn't band: `dithering` scales an
+//! ordered-dither threshold (blue-noise or Bayer mask) in ordered modes,
+//! and the fraction of residual actually diffused in the error-diffusion
+//! modes (Floyd-Steinberg, Atkinson; serpentine scan, fixed order - no
+//! RNG).  Anchoring always happens on the raw pixel, so slot membership -
+//! the territories - is independent of the dither; diffusion only feeds
+//! the mix, not the anchor.  Dithering is inert at zero adoption.
 
 use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
+use crate::bluenoise::BLUE_NOISE64;
 use crate::color::{Lch, circ_dist, circ_lerp, oklch_to_rgb, rgb_to_oklch};
 use crate::extract::{Cluster, ExtractionParams};
 use crate::register::{
@@ -22,8 +27,8 @@ use crate::register::{
 };
 use crate::scheme::BASE_SLOTS;
 
-/// Classic 8x8 ordered-dithering threshold matrix (Bayer); values are
-/// jitter scalars in [0, 1), read at (x mod 8, y mod 8).
+/// Classic 8x8 ordered-dithering threshold matrix (Bayer); threshold
+/// scalar `(v + 0.5) / 64` in [0, 1), read at (x mod 8, y mod 8).
 const BAYER8: [[u8; 8]; 8] = [
     [0, 32, 8, 40, 2, 34, 10, 42],
     [48, 16, 56, 24, 50, 18, 58, 26],
@@ -34,6 +39,38 @@ const BAYER8: [[u8; 8]; 8] = [
     [15, 47, 7, 39, 13, 45, 5, 37],
     [63, 31, 55, 23, 61, 29, 53, 21],
 ];
+
+/// The `dithering-mode` knob.  Ordered modes threshold the adopted share
+/// with a pixel mask; diffusion modes propagate the mix residual to
+/// neighbouring pixels (serpentine scan order, fully deterministic).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DitherMode {
+    /// 64x64 tileable void-and-cluster mask (the default; pattern is
+    /// visually invisible).
+    BlueNoise,
+    /// 8x8 Bayer matrix (classic crosshatch look).
+    Bayer,
+    /// Classic serpentine error diffusion; best tonal fidelity, can
+    /// "worm" in flat regions.
+    FloydSteinberg,
+    /// Gentler diffusion (6/8 of the error propagated, 2/8 dropped).
+    Atkinson,
+    /// Explicitly off (same as dithering strength 0).
+    None,
+}
+
+impl DitherMode {
+    pub fn describe(&self) -> &'static str {
+        match self {
+            Self::BlueNoise => "blue-noise",
+            Self::Bayer => "bayer",
+            Self::FloydSteinberg => "floyd-steinberg",
+            Self::Atkinson => "atkinson",
+            Self::None => "none",
+        }
+    }
+}
 
 /// Per-register override; every field optional (the
 /// `globals // all // register` merge fills the gaps).  Canonical keys are
@@ -69,10 +106,12 @@ pub struct RemapConfig {
     /// Adoption dials defaulting to `quantize` when unset.
     pub quantize_light: Option<f64>,
     pub quantize_chroma: Option<f64>,
-    /// Ordered-dithering strength for the adopted L/C share; inert at
-    /// zero adoption.
+    /// Dithering strength (0 off; scales the mask offsets, resp. the
+    /// diffusion).
     #[serde(alias = "dithering")]
     pub dithering: f64,
+    /// Which ordered mask / diffusion kernel the strength applies to.
+    pub dithering_mode: Option<DitherMode>,
     #[serde(alias = "gray_chroma_floor")]
     pub gray_chroma_floor: f64,
     pub light: f64,
@@ -91,6 +130,7 @@ impl Default for RemapConfig {
             quantize_light: None,
             quantize_chroma: None,
             dithering: 0.0,
+            dithering_mode: None,
             gray_chroma_floor: 0.02,
             light: 0.0,
             chroma: 1.0,
@@ -294,14 +334,132 @@ pub fn is_passive(
         })
 }
 
-/// The per-pixel pipeline.  `pixels` is a flat rgb8 buffer of a
+/// Shared per-pixel core.  Anchoring happens on the raw pixel, so slot
+/// membership is independent of the dither; the mix runs on the effective
+/// input (`l_in`/`c_in` = raw + accumulated dither), `jitter` scales the
+/// adopted lightness/chroma share (the ordered-dither threshold; 1.0 in
+/// diffusion mode, where error diffusion plays the dither).
+struct PixelCore<'a> {
+    slots: &'a [SlotPalette],
+    neutral_slots: &'a [usize],
+    knobs: &'a [SlotKnobs],
+    config: &'a RemapConfig,
+}
+
+impl PixelCore<'_> {
+    /// Returns the final (l, c, h) before the 8-bit render, plus the
+    /// anchor slot index.
+    fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, usize) {
+        let h_threshold = self.config.harmonize_threshold_deg;
+        let q_threshold = self.config.quantize_threshold_deg;
+        let gray_floor = self.config.gray_chroma_floor;
+        let (mut l2, mut c2, mut h2);
+        let best_index;
+        if raw.c < gray_floor {
+            // Achromatic: keyed to the scheme's low-chroma slots by raw
+            // lightness (first minimum wins).
+            let mut best = 0usize;
+            let mut best_d = f64::INFINITY;
+            for &idx in self.neutral_slots {
+                let d = (self.slots[idx].lch.l - raw.l).abs();
+                if d < best_d {
+                    best_d = d;
+                    best = idx;
+                }
+            }
+            best_index = best;
+            let slots_target = self.slots[best].lch;
+            let n = self.knobs[best];
+            l2 = l_in;
+            if n.quantize_light > 0.0 {
+                l2 = l_in + (slots_target.l - l_in) * n.quantize_light * jitter;
+            }
+            if n.quantize_chroma > 0.0 {
+                c2 = (c_in + (slots_target.c - c_in) * n.quantize_chroma * jitter).max(0.0);
+            } else {
+                c2 = c_in;
+            }
+            if n.quantize > 0.0 {
+                h2 = circ_lerp(raw.h, slots_target.h, n.quantize.min(1.0));
+            } else {
+                h2 = raw.h;
+            }
+        } else {
+            // Chromatic: nearest slot by raw hue (first minimum), then
+            // the opt-in harmonize / quantize moves, threshold-gated.
+            let mut best = 0usize;
+            let mut best_d = f64::INFINITY;
+            for (idx, slots_target) in self.slots.iter().enumerate() {
+                let d = circ_dist(raw.h, slots_target.lch.h);
+                if d < best_d {
+                    best_d = d;
+                    best = idx;
+                }
+            }
+            best_index = best;
+            let target = self.slots[best].lch;
+            let n = self.knobs[best];
+            if n.harmonize > 0.0 && best_d <= h_threshold {
+                h2 = circ_lerp(raw.h, target.h, n.harmonize);
+            } else {
+                h2 = raw.h;
+            }
+            if (n.quantize > 0.0
+                || self.knobs[best].quantize_light > 0.0
+                || self.knobs[best].quantize_chroma > 0.0)
+                && best_d <= q_threshold
+            {
+                h2 = circ_lerp(h2, target.h, n.quantize.min(1.0));
+                l2 = l_in + (target.l - l_in) * n.quantize_light * jitter;
+                c2 = (c_in + (target.c - c_in) * n.quantize_chroma * jitter).max(0.0);
+            } else {
+                l2 = l_in;
+                c2 = c_in;
+            }
+        }
+        // Per-slot (register) grade, then the image-wide grade last.
+        let n = self.knobs[best_index];
+        l2 = (l2 + n.light).clamp(0.0, 1.0);
+        c2 = (c2 * n.chroma).max(0.0);
+        l2 = (l2 + self.config.light).clamp(0.0, 1.0);
+        c2 = (c2 * self.config.chroma).max(0.0);
+        (l2, c2, h2, best_index)
+    }
+}
+
+/// Ordered-dither threshold scalar for one pixel.
+fn ordered_jitter(mode: DitherMode, x: usize, y: usize, dither: f64) -> f64 {
+    let mask = match mode {
+        DitherMode::BlueNoise => (f64::from(BLUE_NOISE64[y % 64][x % 64]) + 0.5) / 256.0,
+        DitherMode::Bayer => (f64::from(BAYER8[y % 8][x % 8]) + 0.5) / 64.0,
+        _ => 0.5,
+    };
+    1.0 + (mask - 0.5) * dither
+}
+
+/// Error-diffusion kernel: (dx, dy, weight); weights sum to 1 for
+/// Floyd-Steinberg and 3/4 for Atkinson (the dropped 2/8 is the point).
+const FS_KERNEL: [(i64, i64, f64); 4] = [
+    (1, 0, 7.0 / 16.0),
+    (-1, 1, 3.0 / 16.0),
+    (0, 1, 5.0 / 16.0),
+    (1, 1, 1.0 / 16.0),
+];
+const ATKINSON_KERNEL: [(i64, i64, f64); 6] = [
+    (1, 0, 1.0 / 8.0),
+    (2, 0, 1.0 / 8.0),
+    (-1, 1, 1.0 / 8.0),
+    (0, 1, 1.0 / 8.0),
+    (1, 1, 1.0 / 8.0),
+    (0, 2, 1.0 / 8.0),
+];
+
+/// The full pipeline.  `pixels` is a flat rgb8 buffer of a
 /// `width x height` image; `slots` the 16 palette slot colours in
 /// canonical order (already arranged by `arrange_palette` when
-/// distribution knobs are in play); `knobs` the per-slot mix/grade values;
-/// `neutral_slots` the indices of the scheme's low-chroma slots
+/// distribution knobs are in play); `knobs` the per-slot mix/grade
+/// values; `neutral_slots` the indices of the scheme's low-chroma slots
 /// (achromatic pixels key against those by lightness rather than by hue).
-/// Thresholds, dithering strength and the final image-wide grade come from
-/// `config`.
 pub fn apply(
     pixels: &[u8],
     width: u32,
@@ -317,103 +475,101 @@ pub fn apply(
         width as usize * height as usize * 3,
         "flat buffer must match dimensions"
     );
-    let h_threshold = config.harmonize_threshold_deg;
-    let q_threshold = config.quantize_threshold_deg;
-    let gray_floor = config.gray_chroma_floor;
+    let core = PixelCore {
+        slots,
+        neutral_slots,
+        knobs,
+        config,
+    };
     let dither = config.dithering.clamp(0.0, 1.0);
-    let image_light = config.light;
-    let image_chroma = config.chroma;
+    let mode = config.dithering_mode.unwrap_or(DitherMode::BlueNoise);
 
     let mut out = vec![0u8; pixels.len()];
     let mut counts = vec![0u64; slots.len()];
 
-    for y in 0..height as usize {
-        for x in 0..width as usize {
-            let i = (y * width as usize + x) * 3;
-            let chunk_in = &pixels[i..i + 3];
-            let chunk_out = &mut out[i..i + 3];
-            let lch = rgb_to_oklch(&[chunk_in[0], chunk_in[1], chunk_in[2]]);
-            let (mut l2, mut c2, mut h2);
-            let best_index;
-            if lch.c < gray_floor {
-                // Achromatic: keyed to the scheme's low-chroma slots by
-                // lightness (first minimum wins).
-                let mut best = 0usize;
-                let mut best_d = f64::INFINITY;
-                for &idx in neutral_slots {
-                    let d = (slots[idx].lch.l - lch.l).abs();
-                    if d < best_d {
-                        best_d = d;
-                        best = idx;
-                    }
-                }
-                best_index = best;
-                let slots_index = slots[best];
-                let n = knobs[best];
-                let jitter = 1.0 + ((f64::from(BAYER8[y % 8][x % 8]) + 0.5) / 64.0 - 0.5) * dither;
-                h2 = lch.h;
-                if n.quantize_light > 0.0 {
-                    l2 = lch.l + (slots_index.lch.l - lch.l) * n.quantize_light * jitter;
-                } else {
-                    l2 = lch.l;
-                }
-                if n.quantize_chroma > 0.0 {
-                    c2 =
-                        (lch.c + (slots_index.lch.c - lch.c) * n.quantize_chroma * jitter).max(0.0);
-                } else {
-                    c2 = lch.c;
-                }
-                if n.quantize > 0.0 {
-                    h2 = circ_lerp(lch.h, slots_index.lch.h, n.quantize.min(1.0));
-                }
-            } else {
-                // Chromatic: nearest slot by hue (first minimum), then the
-                // opt-in harmonize / quantize moves, threshold-gated.
-                let mut best = 0usize;
-                let mut best_d = f64::INFINITY;
-                for (idx, slot) in slots.iter().enumerate() {
-                    let d = circ_dist(lch.h, slot.lch.h);
-                    if d < best_d {
-                        best_d = d;
-                        best = idx;
-                    }
-                }
-                best_index = best;
-                let target = slots[best].lch;
-                let n = knobs[best];
-                if n.harmonize > 0.0 && best_d <= h_threshold {
-                    h2 = circ_lerp(lch.h, target.h, n.harmonize);
-                } else {
-                    h2 = lch.h;
-                }
-                if (n.quantize > 0.0 || n.quantize_light > 0.0 || n.quantize_chroma > 0.0)
-                    && best_d <= q_threshold
-                {
-                    let jitter =
-                        1.0 + ((f64::from(BAYER8[y % 8][x % 8]) + 0.5) / 64.0 - 0.5) * dither;
-                    h2 = circ_lerp(h2, target.h, n.quantize.min(1.0));
-                    l2 = lch.l + (target.l - lch.l) * n.quantize_light * jitter;
-                    c2 = (lch.c + (target.c - lch.c) * n.quantize_chroma * jitter).max(0.0);
-                } else {
-                    l2 = lch.l;
-                    c2 = lch.c;
+    match mode {
+        DitherMode::BlueNoise | DitherMode::Bayer | DitherMode::None => {
+            for y in 0..height as usize {
+                for x in 0..width as usize {
+                    let i = (y * width as usize + x) * 3;
+                    let raw = rgb_to_oklch(&[pixels[i], pixels[i + 1], pixels[i + 2]]);
+                    let jitter = if mode == DitherMode::None || dither == 0.0 {
+                        1.0
+                    } else {
+                        ordered_jitter(mode, x, y, dither)
+                    };
+                    let (l2, c2, h2, slot) = core.run(raw, raw.l, raw.c, jitter);
+                    let back = oklch_to_rgb(&Lch {
+                        l: l2,
+                        c: c2,
+                        h: h2,
+                    });
+                    out[i] = back[0];
+                    out[i + 1] = back[1];
+                    out[i + 2] = back[2];
+                    counts[slot] += 1;
                 }
             }
-            // Per-slot (register) grade, then the image-wide grade last.
-            let n = knobs[best_index];
-            l2 = (l2 + n.light).clamp(0.0, 1.0);
-            c2 = (c2 * n.chroma).max(0.0);
-            l2 = (l2 + image_light).clamp(0.0, 1.0);
-            c2 = (c2 * image_chroma).max(0.0);
-            let back = oklch_to_rgb(&Lch {
-                l: l2,
-                c: c2,
-                h: h2,
-            });
-            chunk_out[0] = back[0];
-            chunk_out[1] = back[1];
-            chunk_out[2] = back[2];
-            counts[best_index] += 1;
+        }
+        DitherMode::FloydSteinberg | DitherMode::Atkinson => {
+            let kernel: &[(i64, i64, f64)] = match mode {
+                DitherMode::FloydSteinberg => &FS_KERNEL,
+                _ => &ATKINSON_KERNEL,
+            };
+            let w = width as usize;
+            // Pending error for the current row (arrives from the row
+            // above) and for the next one; serpentine scan flips the
+            // kernel horizontally on left-to-right -> right-to-left rows.
+            let mut row_err_l = vec![0.0f64; w];
+            let mut row_err_c = vec![0.0f64; w];
+            let mut next_err_l = vec![0.0f64; w];
+            let mut next_err_c = vec![0.0f64; w];
+            for y in 0..height as usize {
+                let dir: i64 = if y % 2 == 0 { 1 } else { -1 };
+                let mut x_it: i64 = if dir == 1 { 0 } else { w as i64 - 1 };
+                for _ in 0..w {
+                    let x = x_it as usize;
+                    let i = (y * w + x) * 3;
+                    let raw = rgb_to_oklch(&[pixels[i], pixels[i + 1], pixels[i + 2]]);
+                    let l_in = (raw.l + row_err_l[x]).clamp(0.0, 1.0);
+                    let c_in = (raw.c + row_err_c[x]).clamp(0.0, f64::MAX);
+                    let (l2, c2, h2, slot) = core.run(raw, l_in, c_in, 1.0);
+                    let res_l = l2 - l_in;
+                    let res_c = c2 - c_in;
+                    for &(dx, dy, weight) in kernel {
+                        let tx_i = x_it + dx * dir;
+                        if tx_i < 0 || tx_i >= w as i64 {
+                            continue;
+                        }
+                        let ty = y + dy as usize;
+                        if ty >= height as usize {
+                            continue;
+                        }
+                        let tx = tx_i as usize;
+                        if dy == 0 {
+                            row_err_l[tx] += res_l * weight * dither;
+                            row_err_c[tx] += res_c * weight * dither;
+                        } else {
+                            next_err_l[tx] += res_l * weight * dither;
+                            next_err_c[tx] += res_c * weight * dither;
+                        }
+                    }
+                    let back = oklch_to_rgb(&Lch {
+                        l: l2,
+                        c: c2,
+                        h: h2,
+                    });
+                    out[i] = back[0];
+                    out[i + 1] = back[1];
+                    out[i + 2] = back[2];
+                    counts[slot] += 1;
+                    x_it += dir;
+                }
+                std::mem::swap(&mut row_err_l, &mut next_err_l);
+                std::mem::swap(&mut row_err_c, &mut next_err_c);
+                next_err_l.iter_mut().for_each(|v| *v = 0.0);
+                next_err_c.iter_mut().for_each(|v| *v = 0.0);
+            }
         }
     }
 

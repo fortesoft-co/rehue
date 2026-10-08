@@ -497,3 +497,35 @@ fn dithering_varies_full_quantize_and_is_deterministic() {
         "dithering must change the output"
     );
 }
+
+#[test]
+fn dither_modes_differ_and_each_is_deterministic() {
+    let (_, slots) = solarized();
+    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
+    let image = gradient_image((64, 64));
+    let rgb = image.to_rgb8();
+    let mut config = rehue::map_wal::RemapConfig::default();
+    config.quantize = 1.0;
+    config.dithering = 1.0;
+    let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
+    let knobs = rehue::map_wal::slot_knobs(&regs);
+    let mut run = |mode: rehue::map_wal::DitherMode| {
+        config.dithering_mode = Some(mode);
+        let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+        let second = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+        assert_eq!(
+            first.pixels,
+            second.pixels,
+            "{} deterministic",
+            mode.describe()
+        );
+        first.pixels
+    };
+    let blue = run(rehue::map_wal::DitherMode::BlueNoise);
+    let bayer = run(rehue::map_wal::DitherMode::Bayer);
+    let fs = run(rehue::map_wal::DitherMode::FloydSteinberg);
+    let atkinson = run(rehue::map_wal::DitherMode::Atkinson);
+    assert_ne!(bayer, blue, "distinct masks give distinct dithers");
+    assert_ne!(fs, blue, "diffusion differs from ordered");
+    assert_ne!(fs, atkinson, "kernels differ");
+}
