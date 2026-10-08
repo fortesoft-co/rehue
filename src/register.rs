@@ -1,13 +1,17 @@
-//! The register pipeline: assignment -> rotate -> hue-blend -> grade ->
-//! legibility guard.  Every stage is
-//! is deterministic and the wallpaper supplies hues only, so every slot's
+//! The register pipeline: assign (legacy policy or distribution) -> rotate
+//! -> harmonize -> grade -> legibility guard.  Every stage is
+//! deterministic and the wallpaper supplies hues only, so every slot's
 //! lightness and chroma targets come from the reference scheme.
+//!
+//! Arrangement (distribution + rotate) is shared with `map_wal`, which
+//! reshapes a palette's slot hues with the same rules before the
+//! per-pixel work.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::color::{circ_dist, circ_lerp, hex_to_oklch, oklch_to_hex, round_value, Lch};
+use crate::color::{Lch, circ_dist, circ_lerp, hex_to_oklch, oklch_to_hex, round_value};
 use crate::extract::{Cluster, ExtractionParams};
 use crate::scheme::BASE_SLOTS;
 
@@ -37,34 +41,93 @@ pub fn register_slots(name: &str) -> &'static [&'static str] {
     }
 }
 
-fn slot_index(slot: &str) -> usize {
+pub fn slot_index(slot: &str) -> usize {
     BASE_SLOTS
         .iter()
         .position(|s| *s == slot)
         .expect("canonical slot name")
 }
 
+/// The `distribution` knob: how a register's slots pick up the wallpaper's
+/// colour families.  Family indices are positions in the extraction output
+/// (weight-ordered, heaviest first) - what `rehue inspect` prints.
+///
+/// * `true`  - the default ramp: families in extraction order, spreading
+///   `min(slots, families)` evenly across the register span, shortest-arc
+///   interpolation between them.
+/// * integer - pin the register to that one family index (the single-slot
+///   `bg` accepts only this form).
+/// * array   - explicit stops in user order; at most one per register slot
+///   (longer is an error).  A full-length array is a pure per-slot
+///   assignment - manual mode - and duplicate indices are legal, giving
+///   flat runs.
+///
+/// Hue only, always: every slot keeps the reference scheme's lightness and
+/// chroma.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Distribution {
+    /// Explicit switch for the default ramp; `false` counts as unset.
+    Auto(bool),
+    /// Pin the register to one extracted family.
+    Pin(i64),
+    /// Explicit stops in user order (family indices).
+    Stops(Vec<i64>),
+}
+
+/// Resolved distribution intent, after static (slot-count) validation.
+/// Family-index validation needs the extracted families and happens where
+/// they are known.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DistributionState {
+    /// No distribution set: the register's legacy assignment behaviour.
+    Off,
+    /// Default ramp.
+    Auto,
+    /// Pin to one family index.
+    Pin(i64),
+    /// Explicit stops (family indices) in user order.
+    Stops(Vec<i64>),
+}
+
+impl DistributionState {
+    /// Wire-form summary for logs and reports.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Off => "off".to_string(),
+            Self::Auto => "auto".to_string(),
+            Self::Pin(i) => format!("pin {}", i),
+            Self::Stops(v) => {
+                let joined = v
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("[{}]", joined)
+            }
+        }
+    }
+}
+
 /// Wire form: every field optional so records merge per key, exactly the
 /// `defaults // all // register` dictionary merge.  Canonical keys are
 /// kebab-case in the config JSON.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", default)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct RegisterConfig {
-    #[serde(alias = "hue_blend")]
-    pub hue_blend: Option<f64>,
+    pub distribution: Option<Distribution>,
     pub rotate: Option<i64>,
-    #[serde(alias = "family_offset")]
-    pub family_offset: Option<i64>,
+    pub harmonize: Option<f64>,
     pub light: Option<f64>,
     pub chroma: Option<f64>,
 }
 
 /// Resolved per-register settings the pipeline runs with.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct RegisterSettings {
-    pub hue_blend: f64,
+    pub distribution: DistributionState,
     pub rotate: i64,
-    pub family_offset: i64,
+    pub harmonize: f64,
     pub light: f64,
     pub chroma: f64,
 }
@@ -78,32 +141,131 @@ pub struct MapConfig {
     pub registers: HashMap<String, RegisterConfig>,
 }
 
+/// Static validation of one register's `distribution` against its slot
+/// count.
+pub fn resolve_distribution(
+    name: &str,
+    given: Option<Distribution>,
+) -> Result<DistributionState, String> {
+    let k = register_slots(name).len();
+    let state = match given {
+        None | Some(Distribution::Auto(false)) => DistributionState::Off,
+        Some(Distribution::Auto(true)) => DistributionState::Auto,
+        Some(Distribution::Pin(i)) => DistributionState::Pin(i),
+        Some(Distribution::Stops(v)) => {
+            if v.is_empty() {
+                return Err(format!(
+                    "register '{}': 'distribution' array needs at least one stop",
+                    name
+                ));
+            }
+            if v.len() > k {
+                return Err(format!(
+                    "register '{}': 'distribution' has {} stop(s) but the register has {} slot(s)",
+                    name,
+                    v.len(),
+                    k
+                ));
+            }
+            DistributionState::Stops(v)
+        }
+    };
+    if matches!(state, DistributionState::Auto | DistributionState::Stops(_)) && k == 1 {
+        return Err(format!(
+            "register '{}' has 1 slot: 'distribution' takes a family index (int), not true or an array",
+            name
+        ));
+    }
+    Ok(state)
+}
+
+/// The `defaults // all // register` resolution, with knob validation.
 pub fn resolved_registers(
     config: &MapConfig,
 ) -> Result<BTreeMap<&'static str, RegisterSettings>, String> {
-    let all = config.registers.get("all").copied().unwrap_or_default();
+    let all = config.registers.get("all").cloned().unwrap_or_default();
     let mut out = BTreeMap::new();
     for name in REGISTER_NAMES {
-        let given = config.registers.get(name).copied().unwrap_or_default();
-        let settings = RegisterSettings {
-            hue_blend: given.hue_blend.or(all.hue_blend).unwrap_or(1.0),
-            rotate: given.rotate.or(all.rotate).unwrap_or(0),
-            family_offset: given.family_offset.or(all.family_offset).unwrap_or(0),
-            light: given.light.or(all.light).unwrap_or(0.0),
-            chroma: given.chroma.or(all.chroma).unwrap_or(1.0),
-        };
-        if !(0.0..=1.0).contains(&settings.hue_blend) {
+        let given = config.registers.get(name).cloned().unwrap_or_default();
+        let distribution = resolve_distribution(
+            name,
+            given.distribution.or_else(|| all.distribution.clone()),
+        )?;
+        let rotate = given.rotate.or(all.rotate).unwrap_or(0);
+        let harmonize = given.harmonize.or(all.harmonize).unwrap_or(1.0);
+        let light = given.light.or(all.light).unwrap_or(0.0);
+        let chroma = given.chroma.or(all.chroma).unwrap_or(1.0);
+        if !(0.0..=1.0).contains(&harmonize) {
             return Err(format!(
-                "registers.{}.hue-blend must be within [0, 1]",
+                "registers.{}.harmonize must be within [0, 1]",
                 name
             ));
         }
-        if settings.chroma <= 0.0 {
+        if chroma <= 0.0 {
             return Err(format!("registers.{}.chroma must be positive", name));
         }
-        out.insert(name, settings);
+        out.insert(
+            name,
+            RegisterSettings {
+                distribution,
+                rotate,
+                harmonize,
+                light,
+                chroma,
+            },
+        );
     }
     Ok(out)
+}
+
+/// Hue for every slot of one register from an explicit stop list.
+///
+/// Stops spread evenly across the register's slot span; slots between
+/// stops take shortest-arc interpolation of the neighbouring stops' hues.
+/// `stops.len() == k` degenerates to a pure per-slot assignment (manual
+/// mode); duplicate stops give flat runs.
+pub fn distribution_hues(k: usize, stops: &[usize], families: &[Cluster]) -> Vec<f64> {
+    let m = stops.len();
+    debug_assert!(m >= 1 && m <= k);
+    (0..k)
+        .map(|i| {
+            if m == 1 {
+                return families[stops[0]].hue;
+            }
+            let step = (k - 1) as f64 / (m - 1) as f64;
+            let x = i as f64 / step;
+            let j = (x.floor() as usize).min(m - 1);
+            let t = x - j as f64;
+            circ_lerp(
+                families[stops[j]].hue,
+                families[stops[(j + 1).min(m - 1)]].hue,
+                t,
+            )
+        })
+        .collect()
+}
+
+/// Validate family indices against the extraction output.
+pub fn family_indices(
+    indices: &[i64],
+    families: &[Cluster],
+    name: &str,
+) -> Result<Vec<usize>, String> {
+    indices
+        .iter()
+        .map(|i| {
+            if *i < 0 || (*i as usize) >= families.len() {
+                Err(format!(
+                    "register '{}': distribution stop {} out of range ({} families extracted)",
+                    name,
+                    i,
+                    families.len()
+                ))
+            } else {
+                Ok(*i as usize)
+            }
+        })
+        .collect()
 }
 
 /// Pick a wallpaper-cluster hue for one accent slot's anchor hue, or None
@@ -122,7 +284,11 @@ fn choose_cluster(
         circ_dist(anchor, a.hue)
             .partial_cmp(&circ_dist(anchor, b.hue))
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.hue.partial_cmp(&b.hue).unwrap_or(std::cmp::Ordering::Equal))
+            .then(
+                a.hue
+                    .partial_cmp(&b.hue)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
     });
 
     // Pass 1: claim clusters nobody has taken yet.
@@ -147,26 +313,14 @@ fn choose_cluster(
     None
 }
 
-/// The register's selected wallpaper family's hue: the family-offset-th
-/// heaviest cluster, wrapping.  None when the wallpaper is greyscale, in
-/// which case slots keep the scheme colour.
-fn family_hue(clusters: &[Cluster], settings: &RegisterSettings) -> Option<f64> {
-    if clusters.is_empty() {
-        return None;
-    }
-    let n = clusters.len() as i64;
-    Some(clusters[settings.family_offset.rem_euclid(n) as usize].hue)
-}
-
 /// The full mapped colours for all 16 slots.
 ///
-/// With default register settings this is the plain hue-mapping given
-/// the same clusters: neutrals adopt the
-/// heaviest cluster's hue (never a full-wheel average - antipodal cluster
-/// means land on hues the wallpaper does not contain); accent slots
-/// anchor-match nearest eligible clusters, near misses keeping the scheme
+/// Per register: either the distribution ramp (when set) or the legacy
+/// policy - neutrals adopt the heaviest family; accents anchor-match the
+/// nearest chroma-eligible clusters, near misses keeping the scheme
 /// colour.  Each slot's lightness and chroma come from the reference
-/// scheme and only ever change via the grade stage.
+/// scheme and only ever change via the grade knobs and the legibility
+/// guard.
 pub fn retint(
     slot_hexes: &[String],
     clusters: &[Cluster],
@@ -182,8 +336,7 @@ pub fn retint(
     let regs = resolved_registers(config)?;
 
     let lch_of = |i: usize| -> Lch {
-        hex_to_oklch(&slot_hexes[i])
-            .expect("slot hexes are normalized at parse time")
+        hex_to_oklch(&slot_hexes[i]).expect("slot hexes are normalized at parse time")
     };
 
     // Pass-1 keys hash on the value's bits (f64 itself is not hashable).
@@ -194,27 +347,47 @@ pub fn retint(
         .filter(|c| c.chroma >= config.extraction.accent_chroma_floor)
         .collect();
 
-    // -- assignment: one wallpaper hue (or the scheme's own) per slot --
+    // -- assignment: per register, the distribution ramp (arrangement) or
+    //    the legacy policy (accents anchor-match; neutrals adopt the
+    //    heaviest family).  A greyscale wallpaper leaves every scheme hue.
     let mut assigned: HashMap<usize, f64> = HashMap::new();
-    for i in 0..BASE_SLOTS.len() {
-        let slot = BASE_SLOTS[i];
-        let name_settings = regs[register_of_slot(slot)];
-        let anchor = lch_of(i);
-        let hue = if register_of_slot(slot) == "accents" && !eligible.is_empty() {
-            // A matched cluster wins; a near miss keeps the scheme colour.
-            choose_cluster(
-                &eligible,
-                anchor.h,
-                &mut used,
-                config.extraction.hue_match_threshold_deg,
-            )
-            .unwrap_or(anchor.h)
-        } else {
-            // Neutrals (and accents with no eligible vivid family) adopt
-            // the register's selected wallpaper family.
-            family_hue(clusters, &name_settings).unwrap_or(anchor.h)
-        };
-        assigned.insert(i, hue);
+    for name in REGISTER_NAMES {
+        let slots = register_slots(name);
+        let settings = &regs[name];
+        let ramp: Option<Vec<f64>> =
+            if clusters.is_empty() || settings.distribution == DistributionState::Off {
+                None
+            } else {
+                let k = slots.len();
+                let stops = match &settings.distribution {
+                    DistributionState::Auto => (0..k.min(clusters.len())).collect::<Vec<usize>>(),
+                    DistributionState::Pin(i) => family_indices(&[*i], clusters, name)?,
+                    DistributionState::Stops(v) => family_indices(v, clusters, name)?,
+                    DistributionState::Off => unreachable!("checked above"),
+                };
+                Some(distribution_hues(k, &stops, clusters))
+            };
+        for (pos, slot) in slots.iter().copied().enumerate() {
+            let i = slot_index(slot);
+            let anchor = lch_of(i);
+            let hue = if let Some(hues) = &ramp {
+                hues[pos]
+            } else if name == "accents" && !eligible.is_empty() {
+                // A matched cluster wins; a near miss keeps the scheme colour.
+                choose_cluster(
+                    &eligible,
+                    anchor.h,
+                    &mut used,
+                    config.extraction.hue_match_threshold_deg,
+                )
+                .unwrap_or(anchor.h)
+            } else {
+                // Neutrals (and accents with no eligible vivid family) adopt
+                // the heaviest family.
+                clusters.first().map(|c| c.hue).unwrap_or(anchor.h)
+            };
+            assigned.insert(i, hue);
+        }
     }
 
     // -- rotation: shift each register's assigned hues across its slots --
@@ -228,17 +401,16 @@ pub fn retint(
         let indices: Vec<usize> = slots.iter().map(|s| slot_index(s)).collect();
         let hues: Vec<f64> = indices.iter().map(|i| assigned[i]).collect();
         for (pos, i) in indices.iter().copied().enumerate() {
-            let from =
-                (pos as i64 - rotated_by).rem_euclid(indices.len() as i64) as usize;
+            let from = (pos as i64 - rotated_by).rem_euclid(indices.len() as i64) as usize;
             assigned.insert(i, hues[from]);
         }
     }
 
-    // -- blend: circular hue interpolation toward the scheme's own hue --
+    // -- harmonize: circular hue interpolation toward the scheme's own hue --
     for i in 0..BASE_SLOTS.len() {
-        let settings = regs[register_of_slot(BASE_SLOTS[i])];
-        if settings.hue_blend < 1.0 {
-            let blended = circ_lerp(lch_of(i).h, assigned[&i], settings.hue_blend);
+        let settings = &regs[register_of_slot(BASE_SLOTS[i])];
+        if settings.harmonize < 1.0 {
+            let blended = circ_lerp(lch_of(i).h, assigned[&i], settings.harmonize);
             assigned.insert(i, blended);
         }
     }
@@ -246,7 +418,7 @@ pub fn retint(
     // -- grade: additive L shift, multiplicative chroma, per register --
     let mut graded: BTreeMap<String, Lch> = BTreeMap::new();
     for i in 0..BASE_SLOTS.len() {
-        let settings = regs[register_of_slot(BASE_SLOTS[i])];
+        let settings = &regs[register_of_slot(BASE_SLOTS[i])];
         let lch = lch_of(i);
         graded.insert(
             BASE_SLOTS[i].to_string(),
