@@ -214,27 +214,39 @@ enum Commands {
         #[arg(long, value_name = "[REG] C", num_args = 1..=2)]
         chroma: Vec<String>,
     },
-    /// Print the colour families a wallpaper yields (the indices
-    /// distribution configs refer to).
+    /// Print a wallpaper's colour families or a scheme's slots, rendered
+    /// in the terminal; the PNG strip is opt-in.
     ///
-    /// Index the wallpaper's hue families: the `[i]` indices that
-    /// distribution configs target, with hue, chroma and weight per
-    /// family.
+    /// Families mode indexes the wallpaper's hue families (the `[i]`
+    /// indices that distribution configs target).  Scheme mode shows a
+    /// scheme's 16 slots as truecolor swatches.
     ///
-    /// Example: rehue inspect --wallpaper butterfly.webp --out inspect
+    /// Example: rehue inspect --wallpaper butterfly.webp
+    ///          rehue inspect --scheme gruvbox-light
     Inspect {
-        /// The image to extract from.
+        /// The image whose hues get extracted (families mode).
         ///
         /// e.g. --wallpaper ~/pictures/butterfly.webp
         #[arg(long)]
-        wallpaper: PathBuf,
-        /// Extraction options as JSON.
+        wallpaper: Option<PathBuf>,
+        /// A scheme (NAME or path) whose slots print as truecolor
+        /// swatches (scheme mode).
+        ///
+        /// e.g. --scheme gruvbox-light
+        #[arg(long)]
+        scheme: Option<String>,
+        /// Directory that scheme NAMES look up before the embedded set.
+        ///
+        /// e.g. --scheme-dir ~/schemes
+        #[arg(long, value_name = "DIR")]
+        scheme_dir: Option<PathBuf>,
+        /// Extraction options as JSON.  (families mode)
         ///
         /// e.g. --config extract.json
         #[arg(long, value_name = "JSON")]
         config: Option<PathBuf>,
-        /// Directory for the swatch strip (inspect.png); absent prints
-        /// the table only.  Positions match the `[i]` indices.
+        /// Directory for inspect.png (families mode); absent prints the
+        /// table only.
         ///
         /// e.g. --out inspect
         #[arg(long)]
@@ -831,13 +843,36 @@ fn run_map_wal(
     Ok(())
 }
 
-/// The extraction preview: indexed family table, optionally with a swatch
-/// strip whose positions match the printed indices.
+/// The extraction preview: indexed family table + the terminal swatch
+/// strip (positions match the printed indices); the PNG strip is an
+/// opt-in artifact.  Scheme mode shows a scheme's slots in terminal.
 fn run_inspect(
-    wallpaper: &Path,
+    wallpaper: Option<&Path>,
+    scheme: Option<&str>,
+    scheme_dir: Option<&Path>,
     config_path: Option<&Path>,
     out: Option<&Path>,
 ) -> Result<(), String> {
+    if scheme.is_some() && wallpaper.is_some() {
+        return Err("pass --scheme or --wallpaper, not both".to_string());
+    }
+    if let Some(scheme) = scheme {
+        if out.is_some() {
+            return Err(
+                "--out is a families-mode artifact; scheme mode prints terminal".to_string(),
+            );
+        }
+        let parsed = Scheme::resolve(scheme, scheme_dir)?;
+        println!(
+            "rehue inspect: scheme '{}' by {}",
+            parsed.meta_name(),
+            parsed.meta_author()
+        );
+        let hexes = parsed.slot_hexes()?;
+        print!("{}", rehue::terminal::scheme_strip(&hexes));
+        return Ok(());
+    }
+    let wallpaper = wallpaper.expect("one of --scheme/--wallpaper");
     let config = read_json::<register::MapConfig>(config_path)?;
     let clusters = extract::extract_hues(wallpaper, &config.extraction)?;
     if clusters.is_empty() {
@@ -845,6 +880,7 @@ fn run_inspect(
         return Ok(());
     }
     print_families("inspect", &clusters);
+    println!("{}", rehue::terminal::families_strip(&clusters));
     if let Some(dir) = out {
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("can't create {}: {}", dir.display(), e))?;
@@ -957,9 +993,17 @@ fn run(command: Commands) -> Result<(), String> {
         ),
         Commands::Inspect {
             wallpaper,
+            scheme,
+            scheme_dir,
             config,
             out,
-        } => run_inspect(&wallpaper, config.as_deref(), out.as_deref()),
+        } => run_inspect(
+            wallpaper.as_deref(),
+            scheme.as_deref(),
+            scheme_dir.as_deref(),
+            config.as_deref(),
+            out.as_deref(),
+        ),
         Commands::Schemes => run_schemes(),
     }
 }

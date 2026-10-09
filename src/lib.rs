@@ -9,3 +9,4 @@ pub mod extract;
 pub mod map_wal;
 pub mod register;
 pub mod scheme;
+pub mod terminal;
