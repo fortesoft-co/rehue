@@ -3,7 +3,7 @@
 
 mod common;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use common::gradient_image;
 use rehue::enhance::{EnhanceConfig, SrModel};

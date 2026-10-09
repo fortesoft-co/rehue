@@ -1,8 +1,11 @@
 //! Shared test inputs: repo-fixture paths and synthetic palettes/images.
+// compiled into every test crate; each helper is used by only some of
+// them, so unused ones are expected here
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
-use rehue::color::{Lch, hex_to_oklch};
+use rehue::color::hex_to_oklch;
 use rehue::extract::Cluster;
 use rehue::map_wal::SlotPalette;
 use rehue::scheme::{BASE_SLOTS, Scheme};

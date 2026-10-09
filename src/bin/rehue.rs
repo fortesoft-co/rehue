@@ -742,11 +742,17 @@ fn run_map_scheme(
     render_preview(&original, &mapped)?
         .save(out.join("preview.png"))
         .map_err(|e| format!("can't write preview.png: {}", e))?;
-    std::fs::write(
-        out.join("preview.html"),
-        preview::render(&parsed.meta_name(), &mapped_hexes)?,
-    )
-    .map_err(|e| format!("can't write preview.html: {}", e))?;
+    let scheme_name = parsed.meta_name();
+    let wall_label = preview::image_label(wallpaper);
+    let input = preview::Preview {
+        flow: preview::PreviewFlow::SchemeFromWallpaper,
+        wallpaper_label: Some(&wall_label),
+        wallpaper_src: Some(&preview::relative_link(out, wallpaper)),
+        scheme: &scheme_name,
+        hexes: &mapped_hexes,
+    };
+    std::fs::write(out.join("preview.html"), preview::render(&input)?)
+        .map_err(|e| format!("can't write preview.html: {}", e))?;
 
     let report = serde_json::json!({
         "params": config,
@@ -928,11 +934,18 @@ fn run_map_wal(
     write_json_file(&out.join("report.json"), &report)?;
 
     if let Some(strip_hexes) = &arranged_hexes {
-        std::fs::write(
-            out.join("preview.html"),
-            preview::render(&parsed.meta_name(), strip_hexes)?,
-        )
-        .map_err(|e| format!("can't write preview.html: {}", e))?;
+        let scheme_name = parsed.meta_name();
+        let wall_label = preview::image_label(wallpaper);
+        let input = preview::Preview {
+            flow: preview::PreviewFlow::WallpaperFromScheme,
+            wallpaper_label: Some(&wall_label),
+            // the repainted result is a sibling artifact
+            wallpaper_src: Some("wallpaper.png"),
+            scheme: &scheme_name,
+            hexes: strip_hexes,
+        };
+        std::fs::write(out.join("preview.html"), preview::render(&input)?)
+            .map_err(|e| format!("can't write preview.html: {}", e))?;
     }
 
     if passive {
@@ -999,9 +1012,16 @@ fn run_inspect(
         if let Some(dir) = out {
             std::fs::create_dir_all(dir)
                 .map_err(|e| format!("can't create {}: {}", dir.display(), e))?;
+            let scheme_name = parsed.meta_name();
             std::fs::write(
                 dir.join("preview.html"),
-                preview::render(&parsed.meta_name(), &hexes)?,
+                preview::render(&preview::Preview {
+                    flow: preview::PreviewFlow::SchemeAlone,
+                    wallpaper_label: None,
+                    wallpaper_src: None,
+                    scheme: &scheme_name,
+                    hexes: &hexes,
+                })?,
             )
             .map_err(|e| format!("can't write preview.html: {}", e))?;
             println!("rehue inspect: wrote preview.html");
