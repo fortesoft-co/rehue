@@ -325,7 +325,8 @@ src/enhance.rs   enhance: Lanczos + vulkan SR (realesrgan-ncnn-vulkan)
 src/preview.rs   the compiled-in preview.html (css-only views; gtk/qt mocks)
 src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
 src/bin/rehue.rs the CLI
-tests/golden.rs  snapshot + determinism + vocabulary-contract checks
+tests/           per-surface suites: extraction, map_scheme, map_wal,
+                 scheme, terminal, enhance, preview, cli (+ common/ helpers)
 ```
 
 ## Development
