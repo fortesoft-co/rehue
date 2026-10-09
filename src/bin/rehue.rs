@@ -38,16 +38,22 @@ enum Commands {
         /// e.g. --wallpaper ~/pictures/butterfly.webp
         #[arg(long)]
         wallpaper: PathBuf,
-        /// A base16 (tinted-scheme) YAML supplying the structure.
+        /// A base16 (tinted-scheme) YAML path or a scheme name from the
+        /// embedded collection (pass `.`-free names to use it).
         ///
         /// e.g. --scheme rose-pine-dawn.yaml
         #[arg(long)]
-        scheme: PathBuf,
+        scheme: String,
         /// Output directory: scheme.yaml + preview.png + clusters.json.
         ///
         /// e.g. --out mapped
         #[arg(long)]
         out: PathBuf,
+        /// Directory that scheme NAMES look up before the embedded set.
+        ///
+        /// e.g. --scheme-dir ~/schemes
+        #[arg(long, value_name = "DIR")]
+        scheme_dir: Option<PathBuf>,
         /// Map config JSON: extraction options + per-register records.
         ///
         /// e.g. --config roundtrip.json
@@ -105,16 +111,22 @@ enum Commands {
         /// e.g. --wallpaper ~/pictures/glitter.webp
         #[arg(long)]
         wallpaper: PathBuf,
-        /// A base16 (tinted-scheme) YAML with the target palette.
+        /// A base16 (tinted-scheme) YAML path or a scheme name from the
+        /// embedded collection (pass `.`-free names to use it).
         ///
         /// e.g. --scheme gruvbox-light.yaml
         #[arg(long)]
-        scheme: PathBuf,
+        scheme: String,
         /// Output directory: wallpaper.png + compare.png + report.json.
         ///
         /// e.g. --out repainted
         #[arg(long)]
         out: PathBuf,
+        /// Directory that scheme NAMES look up before the embedded set.
+        ///
+        /// e.g. --scheme-dir ~/schemes
+        #[arg(long, value_name = "DIR")]
+        scheme_dir: Option<PathBuf>,
         /// Remap config JSON: extraction options + per-register records
         /// (records beat the bare-flag seeds).
         ///
@@ -228,6 +240,8 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// List the scheme names embedded in the binary (base16 collection).
+    Schemes,
 }
 
 const MAP_SCHEME_REGISTERS: &str = "
@@ -582,14 +596,15 @@ impl WalOverrides {
 
 fn run_map_scheme(
     wallpaper: &Path,
-    scheme_path: &Path,
+    scheme: &str,
+    scheme_dir: Option<&Path>,
     out: &Path,
     config_path: Option<&Path>,
     overrides: SchemeOverrides,
 ) -> Result<(), String> {
     let mut config = read_json::<register::MapConfig>(config_path)?;
     overrides.apply(&mut config)?;
-    let parsed = Scheme::parse_file(scheme_path)?;
+    let parsed = Scheme::resolve(scheme, scheme_dir)?;
     println!(
         "rehue map-scheme: reference '{}' by {}",
         parsed.meta_name(),
@@ -647,7 +662,8 @@ fn run_map_scheme(
 
 fn run_map_wal(
     wallpaper: &Path,
-    scheme_path: &Path,
+    scheme: &str,
+    scheme_dir: Option<&Path>,
     out: &Path,
     config_path: Option<&Path>,
     overrides: WalOverrides,
@@ -655,7 +671,7 @@ fn run_map_wal(
     let mut config = read_json::<map_wal::RemapConfig>(config_path)?;
     overrides.apply(&mut config)?;
     let regs = map_wal::resolved_registers(&config)?;
-    let parsed = Scheme::parse_file(scheme_path)?;
+    let parsed = Scheme::resolve(scheme, scheme_dir)?;
     let slot_hexes = parsed.slot_hexes()?;
     println!(
         "rehue map-wal: painting with '{}' by {}",
@@ -858,12 +874,23 @@ fn run_inspect(
     Ok(())
 }
 
+/// The embedded scheme collection, printed.
+fn run_schemes() -> Result<(), String> {
+    let names: Vec<&'static str> = rehue::scheme::collection_names().collect();
+    println!("rehue schemes: {} base16 scheme(s) embedded", names.len());
+    for name in names {
+        println!("  {name}");
+    }
+    Ok(())
+}
+
 fn run(command: Commands) -> Result<(), String> {
     self_test();
     match command {
         Commands::MapScheme {
             wallpaper,
             scheme,
+            scheme_dir,
             out,
             config,
             reach_deg,
@@ -875,6 +902,7 @@ fn run(command: Commands) -> Result<(), String> {
         } => run_map_scheme(
             &wallpaper,
             &scheme,
+            scheme_dir.as_deref(),
             &out,
             config.as_deref(),
             SchemeOverrides {
@@ -889,6 +917,7 @@ fn run(command: Commands) -> Result<(), String> {
         Commands::MapWal {
             wallpaper,
             scheme,
+            scheme_dir,
             out,
             config,
             territory,
@@ -907,6 +936,7 @@ fn run(command: Commands) -> Result<(), String> {
         } => run_map_wal(
             &wallpaper,
             &scheme,
+            scheme_dir.as_deref(),
             &out,
             config.as_deref(),
             WalOverrides {
@@ -930,6 +960,7 @@ fn run(command: Commands) -> Result<(), String> {
             config,
             out,
         } => run_inspect(&wallpaper, config.as_deref(), out.as_deref()),
+        Commands::Schemes => run_schemes(),
     }
 }
 

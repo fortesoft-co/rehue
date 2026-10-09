@@ -23,7 +23,13 @@
             pname = "rehue";
             version = "0.1.0";
             src = self;
-            cargoLock.lockFile = ./Cargo.lock;
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+              # The tinted-schemes git dependency (a packaging branch of
+              # the scheme collection) needs its vendored content hash.
+              outputHashes."tinted-schemes-0.1.0" =
+                "sha256-OVOQASFtYhkXkoChfVp9o9LwFEXF9wQmpXa0+MCNdHs=";
+            };
             meta = with pkgs.lib; {
               description = "Map base16 color schemes and wallpapers onto each other";
               license = licenses.agpl3Plus;

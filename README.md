@@ -171,6 +171,10 @@ cargo run --release -- map-scheme \
 cargo install --path .          # installs the `rehue` binary
 rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --harmonize 1
 
+# Scheme names resolve from the embedded tinted collection — no yaml
+# path needed; `rehue schemes` prints all names:
+rehue map-wal --wallpaper my-photo.jpg --scheme gruvbox-light --out repainted --harmonize 1
+
 # Everyday options are named flags; register dials accept a target —
 # `--chroma bg 1.6`, repeatable per register — while a bare value is the
 # seed (map-wal's bare --light/--chroma stay the image-wide grade).
@@ -179,10 +183,15 @@ rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repaint
 rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --config remap.json
 ```
 
-Scheme inputs are plain tinted-scheme YAML files — grab one from the
+Scheme inputs are plain tinted-scheme YAML files — or a NAME resolving
+against the embedded
 [tinted-theming/schemes](https://github.com/tinted-theming/schemes)
-collection. `cargo test` runs the test suite: snapshot and
-determinism checks.
+collection: 361 base16 schemes (MIT as a whole), packed into the
+`cargo` branch of the [fortesoft-co fork](https://github.com/fortesoft-co/schemes)
+and embedded at build time. Upstream changes arrive as a
+cargo update, and a test fixture keeps the embedded text pinned, so
+they show up as a test diff, not silently. `cargo test` runs the test
+suite: snapshot and determinism checks.
 
 ### With Nix
 
@@ -290,9 +299,6 @@ rustup users, the devshell does the same through Nix.
 
 ## Roadmap
 
-- **Named theme inputs** — bundle the
-  [tinted-schemes](https://github.com/tinted-theming/schemes) set so
-  `--scheme gruvbox-light` resolves without a YAML path.
 - **Terminal previews** — `inspect` swatches and whole schemes
   rendered as truecolor ANSI, straight in the terminal — no image
   viewer hop.

@@ -5,6 +5,10 @@
 //! quoted values, inline comments after a ` #` (gruvbox et al carry those),
 //! and keys matched case-insensitively (stored lowercased, so the lowercase
 //! slot names look up directly even though the collection spells `base0A`).
+//!
+//! Scheme inputs accept a PATH (anything with a `/`) or a scheme NAME,
+//! resolved against the embedded tinted collection (the `tinted-schemes`
+//! dependency); the embedded text is pinned byte-exact by a test fixture.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -17,6 +21,39 @@ pub const BASE_SLOTS: [&str; 16] = [
     "base09", "base0a", "base0b", "base0c", "base0d", "base0e", "base0f",
 ];
 
+/// Base16 names from the embedded tinted collection, sorted.
+pub fn collection_names() -> impl Iterator<Item = &'static str> {
+    tinted_schemes::SCHEMES
+        .iter()
+        .filter(|(spec, _, _)| *spec == "base16")
+        .map(|(_, name, _)| *name)
+}
+
+/// One base16 scheme's yaml text from the embedded collection.
+pub fn collection_text(name: &str) -> Option<&'static str> {
+    tinted_schemes::SCHEMES
+        .iter()
+        .find(|(spec, key, _)| *spec == "base16" && *key == name)
+        .map(|(_, _, text)| *text)
+}
+
+/// Edit-distance between two strings, for the not-found suggestions.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut row = vec![0usize; b.len() + 1];
+    for (i, &ai) in a.iter().enumerate() {
+        row[0] = i + 1;
+        for (j, &bj) in b.iter().enumerate() {
+            row[j + 1] = (prev[j + 1] + 1)
+                .min(row[j] + 1)
+                .min(prev[j] + usize::from(ai != bj));
+        }
+        std::mem::swap(&mut prev, &mut row);
+    }
+    prev[b.len()]
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Scheme {
     /// Every key/value from the file (keys lowercased, values unquoted and
@@ -28,6 +65,10 @@ impl Scheme {
     pub fn parse_file(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("can't read scheme {}: {}", path.display(), e))?;
+        Self::parse_text(&text)
+    }
+
+    pub fn parse_text(text: &str) -> Result<Self, String> {
         let mut attrs = BTreeMap::new();
         for raw in text.lines() {
             let line = raw.trim();
@@ -44,6 +85,53 @@ impl Scheme {
             );
         }
         Ok(Scheme { attrs })
+    }
+
+    /// Load from a PATH (anything containing a `/`) or a scheme NAME from
+    /// the embedded tinted collection.  With a scheme dir given, names look
+    /// there first; `.yaml`-suffixed inputs fall back to the disk form
+    /// before the collection; bare names resolve locally when a matching
+    /// file exists.  Failure stays loud, with the nearest embedded names.
+    pub fn resolve(input: &str, scheme_dir: Option<&Path>) -> Result<Self, String> {
+        if input.contains('/') {
+            return Self::parse_file(Path::new(input));
+        }
+        if let Some(dir) = scheme_dir {
+            for candidate in [
+                dir.join(input),
+                dir.join(format!("{input}.yaml")),
+                dir.join(format!("{input}.yml")),
+            ] {
+                if candidate.is_file() {
+                    return Self::parse_file(&candidate);
+                }
+            }
+        }
+        let name = input
+            .strip_suffix(".yaml")
+            .or_else(|| input.strip_suffix(".yml"))
+            .unwrap_or(input);
+        if let Some(text) = collection_text(name) {
+            return Self::parse_text(text);
+        }
+        let as_file = Path::new(input);
+        if as_file.is_file() {
+            return Self::parse_file(as_file);
+        }
+        let mut nearest = collection_names()
+            .map(|other| (edit_distance(input, other), other))
+            .filter(|(d, _)| *d > 0)
+            .collect::<Vec<_>>();
+        nearest.sort();
+        let suggestions = nearest
+            .iter()
+            .take(3)
+            .map(|(_, name)| *name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(format!(
+            "unknown scheme name '{input}' (did you mean: {suggestions}); `rehue schemes` prints the collection"
+        ))
     }
 
     /// Python-style truthiness lookup: first non-empty among the candidates,
