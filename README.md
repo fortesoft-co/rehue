@@ -57,7 +57,7 @@ glitter keeps its sparkle and loses its rainbow.
 ```sh
 rehue map-wal \
   --wallpaper assets/vidsplay-rainbow-glitter.webp \
-  --scheme gruvbox-light.yaml \
+  --scheme gruvbox-light \
   --out glitter \
   --harmonize 1
 ```
@@ -77,7 +77,7 @@ lightness, chroma and contrast carry through untouched.
 ```sh
 rehue map-scheme \
   --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
-  --scheme rose-pine-dawn.yaml \
+  --scheme rose-pine-dawn \
   --out mapped
 ```
 
@@ -160,7 +160,7 @@ git clone https://github.com/fortesoft-co/rehue
 cd rehue
 cargo run --release -- map-scheme \
   --wallpaper my-photo.jpg \
-  --scheme nord.yaml \
+  --scheme nord \
   --out mapped
 # mapped/scheme.yaml + preview.png + clusters.json
 
