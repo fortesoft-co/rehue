@@ -5,11 +5,12 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
-use rehue::color::{Lch, hex_to_oklch, hex_to_rgb, oklch_to_rgb, self_test};
+use rehue::color::{Lch, hex_to_oklch, hex_to_rgb, oklch_to_hex, oklch_to_rgb, self_test};
 use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
 use rehue::register::DistributionState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
-use rehue::{extract, map_wal, register};
+use rehue::terminal::scheme_strip;
+use rehue::{extract, map_wal, preview, register};
 
 #[derive(Parser)]
 #[command(
@@ -246,8 +247,8 @@ enum Commands {
         /// e.g. --config extract.json
         #[arg(long, value_name = "JSON")]
         config: Option<PathBuf>,
-        /// Directory for inspect.png (families mode); absent prints the
-        /// table only.
+        /// Output directory: families mode = inspect.png, scheme mode =
+        /// preview.html; absent prints the strips only.
         ///
         /// e.g. --out inspect
         #[arg(long)]
@@ -708,6 +709,15 @@ fn run_map_scheme(
     render_preview(&original, &mapped)?
         .save(out.join("preview.png"))
         .map_err(|e| format!("can't write preview.png: {}", e))?;
+    let mapped_hexes: Vec<String> = BASE_SLOTS
+        .iter()
+        .map(|slot| mapped.get(*slot).expect("mapped slot present").clone())
+        .collect();
+    std::fs::write(
+        out.join("preview.html"),
+        preview::render(&parsed.meta_name(), &mapped_hexes)?,
+    )
+    .map_err(|e| format!("can't write preview.html: {}", e))?;
 
     let report = serde_json::json!({
         "params": config,
@@ -717,7 +727,11 @@ fn run_map_scheme(
     });
     write_json_file(&out.join("clusters.json"), &report)?;
 
-    println!("rehue map-scheme: wrote scheme.yaml, preview.png, clusters.json");
+    println!("rehue map-scheme: palette - reference");
+    println!("{}", scheme_strip(&slot_hexes));
+    println!("rehue map-scheme: palette - mapped");
+    println!("{}", scheme_strip(&mapped_hexes));
+    println!("rehue map-scheme: wrote scheme.yaml, preview.png, preview.html, clusters.json");
     Ok(())
 }
 
@@ -766,6 +780,7 @@ fn run_map_wal(
     std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {}", out.display(), e))?;
 
     let passive = map_wal::is_passive(&regs, config.light, config.chroma);
+    let mut arranged_hexes: Option<Vec<String>> = None;
     let (remapped_rgb, coverage) = if passive {
         // Contract: output is always wallpaper.png (here = input, re-encoded).
         (source.clone(), vec![0u64; 16])
@@ -831,6 +846,7 @@ fn run_map_wal(
 
         // Arrangement reshapes the palette before per-pixel work.
         let arranged = map_wal::arrange_palette(&slots, &clusters, &regs)?;
+        arranged_hexes = Some(arranged.iter().map(|s| oklch_to_hex(&s.lch)).collect());
         let result = map_wal::apply(
             source.as_raw(),
             source.width(),
@@ -863,6 +879,14 @@ fn run_map_wal(
     });
     write_json_file(&out.join("report.json"), &report)?;
 
+    if let Some(strip_hexes) = &arranged_hexes {
+        std::fs::write(
+            out.join("preview.html"),
+            preview::render(&parsed.meta_name(), strip_hexes)?,
+        )
+        .map_err(|e| format!("can't write preview.html: {}", e))?;
+    }
+
     if passive {
         println!("rehue map-wal: passthrough (no options active)");
     } else {
@@ -888,7 +912,17 @@ fn run_map_wal(
             }
         }
     }
-    println!("rehue map-wal: wrote wallpaper.png, compare.png, report.json");
+    println!("rehue map-wal: palette - reference");
+    println!("{}", scheme_strip(&slot_hexes));
+    if let Some(strip_hexes) = &arranged_hexes {
+        println!("rehue map-wal: palette - arranged (what painted the wallpaper)");
+        println!("{}", scheme_strip(strip_hexes));
+    }
+    if passive {
+        println!("rehue map-wal: wrote wallpaper.png, compare.png, report.json");
+    } else {
+        println!("rehue map-wal: wrote wallpaper.png, compare.png, preview.html, report.json");
+    }
     Ok(())
 }
 
@@ -906,11 +940,6 @@ fn run_inspect(
         return Err("pass --scheme or --wallpaper, not both".to_string());
     }
     if let Some(scheme) = scheme {
-        if out.is_some() {
-            return Err(
-                "--out is a families-mode artifact; scheme mode prints terminal".to_string(),
-            );
-        }
         let parsed = Scheme::resolve(scheme, scheme_dir)?;
         println!(
             "rehue inspect: scheme '{}' by {}",
@@ -919,6 +948,16 @@ fn run_inspect(
         );
         let hexes = parsed.slot_hexes()?;
         print!("{}", rehue::terminal::scheme_strip(&hexes));
+        if let Some(dir) = out {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("can't create {}: {}", dir.display(), e))?;
+            std::fs::write(
+                dir.join("preview.html"),
+                preview::render(&parsed.meta_name(), &hexes)?,
+            )
+            .map_err(|e| format!("can't write preview.html: {}", e))?;
+            println!("rehue inspect: wrote preview.html");
+        }
         return Ok(());
     }
     let wallpaper = wallpaper.expect("one of --scheme/--wallpaper");

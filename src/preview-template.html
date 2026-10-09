@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark light">
+<title>{{title}} - rehue preview</title>
+<style>
+:root {
+  --base00: #{{base00}};
+  --base01: #{{base01}};
+  --base02: #{{base02}};
+  --base03: #{{base03}};
+  --base04: #{{base04}};
+  --base05: #{{base05}};
+  --base06: #{{base06}};
+  --base07: #{{base07}};
+  --base08: #{{base08}};
+  --base09: #{{base09}};
+  --base0a: #{{base0a}};
+  --base0b: #{{base0b}};
+  --base0c: #{{base0c}};
+  --base0d: #{{base0d}};
+  --base0e: #{{base0e}};
+  --base0f: #{{base0f}};
+  --border: color-mix(in srgb, var(--base03) 60%, var(--base00));
+  --hover: color-mix(in srgb, var(--base02) 55%, var(--base00));
+}
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--base00); color: var(--base05);
+       font: 15px/1.5 system-ui, sans-serif; padding: 24px; }
+.mono { font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
+
+/* ---- toggled views: CSS-only, no scripts ---- */
+body > input[name="view"] { position: absolute; opacity: 0; pointer-events: none; }
+.view { display: none; }
+#v-palette:checked ~ main .view-palette,
+#v-gtk:checked ~ main .view-gtk,
+#v-qt:checked ~ main .view-qt { display: block; }
+#v-palette:checked ~ header nav [for="v-palette"],
+#v-gtk:checked ~ header nav [for="v-gtk"],
+#v-qt:checked ~ header nav [for="v-qt"] {
+  background: var(--base0d); color: var(--base00);
+}
+
+header { margin-bottom: 18px; }
+header h1 { font-size: 17px; letter-spacing: .02em; }
+header .sub { color: var(--base04); font-size: 12.5px; margin-top: 2px; }
+nav { display: inline-flex; gap: 4px; margin: 14px 0 0; }
+nav [for] { padding: 5px 14px; border-radius: 6px; cursor: pointer;
+            background: var(--base01); color: var(--base05); font-size: 13px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; max-width: 900px; }
+.sw { width: 44px; text-align: center; font-size: 10px; color: var(--base04); }
+.sw i { display: block; height: 26px; border-radius: 5px; border: 1px solid var(--border); }
+.hint { color: var(--base04); font-size: 12.5px; margin: 14px 2px; max-width: 720px; }
+
+.window { background: var(--base00); border: 1px solid var(--border);
+          border-radius: 8px; overflow: hidden; max-width: 760px; margin-bottom: 16px; }
+
+/* ---- terminal mock ---- */
+.dots { padding: 8px 10px 7px; background: var(--base01); display: flex; gap: 7px; }
+.dots span { width: 11px; height: 11px; border-radius: 50%; }
+.d1 { background: var(--base08); } .d2 { background: var(--base0a); } .d3 { background: var(--base0b); }
+.term { padding: 12px 14px 16px; font-size: 13.5px; }
+.term div { margin-top: 6px; white-space: pre-wrap; }
+.term .u { font-weight: 700; color: var(--base0b); }
+.term .a { font-weight: 700; color: var(--base05); }
+.term .p { font-weight: 700; color: var(--base0d); }
+.term .dir { color: var(--base0d); font-weight: 700; }
+.term .exe { color: var(--base0e); }
+.term .img { color: var(--base09); }
+.term .dim { color: var(--base03); }
+.term .ok { color: var(--base0b); }
+.term .err { color: var(--base08); }
+.term .cursor { display: inline-block; width: 8px; height: 15px;
+                background: var(--base05); vertical-align: -2px; }
+
+/* ---- code mock (base16 syntax convention) ---- */
+.code pre { padding: 12px 14px 16px; font-size: 13.5px; overflow-x: auto; }
+.code .ln { color: var(--base03); user-select: none; margin-right: 14px; }
+.code .kw { color: var(--base0e); }
+.code .fn { color: var(--base0d); }
+.code .str { color: var(--base0b); }
+.code .num { color: var(--base09); }
+.code .cmt { color: var(--base03); }
+.code .ty { color: var(--base0a); }
+.code .op { color: var(--base0c); }
+.code .va { color: var(--base08); }
+
+/* ---- generic controls ---- */
+.controls { padding: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.controls .btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+                 background: var(--base01); color: var(--base05); font: inherit; cursor: pointer; }
+.controls .btn:hover { background: var(--hover); }
+.controls .btn:active { transform: translateY(1px); }
+.controls .primary { background: var(--base0d); border-color: var(--base0d); color: var(--base00); }
+.controls .success { background: var(--base0b); border-color: var(--base0b); color: var(--base00); }
+.controls .danger { background: var(--base08); border-color: var(--base08); color: var(--base00); }
+.controls .warn { background: var(--base0a); border-color: var(--base0a); color: var(--base00); }
+.controls .btn[disabled] { opacity: .45; cursor: default; }
+.controls a { color: var(--base0d); }
+.controls a.visited { color: var(--base0e); }
+.controls .badge { padding: 3px 10px; border-radius: 10px; font-size: 12px;
+                   background: var(--base0e); color: var(--base00); }
+.controls .inline { display: inline-flex; gap: 6px; align-items: center; font-size: 13.5px; }
+.controls input[type="checkbox"], .controls input[type="radio"] { accent-color: var(--base0d); }
+.controls .text { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+                  background: var(--base01); color: var(--base05); font: inherit; outline: none; }
+.controls .text:hover, .controls .text:focus { border-color: var(--base0d); }
+
+/* ---- GTK mock: adw-gtk3 + a stylix-style @define-color css
+      (accent 0D, destructive 08, success 0B, chrome 01) ---- */
+.gtkwin { max-width: 640px; border-radius: 10px; overflow: hidden;
+          border: 1px solid var(--border); background: var(--base00); margin-bottom: 16px; }
+.gtkbar { background: var(--base01); padding: 9px 12px; display: flex;
+          align-items: center; justify-content: space-between; gap: 8px; }
+.gtkbar .title { font-weight: 700; font-size: 14px; }
+.hbicon { width: 26px; height: 26px; border: 0; border-radius: 50%;
+          background: color-mix(in srgb, var(--base02) 60%, var(--base01));
+          color: var(--base05); cursor: pointer; }
+.gtkbody { padding: 14px; display: grid; gap: 10px; }
+.gcard { background: var(--base01); border-radius: 8px; padding: 3px 12px; }
+.gcard .row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; }
+.gcard .row + .row { border-top: 1px solid color-mix(in srgb, var(--base03) 30%, var(--base01)); }
+.adwswitch { width: 44px; height: 24px; border-radius: 13px; background: var(--base03);
+             position: relative; cursor: pointer; transition: none; }
+.adwswitch .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+                   border-radius: 50%; background: var(--base07); }
+.adwswitch.on { background: var(--base0b); }
+.adwswitch.on .knob { left: 23px; background: var(--base00); }
+.gbtn { padding: 8px 16px; border-radius: 6px; border: 0; font: inherit;
+        background: color-mix(in srgb, var(--base05) 12%, var(--base01));
+        color: var(--base05); cursor: pointer; }
+.gbtn:hover { filter: brightness(1.08); }
+.gbtn.flat { background: transparent; }
+.gbtn.suggested { background: var(--base0b); color: var(--base00); }
+.gbtn.destructive { background: var(--base08); color: var(--base00); }
+.gbtn[disabled] { opacity: .45; }
+.gentry { padding: 9px 1px; }
+.gentry input { width: 100%; padding: 9px 12px; border-radius: 6px; font: inherit;
+                border: 1px solid var(--border); background: var(--base00);
+                color: var(--base05); outline: none; }
+.gentry input:focus { border: 2px solid var(--base0d); padding: 8px 11px; }
+.gprog { height: 5px; border-radius: 3px; overflow: hidden; background: var(--base03); }
+.gprog span { display: block; height: 100%; width: 62%; background: var(--base0d); }
+.gtkwin input[type="checkbox"], .gtkwin input[type="radio"] { accent-color: var(--base0d); }
+
+/* ---- Qt mock: the kvconfig colour mapping, exactly
+      (window 01, base 00, button 02, text 05, disabled 04,
+       highlight 0E + text 00, link 0D, visited 0E) ---- */
+.qtwin { max-width: 640px; border: 1px solid var(--border); background: var(--base01);
+         margin-bottom: 16px; border-radius: 4px; overflow: hidden; }
+.qtmenubar { padding: 5px 10px; display: flex; gap: 14px; font-size: 13.5px; color: var(--base05); }
+.qtmenu { background: var(--base00); border: 1px solid var(--border);
+          width: 210px; margin: 0 10px; padding: 4px; font-size: 13.5px; }
+.qtmenu div { padding: 5px 10px; color: var(--base05); display: flex; justify-content: space-between; }
+.qtmenu .hot { background: var(--base0e); color: var(--base00); }
+.qtmenu .sep { height: 1px; padding: 0; background: var(--base03); opacity: .5; }
+.qtmenu .key { color: var(--base04); }
+.qtmenu .hot .key { color: var(--base00); }
+.qtbody { padding: 12px 10px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.qbtn { padding: 6px 14px; border-radius: 3px; font: inherit; cursor: pointer;
+        background: var(--base02); color: var(--base05); border: 1px solid var(--border); }
+.qbtn:hover { border-color: var(--base0e); }
+.qbtn:focus { outline: 1px dotted var(--base05); outline-offset: -1px; }
+.qbtn.default { border: 1.5px solid var(--base04); }
+.qbtn[disabled] { color: var(--base04); border-color: color-mix(in srgb, var(--base03) 50%, var(--base00)); }
+.qedit { padding: 6px 10px; border-radius: 3px; border: 1px solid var(--border);
+         background: var(--base00); color: var(--base05); font: inherit; width: 150px; }
+.qedit:focus { border-color: var(--base0e); }
+.qtabs { display: flex; gap: 2px; width: 100%; margin-top: 4px; }
+.qtabs span { padding: 6px 16px; border: 1px solid var(--border); border-bottom: 0;
+              background: var(--base01); color: var(--base05); font-size: 13.5px;
+              border-radius: 3px 3px 0 0; }
+.qtabs .active { background: var(--base00); border-bottom: 2px solid var(--base0e); }
+.qtarea { width: 100%; border: 1px solid var(--border); border-top: 0; padding: 12px;
+          background: var(--base00); display: flex; gap: 14px; border-radius: 0 0 4px 4px; }
+.qprog { height: 8px; border: 1px solid var(--border); background: var(--base00); width: 160px; }
+.qprog span { display: block; height: 100%; width: 62%; background: var(--base0e); }
+.qtwin input[type="checkbox"], .qtwin input[type="radio"] { accent-color: var(--base0e); }
+.qcombo { display: inline-flex; justify-content: space-between; align-items: center;
+          gap: 10px; padding: 6px 10px; border-radius: 3px; border: 1px solid var(--border);
+          background: var(--base02); color: var(--base05); font-size: 13.5px; min-width: 140px; }
+
+main section { max-width: 780px; margin: 0 2px; }
+</style>
+</head>
+<body>
+<input type="radio" name="view" id="v-palette" checked>
+<input type="radio" name="view" id="v-gtk">
+<input type="radio" name="view" id="v-qt">
+
+<header>
+  <h1>{{title}}</h1>
+  <div class="sub">rehue preview &ndash; 16 slots, three views</div>
+  <nav>
+    <label for="v-palette">Palette</label>
+    <label for="v-gtk">GTK</label>
+    <label for="v-qt">Qt</label>
+  </nav>
+  <div class="swatches">
+    <span class="sw"><i style="background:var(--base00)"></i>00</span>
+    <span class="sw"><i style="background:var(--base01)"></i>01</span>
+    <span class="sw"><i style="background:var(--base02)"></i>02</span>
+    <span class="sw"><i style="background:var(--base03)"></i>03</span>
+    <span class="sw"><i style="background:var(--base04)"></i>04</span>
+    <span class="sw"><i style="background:var(--base05)"></i>05</span>
+    <span class="sw"><i style="background:var(--base06)"></i>06</span>
+    <span class="sw"><i style="background:var(--base07)"></i>07</span>
+    <span class="sw"><i style="background:var(--base08)"></i>08</span>
+    <span class="sw"><i style="background:var(--base09)"></i>09</span>
+    <span class="sw"><i style="background:var(--base0a)"></i>0A</span>
+    <span class="sw"><i style="background:var(--base0b)"></i>0B</span>
+    <span class="sw"><i style="background:var(--base0c)"></i>0C</span>
+    <span class="sw"><i style="background:var(--base0d)"></i>0D</span>
+    <span class="sw"><i style="background:var(--base0e)"></i>0E</span>
+    <span class="sw"><i style="background:var(--base0f)"></i>0F</span>
+  </div>
+</header>
+
+<main>
+<section class="view view-palette">
+  <div class="window mono">
+    <div class="dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+    <div class="term">
+      <div><span class="u">you</span><span class="a">@</span><span class="p">nix</span> <span class="dir">~</span> <span class="a">&dollar;</span> ls</div>
+      <div><span class="dir">assets/</span>  <span class="dir">docs/</span>  <span class="exe">rehue*</span>  <span class="img">photo.webp</span>  <span class="dim">README.md</span></div>
+      <div><span class="u">you</span><span class="a">@</span><span class="p">nix</span> <span class="dir">~</span> <span class="a">&dollar;</span> rehue map-scheme --wallpaper pic.webp --scheme today</div>
+      <div><span class="ok">wrote scheme.yaml, preview.png, preview.html, clusters.json</span></div>
+      <div><span class="u">you</span><span class="a">@</span><span class="p">nix</span> <span class="dir">~</span> <span class="a">&dollar;</span> <span class="cursor"></span></div>
+    </div>
+  </div>
+
+  <div class="window mono code">
+    <pre><span class="ln"> 1</span><span class="kw">fn</span> <span class="fn">retint</span>(<span class="va">slots</span>: <span class="op">&amp;</span>[<span class="ty">Slot</span>], <span class="va">families</span>: <span class="op">&amp;</span>[<span class="ty">Cluster</span>]) <span class="op">-&gt;</span> <span class="ty">Vec</span><span class="op">&lt;</span><span class="ty">Slot</span><span class="op">&gt;</span> <span class="op">{</span>
+<span class="ln"> 2</span>    <span class="cmt">// the palette follows the wallpaper's mass</span>
+<span class="ln"> 3</span>    <span class="va">families</span><span class="op">.</span><span class="fn">iter</span>(<span class="num">0.85</span>)
+<span class="ln"> 4</span>        <span class="op">.</span><span class="fn">adopt</span>(<span class="str">"hue"</span>, <span class="num">1.0</span>)<span class="op">.</span><span class="fn">keep</span>(<span class="str">"lightness"</span>)
+<span class="ln"> 5</span>        <span class="op">.</span><span class="fn">collect</span>()
+<span class="ln"> 6</span><span class="op">}</span></pre>
+  </div>
+
+  <div class="window controls">
+    <button class="btn">Neutral</button>
+    <button class="btn primary">Primary</button>
+    <button class="btn success">Success</button>
+    <button class="btn warn">Warning</button>
+    <button class="btn danger">Destructive</button>
+    <button class="btn" disabled>Disabled</button>
+    <label class="inline"><input type="checkbox" checked> checked</label>
+    <label class="inline"><input type="radio" checked> radio</label>
+    <a href="#">link</a>
+    <a href="#" class="visited">visited</a>
+    <span class="badge">badge</span>
+    <input class="text" value="input - focus turns accent">
+  </div>
+
+  <p class="hint">Derived tints (borders, hovers, dim text) come from color-mix over the same
+  16 slots; nothing here is a colour rehue does not own. Tweak a &dash;dash-baseXX variable in
+  devtools to audition a variant live.</p>
+</section>
+
+<section class="view view-gtk">
+  <div class="gtkwin">
+    <div class="gtkbar"><button class="hbicon">&lsaquo;</button><span class="title">Settings</span><button class="hbicon">&hellip;</button></div>
+    <div class="gtkbody">
+      <div class="gcard">
+        <div class="row"><span>Harmonize wallpaper</span><span class="adwswitch on"><span class="knob"></span></span></div>
+        <div class="row"><span>Keep photographic lightness</span><span class="adwswitch"><span class="knob"></span></span></div>
+      </div>
+      <div class="gentry"><input value="entry - focus turns accent"></div>
+      <div class="row" style="gap: 10px;">
+        <button class="gbtn flat">Flat</button>
+        <button class="gbtn">Default</button>
+        <button class="gbtn suggested">Suggested</button>
+        <button class="gbtn destructive">Destructive</button>
+        <button class="gbtn" disabled>Disabled</button>
+      </div>
+      <div class="row gentry" style="gap: 26px;">
+        <label class="inline"><input type="checkbox" checked> checkbox</label>
+        <label class="inline"><input type="radio" name="gr1" checked> radio</label>
+        <label class="inline"><input type="radio" name="gr1"> radio</label>
+      </div>
+      <div class="gprog"><span></span></div>
+    </div>
+  </div>
+  <p class="hint">Adwaita shapes over the stylix gtk.css mapping (adw-gtk3 + &commat;define-color):
+  accent = base0d, suggested = base0b, destructive = base08, headerbars/cards = base01,
+  views = base00, text = base05. Best approximation, not a screenshot.</p>
+</section>
+
+<section class="view view-qt">
+  <div class="qtwin">
+    <div class="qtmenubar"><span>File</span><span>Edit</span><span>View</span></div>
+    <div class="qtmenu">
+      <div>Undo<span class="key">Ctrl+Z</span></div>
+      <div class="hot">Redo<span class="key">Ctrl+Shift+Z</span></div>
+      <div class="sep"></div>
+      <div>Preferences&hellip;</div>
+    </div>
+    <div class="qtbody">
+      <button class="qbtn">Push button</button>
+      <button class="qbtn default">Default</button>
+      <button class="qbtn" disabled>Disabled</button>
+      <input class="qedit" value="line edit">
+      <label class="inline"><input type="checkbox" checked> check</label>
+      <label class="inline"><input type="radio" name="qr1" checked> radio</label>
+      <label class="inline"><input type="radio" name="qr1"> radio</label>
+      <span class="qcombo">kvantum <span>&#9662;</span></span>
+      <div class="qtabs">
+        <span class="active">Tab one</span><span>Tab two</span><span>Tab three</span>
+      </div>
+      <div class="qtarea">
+        <div class="qprog"><span></span></div>
+      </div>
+    </div>
+  </div>
+  <p class="hint">Kvantum shapes over stylix's kvconfig.mustache mapping, exactly:
+  window = base01, base = base00, button = base02, text = base05, disabled = base04,
+  highlight = base0e with text = base00, links = base0d, visited = base0e.</p>
+</section>
+</main>
+</body>
+</html>

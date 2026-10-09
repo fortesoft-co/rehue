@@ -8,6 +8,7 @@ pub mod color;
 pub mod enhance;
 pub mod extract;
 pub mod map_wal;
+pub mod preview;
 pub mod register;
 pub mod scheme;
 pub mod terminal;
