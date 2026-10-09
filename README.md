@@ -287,8 +287,27 @@ rustup users, the devshell does the same through Nix.
 
 ## Roadmap
 
-- base24 slot coverage (base10-17).
-- Better cli ergonomics with named params (no more passing configs json)
+- **CLI ergonomics** — named params on the command line, not just
+  passing config JSON.
+- **CLI help** — real `--help` docs: per-flag semantics, defaults,
+  and worked examples right in the command output.
+- **Knob reference** — one section per knob: mechanics, accepted
+  types, and a visual demo for each.
+- **Named theme inputs** — bundle the
+  [tinted-schemes](https://github.com/tinted-theming/schemes) set so
+  `--scheme gruvbox-light` resolves without a YAML path.
+- **Terminal previews** — `inspect` swatches and whole schemes
+  rendered as truecolor ANSI, straight in the terminal — no image
+  viewer hop.
+- **UI previews** — demo renders of the scheme applied to real
+  surfaces: a terminal, a code block, a web page, GTK and Qt widgets,
+  so a scheme can be judged before it's wired in.
+- **base24 coverage** — base10-17 slots.
+- **Extraction tuning** — the extraction knobs documented as their own
+  surface, optionally backed by alternative extraction libraries.
+- **Scheme generation** — the big one: derive the lightness/chroma
+  structure a designer would have built, guided by the wallpaper —
+  map-scheme without needing a reference scheme at all.
 
 ## License
 
