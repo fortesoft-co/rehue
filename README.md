@@ -343,9 +343,15 @@ rustup users, the devshell does the same through Nix.
   so a scheme can be judged before it's wired in.
 - **Extraction tuning** — the extraction options documented as their own
   surface, optionally backed by alternative extraction libraries.
-- **Repair / upscale / enhance** — restore and sharpen `map-wal`'s
-  generated images: detail-preserving upscaling and artifact repair on
-  the repainted output.
+- **Enhance expansion** — v1 (Lanczos + vulkan SR) lives in
+  `enhance`; the dials beyond it: denoise / de-jpeg restoration models
+  (Real-CUGAN / realesrnet), a low-strength img2img restyle (sd.cpp) as
+  a creative pass, and an opt-in nix SR builder (lavapipe for the
+  driver-less path).
+- **Perf tuning** — the per-pixel map-wal pass is single-threaded;
+  non-dithered and ordered-dither modes shard cleanly (pure functions
+  of x, y), pulling a 33MP remap from ~18s toward ~2-3s; the
+  error-diffusion modes stay sequential by nature.
 - **Scheme generation** — the big one: derive the lightness/chroma
   structure a designer would have built, guided by the wallpaper —
   map-scheme without needing a reference scheme at all.

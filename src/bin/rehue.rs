@@ -1,4 +1,4 @@
-//! `rehue` CLI: the mapping flows, plus `inspect` for extraction previews.
+//! `rehue` CLI: the mapping flows, plus `inspect` and `enhance` utilities.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 
 use rehue::color::{Lch, hex_to_oklch, hex_to_rgb, oklch_to_rgb, self_test};
+use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
 use rehue::register::DistributionState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
 use rehue::{extract, map_wal, register};
@@ -251,6 +252,54 @@ enum Commands {
         /// e.g. --out inspect
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Scale a wallpaper up: built-in Lanczos, or AI SR over vulkan.
+    ///
+    /// enhance works on the SOURCE picture; the palette transform stays
+    /// in map-wal.  Lanczos is deterministic and dependency-free.
+    /// --sr shells out to realesrgan-ncnn-vulkan (ncnn + vulkan: no
+    /// CUDA, works on intel/amd/nvidia/software drivers); the model
+    /// runs at its native 4x and the target factor is reached with the
+    /// same Lanczos resampler.
+    ///
+    /// Example: rehue enhance --wallpaper pic.webp --out up4 --upscale 4
+    ///          rehue enhance --wallpaper pic.webp --out up4 --upscale 4 --sr
+    Enhance {
+        /// The picture to scale (input file).
+        ///
+        /// e.g. --wallpaper ~/pictures/pic.webp
+        #[arg(long)]
+        wallpaper: PathBuf,
+        /// Directory for the scaled PNG, named after the source's stem.
+        ///
+        /// e.g. --out up4
+        #[arg(long)]
+        out: PathBuf,
+        /// Target scale factor vs the source.  Lanczos takes 2..=8;
+        /// SR weights are native 4x, so --sr takes 1..=4 (1 = same-size
+        /// restoration).
+        ///
+        /// e.g. --upscale 4
+        #[arg(long)]
+        upscale: u32,
+        /// AI super-resolution instead of plain Lanczos.  Needs
+        /// realesrgan-ncnn-vulkan: on $PATH, as $REHUE_SR_TOOL, or via
+        /// --sr-tool.
+        ///
+        /// e.g. --sr
+        #[arg(long)]
+        sr: bool,
+        /// SR weights (with --sr):
+        /// photos = general x4plus, anime = x4plus-anime.
+        ///
+        /// e.g. --model photos
+        #[arg(long, value_enum, value_name = "MODEL")]
+        model: Option<SrModel>,
+        /// Path to the SR tool (with --sr); else $REHUE_SR_TOOL / $PATH.
+        ///
+        /// e.g. --sr-tool ~/tools/realesrgan-ncnn-vulkan
+        #[arg(long, value_name = "TOOL")]
+        sr_tool: Option<PathBuf>,
     },
     /// List the scheme names embedded in the binary (base16 collection).
     Schemes,
@@ -910,7 +959,42 @@ fn run_inspect(
     Ok(())
 }
 
+fn run_enhance(
+    wallpaper: &Path,
+    out: &Path,
+    upscale: u32,
+    sr: bool,
+    model: SrModel,
+    sr_tool: Option<&Path>,
+) -> Result<(), String> {
+    let tool = if sr {
+        let resolved = resolve_sr_tool(sr_tool)?;
+        println!(
+            "rehue enhance: SR {} (native 4x) via {}",
+            model.tool_name(),
+            resolved.display()
+        );
+        Some(resolved)
+    } else {
+        None
+    };
+    let artifact = rehue::enhance::run(
+        wallpaper,
+        out,
+        &EnhanceConfig {
+            upscale,
+            sr,
+            model,
+            sr_tool: sr_tool.map(|p| p.to_path_buf()),
+        },
+        tool.as_deref(),
+    )?;
+    println!("rehue enhance: wrote {}", artifact.display());
+    Ok(())
+}
+
 /// The embedded scheme collection, printed.
+
 fn run_schemes() -> Result<(), String> {
     let names: Vec<&'static str> = rehue::scheme::collection_names().collect();
     println!("rehue schemes: {} base16 scheme(s) embedded", names.len());
@@ -1003,6 +1087,21 @@ fn run(command: Commands) -> Result<(), String> {
             scheme_dir.as_deref(),
             config.as_deref(),
             out.as_deref(),
+        ),
+        Commands::Enhance {
+            wallpaper,
+            out,
+            upscale,
+            sr,
+            model,
+            sr_tool,
+        } => run_enhance(
+            &wallpaper,
+            &out,
+            upscale,
+            sr,
+            model.unwrap_or(SrModel::Photos),
+            sr_tool.as_deref(),
         ),
         Commands::Schemes => run_schemes(),
     }
