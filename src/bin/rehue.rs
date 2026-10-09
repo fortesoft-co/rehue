@@ -9,7 +9,7 @@ use rehue::color::{Lch, hex_to_oklch, hex_to_rgb, oklch_to_hex, oklch_to_rgb, se
 use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
 use rehue::register::DistributionState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
-use rehue::terminal::scheme_strip;
+use rehue::terminal::{families_strip, scheme_strip};
 use rehue::{extract, map_wal, preview, register};
 
 #[derive(Parser)]
@@ -46,11 +46,18 @@ enum Commands {
         /// e.g. --scheme rose-pine-dawn.yaml
         #[arg(long)]
         scheme: String,
-        /// Output directory: scheme.yaml + preview.png + clusters.json.
+        /// Output directory: scheme.yaml + preview.png + preview.html +
+        /// clusters.json.
         ///
         /// e.g. --out mapped
         #[arg(long)]
         out: PathBuf,
+        /// Run the pipeline and print the ANSI preview but write
+        /// nothing (and not even --out itself).
+        ///
+        /// e.g. --dry-run
+        #[arg(long)]
+        dry_run: bool,
         /// Directory that scheme NAMES look up before the embedded set.
         ///
         /// e.g. --scheme-dir ~/schemes
@@ -119,11 +126,19 @@ enum Commands {
         /// e.g. --scheme gruvbox-light.yaml
         #[arg(long)]
         scheme: String,
-        /// Output directory: wallpaper.png + compare.png + report.json.
+        /// Output directory: wallpaper.png + compare.png + preview.html
+        /// + report.json (preview.html whenever an arrangement is
+        /// live).
         ///
         /// e.g. --out repainted
         #[arg(long)]
         out: PathBuf,
+        /// Run the pipeline and print the ANSI preview but write
+        /// nothing (and not even --out itself).
+        ///
+        /// e.g. --dry-run
+        #[arg(long)]
+        dry_run: bool,
         /// Directory that scheme NAMES look up before the embedded set.
         ///
         /// e.g. --scheme-dir ~/schemes
@@ -662,6 +677,7 @@ fn run_map_scheme(
     scheme_dir: Option<&Path>,
     out: &Path,
     config_path: Option<&Path>,
+    dry_run: bool,
     overrides: SchemeOverrides,
 ) -> Result<(), String> {
     let mut config = read_json::<register::MapConfig>(config_path)?;
@@ -679,6 +695,8 @@ fn run_map_scheme(
         println!("rehue map-scheme: no chromatic signal - scheme hues kept");
     } else {
         print_families("map-scheme", &clusters);
+        println!("rehue map-scheme: extracted wallpaper families");
+        println!("{}", families_strip(&clusters));
     }
 
     let mapped = register::retint(&slot_hexes, &clusters, &config)?;
@@ -696,6 +714,20 @@ fn run_map_scheme(
         );
     }
 
+    let mapped_hexes: Vec<String> = BASE_SLOTS
+        .iter()
+        .map(|slot| mapped.get(*slot).expect("mapped slot present").clone())
+        .collect();
+    println!("rehue map-scheme: palette - reference");
+    println!("{}", scheme_strip(&slot_hexes));
+    println!("rehue map-scheme: palette - mapped");
+    println!("{}", scheme_strip(&mapped_hexes));
+
+    if dry_run {
+        println!("rehue map-scheme: dry run (nothing written)");
+        return Ok(());
+    }
+
     std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {}", out.display(), e))?;
     std::fs::write(out.join("scheme.yaml"), parsed.render(&mapped))
         .map_err(|e| format!("can't write scheme.yaml: {}", e))?;
@@ -709,10 +741,6 @@ fn run_map_scheme(
     render_preview(&original, &mapped)?
         .save(out.join("preview.png"))
         .map_err(|e| format!("can't write preview.png: {}", e))?;
-    let mapped_hexes: Vec<String> = BASE_SLOTS
-        .iter()
-        .map(|slot| mapped.get(*slot).expect("mapped slot present").clone())
-        .collect();
     std::fs::write(
         out.join("preview.html"),
         preview::render(&parsed.meta_name(), &mapped_hexes)?,
@@ -727,12 +755,31 @@ fn run_map_scheme(
     });
     write_json_file(&out.join("clusters.json"), &report)?;
 
-    println!("rehue map-scheme: palette - reference");
-    println!("{}", scheme_strip(&slot_hexes));
-    println!("rehue map-scheme: palette - mapped");
-    println!("{}", scheme_strip(&mapped_hexes));
     println!("rehue map-scheme: wrote scheme.yaml, preview.png, preview.html, clusters.json");
     Ok(())
+}
+
+/// Extraction, only when an arrangement dial is live (keeps plain blend
+/// runs quiet); shared by the run and its dry-run preview.
+fn wal_clusters(
+    regs: &BTreeMap<&'static str, map_wal::WalRegisterSettings>,
+    dynamic: &image::DynamicImage,
+    config: &map_wal::RemapConfig,
+) -> Vec<extract::Cluster> {
+    if regs
+        .values()
+        .any(|r| !matches!(r.distribution, DistributionState::Off))
+    {
+        let extracted = extract::extract_hues_dynamic(dynamic, &config.extraction);
+        if extracted.is_empty() {
+            println!("rehue map-wal: no chromatic signal - distribution inert");
+        } else {
+            print_families("map-wal", &extracted);
+        }
+        extracted
+    } else {
+        Vec::new()
+    }
 }
 
 fn run_map_wal(
@@ -741,6 +788,7 @@ fn run_map_wal(
     scheme_dir: Option<&Path>,
     out: &Path,
     config_path: Option<&Path>,
+    dry_run: bool,
     overrides: WalOverrides,
 ) -> Result<(), String> {
     let mut config = read_json::<map_wal::RemapConfig>(config_path)?;
@@ -777,6 +825,18 @@ fn run_map_wal(
         .map_err(|e| format!("can't decode wallpaper {}: {}", wallpaper.display(), e))?;
     let source = dynamic.to_rgb8();
 
+    if dry_run {
+        let clusters = wal_clusters(&regs, &dynamic, &config);
+        let arranged = map_wal::arrange_palette(&slots, &clusters, &regs)?;
+        let strip: Vec<String> = arranged.iter().map(|s| oklch_to_hex(&s.lch)).collect();
+        println!("rehue map-wal: palette - reference");
+        println!("{}", scheme_strip(&slot_hexes));
+        println!("rehue map-wal: palette - arranged (what would paint the wallpaper)");
+        println!("{}", scheme_strip(&strip));
+        println!("rehue map-wal: dry run (nothing written)");
+        return Ok(());
+    }
+
     std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {}", out.display(), e))?;
 
     let passive = map_wal::is_passive(&regs, config.light, config.chroma);
@@ -785,20 +845,7 @@ fn run_map_wal(
         // Contract: output is always wallpaper.png (here = input, re-encoded).
         (source.clone(), vec![0u64; 16])
     } else {
-        let clusters = if regs
-            .values()
-            .any(|r| !matches!(r.distribution, DistributionState::Off))
-        {
-            let extracted = extract::extract_hues_dynamic(&dynamic, &config.extraction);
-            if extracted.is_empty() {
-                println!("rehue map-wal: no chromatic signal - distribution inert");
-            } else {
-                print_families("map-wal", &extracted);
-            }
-            extracted
-        } else {
-            Vec::new()
-        };
+        let clusters = wal_clusters(&regs, &dynamic, &config);
 
         let (seed_hue, seed_light, seed_chroma) = map_wal::facade_defaults(&config);
         println!(
@@ -1052,6 +1099,7 @@ fn run(command: Commands) -> Result<(), String> {
             scheme_dir,
             out,
             config,
+            dry_run,
             reach_deg,
             distribution,
             rotate,
@@ -1064,6 +1112,7 @@ fn run(command: Commands) -> Result<(), String> {
             scheme_dir.as_deref(),
             &out,
             config.as_deref(),
+            dry_run,
             SchemeOverrides {
                 reach_deg,
                 distribution,
@@ -1079,6 +1128,7 @@ fn run(command: Commands) -> Result<(), String> {
             scheme_dir,
             out,
             config,
+            dry_run,
             territory,
             harmonize,
             blend_hue,
@@ -1098,6 +1148,7 @@ fn run(command: Commands) -> Result<(), String> {
             scheme_dir.as_deref(),
             &out,
             config.as_deref(),
+            dry_run,
             WalOverrides {
                 territory,
                 harmonize,

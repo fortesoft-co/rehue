@@ -143,10 +143,11 @@ The devshell pins the same toolchain through Nix (`nix develop`).
 
 ## CLI
 
-Four commands:
+Five commands:
 
 - `rehue map-scheme` — scheme + wallpaper → scheme
 - `rehue map-wal` — wallpaper + scheme → wallpaper
+- `rehue enhance` — a wallpaper upscaled: built-in Lanczos or vulkan AI SR
 - `rehue inspect` — a wallpaper's hue families, or a scheme's slots, terminal-first
 - `rehue schemes` — the embedded scheme names
 
@@ -159,7 +160,7 @@ line; `-h` shows the short form.
 ```sh
 # map a reference scheme with a wallpaper's hues:
 rehue map-scheme --wallpaper my-photo.jpg --scheme nord --out mapped
-# mapped/scheme.yaml + preview.png + clusters.json
+# mapped/scheme.yaml + preview.png + preview.html + clusters.json
 
 # repaint a wallpaper with a scheme's palette:
 rehue map-wal --wallpaper my-photo.jpg --scheme gruvbox-light --out repainted --harmonize 1
@@ -168,6 +169,12 @@ rehue map-wal --wallpaper my-photo.jpg --scheme gruvbox-light --out repainted --
 # in Examples):
 rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted
 ```
+
+Both map flows print the palette as ANSI as they finish: map-scheme
+shows the wallpaper's extracted families, then the reference and mapped
+palettes; map-wal shows the reference palette and the arranged one that
+painted the image. For dial-tweaking there is `--dry-run`: the previews
+print, nothing is written (not even `--out` itself).
 
 ### --scheme
 
@@ -191,9 +198,10 @@ that directory **before** the embedded collection.
 
 ### inspect
 
-Inspect is used to show the colors used in a scheme or wallpaper. 
-By default it prints the colors to the terminal, 
-providing `--out` generates a png.
+Inspect is used to show the colors used in a scheme or wallpaper.
+By default it prints the colors to the terminal; with `--out DIR`,
+families mode writes `inspect.png` (the swatch strip) and scheme mode
+writes `preview.html` (the same mock page `map-scheme` emits).
 
 Inspect has two modes.
 
@@ -212,6 +220,7 @@ truecolor swatches, four per line, in canonical order:
 ```sh
 rehue inspect --scheme gruvbox-light      # by collection name
 rehue inspect --scheme my-theme.yaml      # by path
+rehue inspect --scheme gruvbox-light --out inspect   # also writes preview.html
 ```
 
 ## Color Mapping
@@ -312,6 +321,8 @@ src/extract.rs   chroma^2 hue histogram + deterministic circular k-means
 src/register.rs  map-scheme: the register pipeline and its options
 src/map_wal.rs   map-wal: per-pixel blend/grade + territory + dithering
 src/terminal.rs  truecolor ANSI strips for inspect (scheme + families modes)
+src/enhance.rs   enhance: Lanczos + vulkan SR (realesrgan-ncnn-vulkan)
+src/preview.rs   the compiled-in preview.html (css-only views; gtk/qt mocks)
 src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
 src/bin/rehue.rs the CLI
 tests/golden.rs  snapshot + determinism + vocabulary-contract checks
