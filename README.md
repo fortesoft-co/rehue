@@ -85,44 +85,20 @@ rehue map-scheme \
 
 ### The full round trip
 
-Map-scheme first: paint Solarized Dark with the hues of a wallpaper.
-Here with distribution sculpting per register — `bg` pinned to the
-magenta family, `surfaces` spanning magenta → blue, `fg` pinned to the
-olive family, accents on the four-family ramp, all with a chroma lift
-so the hue rotation reads in the swatches:
+Map-scheme first: paint Tokyo Night Dark with the hues of the
+wallpaper — no options; blend-hue's default (1) adopts them in full:
 
 ```sh
-rehue inspect \
-  --wallpaper assets/bango-renders-3d-abstract.webp \
-  --out inspect
-
 rehue map-scheme \
   --wallpaper assets/bango-renders-3d-abstract.webp \
-  --scheme solarized-dark.yaml \
-  --out mapped \
-  --config roundtrip.json
+  --scheme tokyo-night-dark.yaml \
+  --out mapped
 ```
 
-Options can also be passed in as JSON files. The sculpting above —
-distribution and chroma per register, across four registers — is
-where records read cleaner than a long flag chain:
-
-```json
-{
-  "registers": {
-    "all": {"blend-hue": 1.0},
-    "bg": {"distribution": 1, "chroma": 1.6},
-    "surfaces": {"distribution": [1, 3], "chroma": 1.6},
-    "fg": {"distribution": 0, "chroma": 1.6},
-    "accents": {"distribution": [0, 1, 2, 3], "chroma": 0.75}
-  }
-}
-```
-
-Scheme before (top) / after (bottom) — solarized's structure kept,
+Scheme before (top) / after (bottom) — tokyo night's structure kept,
 only hues move:
 
-![solarized-dark before/after, painted with the wallpaper's hue families](assets/examples/bango-schemes-roundtrip.png)
+![tokyo-night-dark before/after, painted with the wallpaper's hue families](assets/examples/bango-schemes-roundtrip.png)
 
 Then feed it back into the image:
 
@@ -138,11 +114,6 @@ rehue map-wal \
 
 The loop closed: the palette your terminal uses is now the palette the
 picture was painted with.
-
-`map-scheme` writes `scheme.yaml` + `preview.png` (before/after
-swatches) + `clusters.json`; `map-wal` writes `wallpaper.png` +
-`compare.png` (side-by-side thumbnails) + `report.json` (per-slot pixel
-coverage).
 
 ## Setup
 
@@ -364,15 +335,21 @@ rustup users, the devshell does the same through Nix.
 
 ## Roadmap
 
+- **ADVANCED_EXAMPLES.md** — the complex combinations that stay out of
+  the main docs (distribution sculpting across registers, reach
+  tuning, the colorize recipes), each with receipts.
 - **UI previews** — demo renders of the scheme applied to real
   surfaces: a terminal, a code block, a web page, GTK and Qt widgets,
   so a scheme can be judged before it's wired in.
-- **base24 coverage** — base10-17 slots.
 - **Extraction tuning** — the extraction options documented as their own
   surface, optionally backed by alternative extraction libraries.
+- **Repair / upscale / enhance** — restore and sharpen `map-wal`'s
+  generated images: detail-preserving upscaling and artifact repair on
+  the repainted output.
 - **Scheme generation** — the big one: derive the lightness/chroma
   structure a designer would have built, guided by the wallpaper —
   map-scheme without needing a reference scheme at all.
+- **base24 coverage** — base10-17 slots.
 
 ## License
 
