@@ -368,9 +368,9 @@ fn map_wal_is_deterministic() {
         ..Default::default()
     };
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
-    let knobs = rehue::map_wal::slot_knobs(&regs);
-    let first = rehue::map_wal::apply(pixels, 64, 64, &slots, &neutral, &knobs, &config);
-    let second = rehue::map_wal::apply(pixels, 64, 64, &slots, &neutral, &knobs, &config);
+    let options = rehue::map_wal::slot_options(&regs);
+    let first = rehue::map_wal::apply(pixels, 64, 64, &slots, &neutral, &options, &config);
+    let second = rehue::map_wal::apply(pixels, 64, 64, &slots, &neutral, &options, &config);
     assert_eq!(first.pixels, second.pixels);
     assert_eq!(first.coverage, second.coverage);
 }
@@ -443,9 +443,10 @@ fn wal_arrangement_and_per_register_options_are_deterministic() {
     let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
     let image = gradient_image((64, 64));
     let rgb = image.to_rgb8();
-    let knobs = rehue::map_wal::slot_knobs(&regs);
-    let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &arranged, &neutral, &knobs, &config);
-    let second = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &arranged, &neutral, &knobs, &config);
+    let options = rehue::map_wal::slot_options(&regs);
+    let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &arranged, &neutral, &options, &config);
+    let second =
+        rehue::map_wal::apply(rgb.as_raw(), 64, 64, &arranged, &neutral, &options, &config);
     assert_eq!(first.pixels, second.pixels);
     assert_eq!(first.coverage, second.coverage);
 }
@@ -463,26 +464,26 @@ fn blend_dial_resolution() {
         },
     );
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
-    let knobs = rehue::map_wal::slot_knobs(&regs);
+    let options = rehue::map_wal::slot_options(&regs);
     // accents: the register's explicit chroma dial wins over the facade;
     // hue follows the facade and light is decoupled from it.
-    let accents = knobs[8];
+    let accents = options[8];
     assert!((accents.blend_hue - 0.5).abs() < 1e-9);
     assert!((accents.blend_light - 0.3).abs() < 1e-9);
     assert!((accents.blend_chroma - 0.1).abs() < 1e-9);
     // surfaces inherit the facade for hue and chroma; light stays where
     // the config put it (never facade-seeded).
-    let surfaces = knobs[1];
+    let surfaces = options[1];
     assert!((surfaces.blend_hue - 0.5).abs() < 1e-9);
     assert!((surfaces.blend_light - 0.3).abs() < 1e-9);
     assert!((surfaces.blend_chroma - 0.5).abs() < 1e-9);
     // An explicitly set dial beats the facade for every register.
     config.blend_hue = Some(1.0);
-    let knobs_strict = rehue::map_wal::slot_knobs(
+    let options_strict = rehue::map_wal::slot_options(
         &rehue::map_wal::resolved_registers(&config).expect("valid config"),
     );
-    assert!((knobs_strict[1].blend_hue - 1.0).abs() < 1e-9);
-    assert!((knobs_strict[8].blend_hue - 1.0).abs() < 1e-9);
+    assert!((options_strict[1].blend_hue - 1.0).abs() < 1e-9);
+    assert!((options_strict[8].blend_hue - 1.0).abs() < 1e-9);
 }
 
 #[test]
@@ -494,13 +495,13 @@ fn dithering_varies_full_blend_and_is_deterministic() {
     let mut config = rehue::map_wal::RemapConfig::default();
     config.harmonize = 1.0;
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
-    let knobs = rehue::map_wal::slot_knobs(&regs);
+    let options = rehue::map_wal::slot_options(&regs);
 
     config.dithering = 0.0;
-    let plain = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+    let plain = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
     config.dithering = 1.0;
-    let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
-    let second = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+    let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
+    let second = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
     assert_eq!(first.pixels, second.pixels);
     assert!(
         first.pixels != plain.pixels,
@@ -527,11 +528,13 @@ fn dither_modes_differ_and_each_is_deterministic() {
     config.dithering = 1.0;
     config.territory = Some(Territory::Hard);
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
-    let knobs = rehue::map_wal::slot_knobs(&regs);
+    let options = rehue::map_wal::slot_options(&regs);
     let mut run = |mode: rehue::map_wal::DitherMode| {
         config.dithering_mode = Some(mode);
-        let first = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
-        let second = rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &knobs, &config);
+        let first =
+            rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
+        let second =
+            rehue::map_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
         assert_eq!(
             first.pixels,
             second.pixels,
@@ -587,8 +590,8 @@ fn soft_territory_blends_between_slots() {
         let mut cfg = base.clone();
         cfg.territory = territory;
         let regs = rehue::map_wal::resolved_registers(&cfg).expect("valid config");
-        let knobs = rehue::map_wal::slot_knobs(&regs);
-        rehue::map_wal::apply(&pixels, 1, 1, &slots, &neutral, &knobs, &cfg)
+        let options = rehue::map_wal::slot_options(&regs);
+        rehue::map_wal::apply(&pixels, 1, 1, &slots, &neutral, &options, &cfg)
     };
     let hard = run(Some(Territory::Hard));
     let soft = run(Some(Territory::Soft));

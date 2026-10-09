@@ -275,7 +275,7 @@ pub struct SlotPalette {
 
 /// Per-slot mix/grade options: the slot's register's resolved settings.
 #[derive(Debug, Clone, Copy)]
-pub struct SlotKnobs {
+pub struct SlotOptions {
     pub blend_hue: f64,
     pub blend_light: f64,
     pub blend_chroma: f64,
@@ -284,12 +284,12 @@ pub struct SlotKnobs {
 }
 
 /// Per-slot options for the 16 canonical slots.
-pub fn slot_knobs(regs: &BTreeMap<&'static str, WalRegisterSettings>) -> Vec<SlotKnobs> {
+pub fn slot_options(regs: &BTreeMap<&'static str, WalRegisterSettings>) -> Vec<SlotOptions> {
     BASE_SLOTS
         .iter()
         .map(|slot| {
             let s = &regs[register_of_slot(slot)];
-            SlotKnobs {
+            SlotOptions {
                 blend_hue: s.blend_hue,
                 blend_light: s.blend_light,
                 blend_chroma: s.blend_chroma,
@@ -379,7 +379,7 @@ pub fn is_passive(
 struct PixelCore<'a> {
     slots: &'a [SlotPalette],
     neutral_slots: &'a [usize],
-    knobs: &'a [SlotKnobs],
+    options: &'a [SlotOptions],
     config: &'a RemapConfig,
     territory: Territory,
 }
@@ -406,7 +406,7 @@ impl PixelCore<'_> {
             }
             best_index = best;
             let slots_target = self.slots[best].lch;
-            let n = self.knobs[best];
+            let n = self.options[best];
             // In soft mode the target is the palette's weighted mean over
             // the neutral slots (by lightness closeness), not one slot's
             // the constant - the lightness ramp blends smoothly.
@@ -458,7 +458,7 @@ impl PixelCore<'_> {
             }
             best_index = best;
             let target = self.slots[best].lch;
-            let n = self.knobs[best];
+            let n = self.options[best];
             // In soft mode the targets are the palette's weighted means
             // over all slots by circular hue distance; influence falls off
             // with distance instead of cutting off at the reach, so the
@@ -506,7 +506,7 @@ impl PixelCore<'_> {
             }
         }
         // Per-slot (register) grade, then the image-wide grade last.
-        let n = self.knobs[best_index];
+        let n = self.options[best_index];
         l2 = (l2 + n.light).clamp(0.0, 1.0);
         c2 = (c2 * n.chroma).max(0.0);
         l2 = (l2 + self.config.light).clamp(0.0, 1.0);
@@ -545,7 +545,7 @@ const ATKINSON_KERNEL: [(i64, i64, f64); 6] = [
 /// The full pipeline.  `pixels` is a flat rgb8 buffer of a
 /// `width x height` image; `slots` the 16 palette slot colours in
 /// canonical order (already arranged by `arrange_palette` when
-/// distribution options are in play); `knobs` the per-slot mix/grade
+/// distribution options are in play); `options` the per-slot mix/grade
 /// values; `neutral_slots` the indices of the scheme's low-chroma slots
 /// (achromatic pixels key against those by lightness rather than by hue).
 pub fn apply(
@@ -554,10 +554,10 @@ pub fn apply(
     height: u32,
     slots: &[SlotPalette],
     neutral_slots: &[usize],
-    knobs: &[SlotKnobs],
+    options: &[SlotOptions],
     config: &RemapConfig,
 ) -> RemapOutput {
-    debug_assert_eq!(slots.len(), knobs.len());
+    debug_assert_eq!(slots.len(), options.len());
     debug_assert_eq!(
         pixels.len(),
         width as usize * height as usize * 3,
@@ -566,7 +566,7 @@ pub fn apply(
     let core = PixelCore {
         slots,
         neutral_slots,
-        knobs,
+        options,
         config,
         territory: config.territory.unwrap_or(Territory::Soft),
     };

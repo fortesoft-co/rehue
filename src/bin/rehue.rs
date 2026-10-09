@@ -760,7 +760,7 @@ fn run_map_wal(
             source.height(),
             &arranged,
             &neutral_slots,
-            &map_wal::slot_knobs(&regs),
+            &map_wal::slot_options(&regs),
             &config,
         );
         let pixels = image::RgbImage::from_raw(source.width(), source.height(), result.pixels)
