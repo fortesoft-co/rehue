@@ -40,3 +40,55 @@ fn dry_run_writes_nothing() {
 
     let _ = std::fs::remove_file(&wall);
 }
+
+#[test]
+fn dry_run_writes_nothing_even_without_out() {
+    // --dry-run with no --out at all: neither the default `rehue-out`
+    // nor anything else may appear in the working directory.
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let workdir = std::env::temp_dir().join(format!("rehue-cwd-{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).expect("cwd");
+    let wall = workdir.join("wall.png");
+    gradient_image((32, 32)).save(&wall).expect("wall writes");
+    let scheme = fixture("solarized-dark.yaml");
+
+    let status = std::process::Command::new(bin)
+        .args(["map-wal", "--wallpaper"])
+        .arg(&wall)
+        .args(["--scheme"])
+        .arg(&scheme)
+        .arg("--dry-run")
+        .current_dir(&workdir)
+        .status()
+        .expect("rehue binary runs");
+    assert!(status.success());
+    assert!(
+        !workdir.join("rehue-out").exists(),
+        "dry run must not fall back to the default dir either"
+    );
+
+    let _ = std::fs::remove_dir_all(&workdir);
+}
+
+#[test]
+fn absent_out_defaults_to_rehue_out() {
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let workdir = std::env::temp_dir().join(format!("rehue-cwd2-{}", std::process::id()));
+    std::fs::create_dir_all(&workdir).expect("cwd");
+    let wall = workdir.join("wall.png");
+    gradient_image((32, 32)).save(&wall).expect("wall writes");
+    let scheme = fixture("solarized-dark.yaml");
+
+    let status = std::process::Command::new(bin)
+        .args(["map-wal", "--wallpaper"])
+        .arg(&wall)
+        .args(["--scheme"])
+        .arg(&scheme)
+        .current_dir(&workdir)
+        .status()
+        .expect("rehue binary runs");
+    assert!(status.success());
+    assert!(workdir.join("rehue-out/wallpaper.png").exists());
+
+    let _ = std::fs::remove_dir_all(&workdir);
+}

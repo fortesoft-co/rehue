@@ -47,11 +47,11 @@ enum Commands {
         #[arg(long)]
         scheme: String,
         /// Output directory: scheme.yaml + preview.png + preview.html +
-        /// clusters.json.
+        /// clusters.json (absent: `rehue-out`).
         ///
         /// e.g. --out mapped
         #[arg(long)]
-        out: PathBuf,
+        out: Option<PathBuf>,
         /// Run the pipeline and print the ANSI preview but write
         /// nothing (and not even --out itself).
         ///
@@ -128,11 +128,11 @@ enum Commands {
         scheme: String,
         /// Output directory: wallpaper.png + compare.png + preview.html
         /// + report.json (preview.html whenever an arrangement is
-        /// live).
+        /// live).  (absent: `rehue-out`)
         ///
         /// e.g. --out repainted
         #[arg(long)]
-        out: PathBuf,
+        out: Option<PathBuf>,
         /// Run the pipeline and print the ANSI preview but write
         /// nothing (and not even --out itself).
         ///
@@ -286,11 +286,12 @@ enum Commands {
         /// e.g. --wallpaper ~/pictures/pic.webp
         #[arg(long)]
         wallpaper: PathBuf,
-        /// Directory for the scaled PNG, named after the source's stem.
+        /// Directory for the scaled PNG, named after the source's stem
+        /// (absent: `rehue-out`).
         ///
         /// e.g. --out up4
         #[arg(long)]
-        out: PathBuf,
+        out: Option<PathBuf>,
         /// Target scale factor vs the source.  Lanczos takes 2..=8;
         /// SR weights are native 4x, so --sr takes 1..=4 (1 = same-size
         /// restoration).
@@ -1110,7 +1111,7 @@ fn run(command: Commands) -> Result<(), String> {
             &wallpaper,
             &scheme,
             scheme_dir.as_deref(),
-            &out,
+            out.as_deref().unwrap_or(Path::new("rehue-out")),
             config.as_deref(),
             dry_run,
             SchemeOverrides {
@@ -1146,7 +1147,7 @@ fn run(command: Commands) -> Result<(), String> {
             &wallpaper,
             &scheme,
             scheme_dir.as_deref(),
-            &out,
+            out.as_deref().unwrap_or(Path::new("rehue-out")),
             config.as_deref(),
             dry_run,
             WalOverrides {
@@ -1187,7 +1188,7 @@ fn run(command: Commands) -> Result<(), String> {
             sr_tool,
         } => run_enhance(
             &wallpaper,
-            &out,
+            out.as_deref().unwrap_or(Path::new("rehue-out")),
             upscale,
             sr,
             model.unwrap_or(SrModel::Photos),
