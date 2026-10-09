@@ -45,7 +45,7 @@ const BAYER8: [[u8; 8]; 8] = [
 /// The `dithering-mode` knob.  Ordered modes threshold the adopted share
 /// with a pixel mask; diffusion modes propagate the mix residual to
 /// neighbouring pixels (serpentine scan order, fully deterministic).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum DitherMode {
     /// 64x64 tileable void-and-cluster mask (the default; pattern is
@@ -87,7 +87,7 @@ impl DitherMode {
 /// posterize largely disappears by construction.  Soft bypasses the
 /// hard-mode cutoffs: `reach-deg` acts as the falloff temperature there
 /// (and must be positive), and as the influence cutoff in hard mode.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Territory {
     /// The default: continuous weighted mixing (palette as influence field).

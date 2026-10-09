@@ -608,3 +608,245 @@ fn soft_territory_blends_between_slots() {
         "soft blends strictly between the two slot hues, got {soft_h}"
     );
 }
+
+#[test]
+fn map_wal_cli_flags_track_the_config_surface() {
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let scheme = fixture("solarized-dark.yaml");
+    let wall = std::env::temp_dir().join(format!("rehue-cli-wall-{}.png", std::process::id()));
+    gradient_image((64, 64))
+        .save(&wall)
+        .expect("gradient writes");
+
+    let run = |dir: &str, json: Option<&str>, flags: &[&str]| {
+        let out = std::env::temp_dir().join(dir);
+        let _ = std::fs::remove_dir_all(&out);
+        let cfg = std::env::temp_dir().join(format!("{dir}.json"));
+        if let Some(text) = json {
+            std::fs::write(&cfg, text).expect("config writes");
+        }
+        let mut cmd = std::process::Command::new(bin);
+        cmd.args(["map-wal", "--wallpaper"]);
+        cmd.arg(&wall);
+        cmd.args(["--scheme"]);
+        cmd.arg(&scheme);
+        cmd.args(["--out"]);
+        cmd.arg(&out);
+        if json.is_some() {
+            cmd.args(["--config"]);
+            cmd.arg(&cfg);
+        }
+        for flag in flags {
+            cmd.arg(flag);
+        }
+        let status = cmd.status().expect("rehue binary runs");
+        assert!(status.success(), "map-wal {dir} exited with {status}");
+        std::fs::read(out.join("wallpaper.png")).expect("output readable")
+    };
+
+    let by_flags = run(
+        "rehue-cli-flags",
+        None,
+        &[
+            "--harmonize",
+            "0.9",
+            "--blend-chroma",
+            "0.8",
+            "--reach-deg",
+            "45",
+        ],
+    );
+    let by_config = run(
+        "rehue-cli-json",
+        Some("{\"harmonize\": 0.9, \"blend-chroma\": 0.8, \"reach-deg\": 45.0}"),
+        &[],
+    );
+    assert_eq!(by_flags, by_config, "flags and config JSON must agree");
+
+    let quiet = run("rehue-cli-cfg05", Some("{\"harmonize\": 0.5}"), &[]);
+    let mixed = run(
+        "rehue-cli-mixed",
+        Some("{\"harmonize\": 0.5}"),
+        &["--harmonize", "0.9"],
+    );
+    let loud = run("rehue-cli-flags09", None, &["--harmonize", "0.9"]);
+    // A named flag beats the same knob in the config file...
+    assert_eq!(mixed, loud, "flag wins over the config value");
+    // ...and the override actually did something.
+    assert_ne!(mixed, quiet, "the override changed the output");
+
+    // Targeted dial occurrences write the named register records.
+    let targeted = run(
+        "rehue-cli-targeted",
+        None,
+        &[
+            "--blend-hue",
+            "accents",
+            "1",
+            "--blend-light",
+            "surfaces",
+            "0.5",
+        ],
+    );
+    let targeted_json = run(
+        "rehue-cli-targeted-json",
+        Some(
+            "{\"registers\":{\"accents\":{\"blend-hue\":1.0},\"surfaces\":{\"blend-light\":0.5}}}",
+        ),
+        &[],
+    );
+    assert_eq!(
+        targeted, targeted_json,
+        "targeted flags match register records"
+    );
+    // ...and they beat the file at that key, like every other flag.
+    let beats = run(
+        "rehue-cli-targeted-beats",
+        Some("{\"registers\":{\"accents\":{\"blend-hue\":0.3}}}"),
+        &["--blend-hue", "accents", "1"],
+    );
+    let beats_json = run(
+        "rehue-cli-beats-json",
+        Some("{\"registers\":{\"accents\":{\"blend-hue\":1.0}}}"),
+        &[],
+    );
+    assert_eq!(
+        beats, beats_json,
+        "targeted flag wins over the config record"
+    );
+
+    let _ = std::fs::remove_file(&wall);
+    for dir in [
+        "rehue-cli-flags",
+        "rehue-cli-json",
+        "rehue-cli-cfg05",
+        "rehue-cli-mixed",
+        "rehue-cli-flags09",
+        "rehue-cli-targeted",
+        "rehue-cli-targeted-json",
+        "rehue-cli-targeted-beats",
+        "rehue-cli-beats-json",
+    ] {
+        let _ = std::fs::remove_dir_all(std::env::temp_dir().join(dir));
+    }
+}
+
+#[test]
+fn map_scheme_cli_flags_track_the_config_surface() {
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let scheme = fixture("solarized-dark.yaml");
+    let wall = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets/kelly-ishmael-butterfly-closeup.webp");
+
+    let run = |dir: &str, json: Option<&str>, flags: &[&str]| {
+        let out = std::env::temp_dir().join(dir);
+        let _ = std::fs::remove_dir_all(&out);
+        let cfg = std::env::temp_dir().join(format!("{dir}.json"));
+        if let Some(text) = json {
+            std::fs::write(&cfg, text).expect("config writes");
+        }
+        let mut cmd = std::process::Command::new(bin);
+        cmd.args(["map-scheme", "--wallpaper"]);
+        cmd.arg(&wall);
+        cmd.args(["--scheme"]);
+        cmd.arg(&scheme);
+        cmd.args(["--out"]);
+        cmd.arg(&out);
+        if json.is_some() {
+            cmd.args(["--config"]);
+            cmd.arg(&cfg);
+        }
+        for flag in flags {
+            cmd.arg(flag);
+        }
+        let status = cmd.status().expect("rehue binary runs");
+        assert!(status.success(), "map-scheme {dir} exited with {status}");
+        std::fs::read(out.join("scheme.yaml")).expect("output readable")
+    };
+
+    let by_flags = run(
+        "rehue-scheme-flags",
+        None,
+        &["--distribution", "3", "--rotate", "3", "--chroma", "0.75"],
+    );
+    let by_config = run(
+        "rehue-scheme-json",
+        Some("{\"registers\":{\"all\":{\"distribution\":3,\"rotate\":3,\"chroma\":0.75}}}"),
+        &[],
+    );
+    assert_eq!(
+        by_flags, by_config,
+        "flags seeding `all` must match the config record"
+    );
+
+    // Per-register records beat the `all` seed, whichever way it arrives.
+    let sculpted = run(
+        "rehue-scheme-sculpt",
+        Some("{\"registers\":{\"all\":{\"chroma\":0.75},\"accents\":{\"chroma\":1.2}}}"),
+        &[],
+    );
+    let sculpted_mixed = run(
+        "rehue-scheme-sculpt-mixed",
+        Some("{\"registers\":{\"accents\":{\"chroma\":1.2}}}"),
+        &["--chroma", "0.75"],
+    );
+    assert_eq!(
+        sculpted, sculpted_mixed,
+        "the accents record wins over the flag-seeded all"
+    );
+
+    // Targeted flags are the everyday sculpting form.
+    let targeted = run(
+        "rehue-scheme-targeted",
+        None,
+        &[
+            "--distribution",
+            "accents",
+            "[0,1,2,3]",
+            "--rotate",
+            "accents",
+            "3",
+            "--chroma",
+            "accents",
+            "1.2",
+        ],
+    );
+    let targeted_json = run(
+        "rehue-scheme-targeted-json",
+        Some(
+            "{\"registers\":{\"accents\":{\"distribution\":[0,1,2,3],\"rotate\":3,\"chroma\":1.2}}}",
+        ),
+        &[],
+    );
+    assert_eq!(
+        targeted, targeted_json,
+        "targeted flags match register records"
+    );
+
+    // A wrong register name errors loudly instead of ghosting.
+    let out = std::env::temp_dir().join("rehue-scheme-badtarget");
+    let _ = std::fs::remove_dir_all(&out);
+    let status = std::process::Command::new(bin)
+        .args(["map-scheme", "--wallpaper"])
+        .arg(&wall)
+        .args(["--scheme"])
+        .arg(&scheme)
+        .args(["--out"])
+        .arg(&out)
+        .args(["--chroma", "wall", "1.6"])
+        .status()
+        .expect("rehue binary runs");
+    assert!(!status.success(), "unknown register targets are rejected");
+
+    for dir in [
+        "rehue-scheme-flags",
+        "rehue-scheme-json",
+        "rehue-scheme-sculpt",
+        "rehue-scheme-sculpt-mixed",
+        "rehue-scheme-targeted",
+        "rehue-scheme-targeted-json",
+        "rehue-scheme-badtarget",
+    ] {
+        let _ = std::fs::remove_dir_all(std::env::temp_dir().join(dir));
+    }
+}

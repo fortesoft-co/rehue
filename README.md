@@ -169,6 +169,13 @@ cargo run --release -- map-scheme \
 # mapped/scheme.yaml + preview.png + clusters.json
 
 cargo install --path .          # installs the `rehue` binary
+rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --harmonize 1
+
+# Everyday knobs are named flags; register dials accept a target —
+# `--chroma bg 1.6`, repeatable per register — while a bare value is the
+# seed (map-wal's bare --light/--chroma stay the image-wide grade).
+# Ramp/stop distribution sculpting and extraction knobs still live in
+# `--config`:
 rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --config remap.json
 ```
 
@@ -287,10 +294,6 @@ rustup users, the devshell does the same through Nix.
 
 ## Roadmap
 
-- **CLI ergonomics** — named params on the command line, not just
-  passing config JSON.
-- **CLI help** — real `--help` docs: per-flag semantics, defaults,
-  and worked examples right in the command output.
 - **Knob reference** — one section per knob: mechanics, accepted
   types, and a visual demo for each.
 - **Named theme inputs** — bundle the

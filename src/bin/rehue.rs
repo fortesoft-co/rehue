@@ -24,44 +24,236 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Map a reference scheme's structure onto a wallpaper's hues.
+    ///
+    /// Map a base16 scheme with a wallpaper's hues: hue families are
+    /// extracted from the image and adopted slot by slot, while each
+    /// slot's lightness, chroma and contrast are the reference scheme's.
+    ///
+    /// Example: rehue map-scheme --wallpaper butterfly.webp --scheme rose-pine-dawn.yaml --out mapped
+    ///
+    #[command(after_help = MAP_SCHEME_REGISTERS)]
     MapScheme {
+        /// The image whose hues get adopted.
+        ///
+        /// e.g. --wallpaper ~/pictures/butterfly.webp
         #[arg(long)]
         wallpaper: PathBuf,
+        /// A base16 (tinted-scheme) YAML supplying the structure.
+        ///
+        /// e.g. --scheme rose-pine-dawn.yaml
         #[arg(long)]
         scheme: PathBuf,
+        /// Output directory: scheme.yaml + preview.png + clusters.json.
+        ///
+        /// e.g. --out mapped
         #[arg(long)]
         out: PathBuf,
-        /// Map config JSON (extraction knobs + register overrides);
-        /// absent means defaults, which reproduce the plain hue-mapping.
+        /// Map config JSON: extraction knobs + per-register records.
+        ///
+        /// e.g. --config roundtrip.json
         #[arg(long, value_name = "JSON")]
         config: Option<PathBuf>,
+        /// Accent claim gate in hue degrees (default 45): how far a
+        /// wallpaper family may sit from an accent slot's hue and still
+        /// claim it.
+        ///
+        /// e.g. --reach-deg 30
+        #[arg(long, value_name = "DEG")]
+        reach_deg: Option<f64>,
+        /// Hue-family adoption.  VAL: `true` = ramp, `3` = pin,
+        /// `[0,1,2,3]` = stops.  Untargeted: pin only (bg takes pins
+        /// only).
+        ///
+        /// e.g. --distribution accents '[0,1,2,3]'
+        #[arg(long, value_name = "[REG] VAL", num_args = 1..=2)]
+        distribution: Vec<String>,
+        /// Rotate the register's hues across its slots (1 = one right,
+        /// wraps).
+        ///
+        /// e.g. --rotate accents 1
+        #[arg(long, value_name = "[REG] N", num_args = 1..=2)]
+        rotate: Vec<String>,
+        /// Hue adoption from the wallpaper, 0..1 (default 1).
+        ///
+        /// e.g. --blend-hue 0.4   --blend-hue accents 1
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        blend_hue: Vec<String>,
+        /// Additive lightness shift for the register's slots.
+        ///
+        /// e.g. --light 0.05   --light surfaces -0.02
+        #[arg(long, value_name = "[REG] L", num_args = 1..=2)]
+        light: Vec<String>,
+        /// Multiplicative chroma ratio (0.8 muted, 1.3 vivid).
+        ///
+        /// e.g. --chroma 1.6   --chroma accents 0.75
+        #[arg(long, value_name = "[REG] C", num_args = 1..=2)]
+        chroma: Vec<String>,
     },
     /// Map a scheme's palette onto a wallpaper's colours (all knobs opt-in).
+    ///
+    /// Repaint an image with a base16 scheme's palette: every pixel
+    /// moves toward its nearest palette slot — hue and chroma by dial,
+    /// lightness stays photographic by default.  All knobs are opt-in;
+    /// with all-zero dials the output is a re-encoded passthrough.
+    ///
+    /// Example: rehue map-wal --wallpaper glitter.webp --scheme gruvbox-light.yaml --out repainted --harmonize 1
+    ///
+    #[command(after_help = MAP_WAL_REGISTERS)]
     MapWal {
+        /// The image to repaint.
+        ///
+        /// e.g. --wallpaper ~/pictures/glitter.webp
         #[arg(long)]
         wallpaper: PathBuf,
+        /// A base16 (tinted-scheme) YAML with the target palette.
+        ///
+        /// e.g. --scheme gruvbox-light.yaml
         #[arg(long)]
         scheme: PathBuf,
+        /// Output directory: wallpaper.png + compare.png + report.json.
+        ///
+        /// e.g. --out repainted
         #[arg(long)]
         out: PathBuf,
-        /// Remap config JSON; absent means a re-encoded passthrough.
+        /// Remap config JSON: extraction knobs + per-register records
+        /// (records beat the bare-flag seeds).
+        ///
+        /// e.g. --config remap.json
         #[arg(long, value_name = "JSON")]
         config: Option<PathBuf>,
+        /// How pixels see the palette: `soft` = smooth influence field
+        /// (default), `hard` = flat-constant snapping; possible values
+        /// describe both.
+        ///
+        /// e.g. --territory hard
+        #[arg(long, value_enum)]
+        territory: Option<map_wal::Territory>,
+        /// One-dial facade 0..1: seeds blend-hue + blend-chroma where
+        /// unset; explicit dials win.
+        ///
+        /// e.g. --harmonize 1
+        #[arg(long, value_name = "0..1")]
+        harmonize: Option<f64>,
+        /// Hue movement toward the palette (0 = raw pixel hue, 1 = full
+        /// snap).
+        ///
+        /// e.g. --blend-hue 0.9   --blend-hue accents 1
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        blend_hue: Vec<String>,
+        /// Chroma movement toward the palette (0 = raw, 1 = adopt the
+        /// slot's chroma).
+        ///
+        /// e.g. --blend-chroma 0.8   --blend-chroma bg 0.5
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        blend_chroma: Vec<String>,
+        /// Lightness movement toward the palette.  Default 0 —
+        /// photographic, and never facade-seeded.
+        ///
+        /// e.g. --blend-light 0.3   --blend-light surfaces 0.1
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        blend_light: Vec<String>,
+        /// Influence reach on the hue wheel in degrees (default 45):
+        /// the falloff width in soft territory, the cutoff in hard.
+        ///
+        /// e.g. --reach-deg 60
+        #[arg(long, value_name = "DEG")]
+        reach_deg: Option<f64>,
+        /// Chroma below which pixels count as achromatic (default
+        /// 0.02); they key to the scheme's neutrals by lightness.
+        ///
+        /// e.g. --gray-chroma-floor 0.05
+        #[arg(long, value_name = "C")]
+        gray_chroma_floor: Option<f64>,
+        /// Dithering strength 0..1 (0 off; inert at zero and at full
+        /// adoption, where the target swallows the residual).
+        ///
+        /// e.g. --dithering 1
+        #[arg(long, value_name = "0..1")]
+        dithering: Option<f64>,
+        /// Dither kernel (default blue-noise; variants described
+        /// below).
+        ///
+        /// e.g. --dithering-mode floyd-steinberg
+        #[arg(long, value_enum)]
+        dithering_mode: Option<map_wal::DitherMode>,
+        /// Hue-family adoption.  VAL: `3` = pin, `true` = ramp,
+        /// `[0,1,2,3]` = stops.  Untargeted: pin only (bg takes pins
+        /// only).
+        ///
+        /// e.g. --distribution accents '[0,1,2,3]'
+        #[arg(long, value_name = "[REG] VAL", num_args = 1..=2)]
+        distribution: Vec<String>,
+        /// Rotate the register's hues across its slots (1 = one right,
+        /// wraps).
+        ///
+        /// e.g. --rotate accents 1
+        #[arg(long, value_name = "[REG] N", num_args = 1..=2)]
+        rotate: Vec<String>,
+        /// Additive lightness.  Bare = image-wide grade (applied last);
+        /// targeted = that register's tonal grade.
+        ///
+        /// e.g. --light 0.02   --light bg -0.05
+        #[arg(long, value_name = "[REG] L", num_args = 1..=2)]
+        light: Vec<String>,
+        /// Multiplicative chroma.  Bare = image-wide grade; targeted =
+        /// the register's grade.
+        ///
+        /// e.g. --chroma 1.2   --chroma fg 0.9
+        #[arg(long, value_name = "[REG] C", num_args = 1..=2)]
+        chroma: Vec<String>,
     },
     /// Print the colour families a wallpaper yields (the indices
     /// distribution configs refer to).
+    ///
+    /// Index the wallpaper's hue families: the `[i]` indices that
+    /// distribution configs target, with hue, chroma and weight per
+    /// family.
+    ///
+    /// Example: rehue inspect --wallpaper butterfly.webp --out inspect
     Inspect {
+        /// The image to extract from.
+        ///
+        /// e.g. --wallpaper ~/pictures/butterfly.webp
         #[arg(long)]
         wallpaper: PathBuf,
-        /// Extraction knobs; absent means defaults.
+        /// Extraction knobs as JSON.
+        ///
+        /// e.g. --config extract.json
         #[arg(long, value_name = "JSON")]
         config: Option<PathBuf>,
         /// Directory for the swatch strip (inspect.png); absent prints
-        /// the table only.
+        /// the table only.  Positions match the `[i]` indices.
+        ///
+        /// e.g. --out inspect
         #[arg(long)]
         out: Option<PathBuf>,
     },
 }
+
+const MAP_SCHEME_REGISTERS: &str = "
+Registers:
+  The palette is grouped into four registers: bg (base00),
+  surfaces (base01-03), fg (base04-07), accents (base08-0F) - the
+  surface groups a desktop theme lives in.
+
+  Register-targetable options: distribution, rotate, blend-hue, light,
+  chroma.  Pass `--dial register value`, repeatable per register; a
+  bare `--dial value` seeds `all`, and per-register `--config` records
+  outrank the seeds.
+";
+
+const MAP_WAL_REGISTERS: &str = "
+Registers:
+  The palette is grouped into four registers: bg (base00),
+  surfaces (base01-03), fg (base04-07), accents (base08-0F) - the
+  surface groups a desktop theme lives in.
+
+  Register-targetable options: blend-hue, blend-chroma, blend-light,
+  distribution, rotate, light, chroma.  Pass `--dial register value`,
+  repeatable per register; a bare `--dial value` is the global seed —
+  except bare --light/--chroma, which stay the image-wide grade applied
+  last.  Per-register `--config` records outrank the seeds.
+";
 
 fn read_json<T: serde::de::DeserializeOwned + Default>(path: Option<&Path>) -> Result<T, String> {
     match path {
@@ -174,13 +366,229 @@ fn write_json_file(path: &Path, value: &serde_json::Value) -> Result<(), String>
     std::fs::write(path, text + "\n").map_err(|e| format!("can't write {}: {}", path.display(), e))
 }
 
+/// Parse one `[register] value` dial occurrence: one token is the bare
+/// value, two tokens are a register target then the value.
+fn dial_arg(dial: &str, tokens: &[String]) -> Result<(Option<String>, String), String> {
+    match tokens.len() {
+        1 => Ok((None, tokens[0].clone())),
+        2 => match tokens[0].as_str() {
+            "bg" | "surfaces" | "fg" | "accents" | "all" => {
+                Ok((Some(tokens[0].clone()), tokens[1].clone()))
+            }
+            other => Err(format!(
+                "--{dial}: {other} is not a register (bg, surfaces, fg, accents, all)"
+            )),
+        },
+        n => Err(format!("--{dial}: expected [register] value, got {n} args")),
+    }
+}
+
+fn parse_f64(dial: &str, token: &str) -> Result<f64, String> {
+    token
+        .parse()
+        .map_err(|_| format!("--{dial}: expected a number, got {token}"))
+}
+
+fn parse_i64(dial: &str, token: &str) -> Result<i64, String> {
+    token
+        .parse()
+        .map_err(|_| format!("--{dial}: expected an integer, got {token}"))
+}
+
+/// Write one dial into the `all` seed record (or the named register).
+fn register_dial(
+    config: &mut register::MapConfig,
+    target: Option<String>,
+    set: impl FnOnce(&mut register::RegisterConfig),
+) {
+    let name = target.unwrap_or_else(|| "all".to_string());
+    set(config.registers.entry(name).or_default());
+}
+
+/// Write one dial into the `all` seed record (or the named register).
+fn wal_register(
+    config: &mut map_wal::RemapConfig,
+    target: Option<String>,
+    set: impl FnOnce(&mut map_wal::WalRegisterConfig),
+) {
+    let name = target.unwrap_or_else(|| "all".to_string());
+    set(config.registers.entry(name).or_default());
+}
+
+/// The named-flag subset of map-scheme's knobs.  `reach-deg` is the
+/// config-level gate; the register dials exist only per register, so a
+/// bare flag seeds the `all` record (per-register records in `--config`
+/// still win) and a targeted `[register] value` occurrence writes the
+/// named register directly (CLI beats the file at that key).
+#[derive(Debug, Default)]
+struct SchemeOverrides {
+    reach_deg: Option<f64>,
+    distribution: Vec<String>,
+    rotate: Vec<String>,
+    blend_hue: Vec<String>,
+    light: Vec<String>,
+    chroma: Vec<String>,
+}
+
+impl SchemeOverrides {
+    fn apply(self, config: &mut register::MapConfig) -> Result<(), String> {
+        if let Some(v) = self.reach_deg {
+            config.reach_deg = v;
+        }
+        for tokens in self.distribution.chunks(2) {
+            let (target, value) = dial_arg("distribution", tokens)?;
+            let parsed: register::Distribution = serde_json::from_str(&value)
+                .map_err(|e| format!("bad --distribution {value}: {e}"))?;
+            // `bg` inherits `all` and takes pins only, so a non-pin on
+            // the seed path would fail validation downstream.
+            if target.is_none() && !matches!(parsed, register::Distribution::Pin(_)) {
+                return Err(format!(
+                    "--distribution takes a family index when untargeted (got {value}); ramp/stop sculpting needs a register target or --config"
+                ));
+            }
+            register_dial(config, target, move |reg| reg.distribution = Some(parsed));
+        }
+        for tokens in self.rotate.chunks(2) {
+            let (target, value) = dial_arg("rotate", tokens)?;
+            let v = parse_i64("rotate", &value)?;
+            register_dial(config, target, move |reg| reg.rotate = Some(v));
+        }
+        for tokens in self.blend_hue.chunks(2) {
+            let (target, value) = dial_arg("blend-hue", tokens)?;
+            let v = parse_f64("blend-hue", &value)?;
+            register_dial(config, target, move |reg| reg.blend_hue = Some(v));
+        }
+        for tokens in self.light.chunks(2) {
+            let (target, value) = dial_arg("light", tokens)?;
+            let v = parse_f64("light", &value)?;
+            register_dial(config, target, move |reg| reg.light = Some(v));
+        }
+        for tokens in self.chroma.chunks(2) {
+            let (target, value) = dial_arg("chroma", tokens)?;
+            let v = parse_f64("chroma", &value)?;
+            register_dial(config, target, move |reg| reg.chroma = Some(v));
+        }
+        Ok(())
+    }
+}
+
+/// The named-flag subset of map-wal's knobs.  Global dials are bare
+/// flags; register dials are targeted `[register] value` (CLI beats the
+/// file at that key), and `--distribution`/`--rotate` seed the `all`
+/// record when bare.  A bare `--light`/`--chroma` is the image-wide
+/// grade, deliberately not a register seed.
+#[derive(Debug, Default)]
+struct WalOverrides {
+    territory: Option<map_wal::Territory>,
+    harmonize: Option<f64>,
+    blend_hue: Vec<String>,
+    blend_chroma: Vec<String>,
+    blend_light: Vec<String>,
+    reach_deg: Option<f64>,
+    gray_chroma_floor: Option<f64>,
+    dithering: Option<f64>,
+    dithering_mode: Option<map_wal::DitherMode>,
+    distribution: Vec<String>,
+    rotate: Vec<String>,
+    light: Vec<String>,
+    chroma: Vec<String>,
+}
+
+impl WalOverrides {
+    fn apply(self, config: &mut map_wal::RemapConfig) -> Result<(), String> {
+        if self.territory.is_some() {
+            config.territory = self.territory;
+        }
+        if self.dithering_mode.is_some() {
+            config.dithering_mode = self.dithering_mode;
+        }
+        if let Some(v) = self.harmonize {
+            config.harmonize = v;
+        }
+        if let Some(v) = self.reach_deg {
+            config.reach_deg = v;
+        }
+        if let Some(v) = self.gray_chroma_floor {
+            config.gray_chroma_floor = v;
+        }
+        if let Some(v) = self.dithering {
+            config.dithering = v;
+        }
+        for tokens in self.blend_hue.chunks(2) {
+            let (target, value) = dial_arg("blend-hue", tokens)?;
+            let v = parse_f64("blend-hue", &value)?;
+            match target {
+                None => config.blend_hue = Some(v),
+                Some(name) => wal_register(config, Some(name), move |reg| reg.blend_hue = Some(v)),
+            }
+        }
+        for tokens in self.blend_chroma.chunks(2) {
+            let (target, value) = dial_arg("blend-chroma", tokens)?;
+            let v = parse_f64("blend-chroma", &value)?;
+            match target {
+                None => config.blend_chroma = Some(v),
+                Some(name) => {
+                    wal_register(config, Some(name), move |reg| reg.blend_chroma = Some(v))
+                }
+            }
+        }
+        for tokens in self.blend_light.chunks(2) {
+            let (target, value) = dial_arg("blend-light", tokens)?;
+            let v = parse_f64("blend-light", &value)?;
+            match target {
+                None => config.blend_light = v,
+                Some(name) => {
+                    wal_register(config, Some(name), move |reg| reg.blend_light = Some(v))
+                }
+            }
+        }
+        for tokens in self.distribution.chunks(2) {
+            let (target, value) = dial_arg("distribution", tokens)?;
+            let parsed: register::Distribution = serde_json::from_str(&value)
+                .map_err(|e| format!("bad --distribution {value}: {e}"))?;
+            // `bg` inherits `all` and takes pins only, so a non-pin on
+            // the seed path would fail validation downstream.
+            if target.is_none() && !matches!(parsed, register::Distribution::Pin(_)) {
+                return Err(format!(
+                    "--distribution takes a family index when untargeted (got {value}); ramp/stop sculpting needs a register target or --config"
+                ));
+            }
+            wal_register(config, target, move |reg| reg.distribution = Some(parsed));
+        }
+        for tokens in self.rotate.chunks(2) {
+            let (target, value) = dial_arg("rotate", tokens)?;
+            let v = parse_i64("rotate", &value)?;
+            wal_register(config, target, move |reg| reg.rotate = Some(v));
+        }
+        for tokens in self.light.chunks(2) {
+            let (target, value) = dial_arg("light", tokens)?;
+            let v = parse_f64("light", &value)?;
+            match target {
+                None => config.light = v,
+                Some(name) => wal_register(config, Some(name), move |reg| reg.light = Some(v)),
+            }
+        }
+        for tokens in self.chroma.chunks(2) {
+            let (target, value) = dial_arg("chroma", tokens)?;
+            let v = parse_f64("chroma", &value)?;
+            match target {
+                None => config.chroma = v,
+                Some(name) => wal_register(config, Some(name), move |reg| reg.chroma = Some(v)),
+            }
+        }
+        Ok(())
+    }
+}
+
 fn run_map_scheme(
     wallpaper: &Path,
     scheme_path: &Path,
     out: &Path,
     config_path: Option<&Path>,
+    overrides: SchemeOverrides,
 ) -> Result<(), String> {
-    let config = read_json::<register::MapConfig>(config_path)?;
+    let mut config = read_json::<register::MapConfig>(config_path)?;
+    overrides.apply(&mut config)?;
     let parsed = Scheme::parse_file(scheme_path)?;
     println!(
         "rehue map-scheme: reference '{}' by {}",
@@ -242,8 +650,10 @@ fn run_map_wal(
     scheme_path: &Path,
     out: &Path,
     config_path: Option<&Path>,
+    overrides: WalOverrides,
 ) -> Result<(), String> {
-    let config = read_json::<map_wal::RemapConfig>(config_path)?;
+    let mut config = read_json::<map_wal::RemapConfig>(config_path)?;
+    overrides.apply(&mut config)?;
     let regs = map_wal::resolved_registers(&config)?;
     let parsed = Scheme::parse_file(scheme_path)?;
     let slot_hexes = parsed.slot_hexes()?;
@@ -448,7 +858,7 @@ fn run_inspect(
     Ok(())
 }
 
-fn run(command: &Commands) -> Result<(), String> {
+fn run(command: Commands) -> Result<(), String> {
     self_test();
     match command {
         Commands::MapScheme {
@@ -456,24 +866,76 @@ fn run(command: &Commands) -> Result<(), String> {
             scheme,
             out,
             config,
-        } => run_map_scheme(wallpaper, scheme, out, config.as_deref()),
+            reach_deg,
+            distribution,
+            rotate,
+            blend_hue,
+            light,
+            chroma,
+        } => run_map_scheme(
+            &wallpaper,
+            &scheme,
+            &out,
+            config.as_deref(),
+            SchemeOverrides {
+                reach_deg,
+                distribution,
+                rotate,
+                blend_hue,
+                light,
+                chroma,
+            },
+        ),
         Commands::MapWal {
             wallpaper,
             scheme,
             out,
             config,
-        } => run_map_wal(wallpaper, scheme, out, config.as_deref()),
+            territory,
+            harmonize,
+            blend_hue,
+            blend_chroma,
+            blend_light,
+            reach_deg,
+            gray_chroma_floor,
+            dithering,
+            dithering_mode,
+            distribution,
+            rotate,
+            light,
+            chroma,
+        } => run_map_wal(
+            &wallpaper,
+            &scheme,
+            &out,
+            config.as_deref(),
+            WalOverrides {
+                territory,
+                harmonize,
+                blend_hue,
+                blend_chroma,
+                blend_light,
+                reach_deg,
+                gray_chroma_floor,
+                dithering,
+                dithering_mode,
+                distribution,
+                rotate,
+                light,
+                chroma,
+            },
+        ),
         Commands::Inspect {
             wallpaper,
             config,
             out,
-        } => run_inspect(wallpaper, config.as_deref(), out.as_deref()),
+        } => run_inspect(&wallpaper, config.as_deref(), out.as_deref()),
     }
 }
 
 fn main() {
     let cli = Cli::parse();
-    if let Err(e) = run(&cli.command) {
+    if let Err(e) = run(cli.command) {
         eprintln!("rehue: {}", e);
         std::process::exit(1);
     }
