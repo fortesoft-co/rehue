@@ -8,7 +8,7 @@ fixed demo subjects;
 Each flow has one demo stage, fixed for that section:
 
 - **map-wal** paints [bango-renders-3d-abstract](assets/bango-renders-3d-abstract.webp)
-  with Solarized Dark at `--harmonize 1` (the one-dial default:
+  with Gruvbox Light at `--harmonize 1` (the one-dial default:
   soft territory, reach 45, everything else stock). Per-option demos vary
   only the option named.
 - **map-scheme** paints Rosé Pine Dawn with the hue families of
