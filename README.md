@@ -50,7 +50,7 @@ All inputs are in-repo assets (CC0, see
 
 ### Rainbow glitter → Gruvbox Light
 
-One dial: `{"harmonize": 1.0}`. The facade re-keys hue *and* chroma of
+One dial: `--harmonize 1`. The facade re-keys hue *and* chroma of
 every pixel toward the palette; lightness stays photographic, so the
 glitter keeps its sparkle and loses its rainbow.
 
@@ -59,13 +59,7 @@ rehue map-wal \
   --wallpaper assets/vidsplay-rainbow-glitter.webp \
   --scheme gruvbox-light.yaml \
   --out glitter \
-  --config harmonize.json
-```
-
-with `harmonize.json`:
-
-```json
-{ "harmonize": 1.0 }
+  --harmonize 1
 ```
 
 ![rainbow glitter before/after the gruvbox light repaint](assets/examples/glitter-facade1-pair.webp)
@@ -111,7 +105,9 @@ rehue map-scheme \
   --config roundtrip.json
 ```
 
-with `roundtrip.json`:
+Options can also be passed in as JSON files. The sculpting above —
+distribution and chroma per register, across four registers — is
+where records read cleaner than a long flag chain:
 
 ```json
 {
@@ -137,7 +133,7 @@ rehue map-wal \
   --wallpaper assets/bango-renders-3d-abstract.webp \
   --scheme mapped/scheme.yaml \
   --out repainted \
-  --config harmonize.json
+  --harmonize 1
 ```
 
 ![bango before/after repainting through its own recolored scheme](assets/examples/bango-roundtrip-pair.webp)
@@ -179,8 +175,7 @@ rehue map-wal --wallpaper my-photo.jpg --scheme gruvbox-light --out repainted --
 # `--chroma bg 1.6`, repeatable per register — while a bare value is the
 # seed (map-wal's bare --light/--chroma stay the image-wide grade).
 # Ramp/stop distribution sculpting and extraction options still live in
-# `--config`:
-rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --config remap.json
+# `--config` — see the round trip in Examples.
 ```
 
 Scheme inputs are plain tinted-scheme YAML files — or a NAME resolving
