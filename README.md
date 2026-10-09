@@ -223,7 +223,8 @@ report — commit and diff like the rest of your config.
 Every knob is opt-in; absent config is the sane default. Both flows
 share registers (`bg` = base00, `surfaces` = base01-03, `fg` =
 base04-07, `accents` = base08-0F) with an `all` record seeding every
-register.
+register. The deep version — per-dial mechanics, visual demos, and
+merge semantics — lives in [KNOBS.md](KNOBS.md).
 
 ### Shared arrangement (both flows)
 
@@ -294,8 +295,6 @@ rustup users, the devshell does the same through Nix.
 
 ## Roadmap
 
-- **Knob reference** — one section per knob: mechanics, accepted
-  types, and a visual demo for each.
 - **Named theme inputs** — bundle the
   [tinted-schemes](https://github.com/tinted-theming/schemes) set so
   `--scheme gruvbox-light` resolves without a YAML path.
