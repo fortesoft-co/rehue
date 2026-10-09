@@ -1,4 +1,4 @@
-# Option reference
+# Examples
 
 Every dial, what it does, what values it takes, and a demo of a
 generation actually turning. Each montage opens with the demo subject's

@@ -30,9 +30,7 @@ frequently muddy. rehue separates the two things a theming tool
 actually needs: *which hues* come from the wallpaper, and *how the hues
 are shaped* (lightness, chroma, contrast) comes from a scheme a
 designer already built — Solarized, Gruvbox, Rosé Pine, any
-[tinted-scheme](https://github.com/tinted-theming/schemes) YAML. 
-The divergence between the scheme and the picture it came
-from becomes structurally impossible.
+[tinted-scheme](https://github.com/tinted-theming/schemes) YAML.
 
 Guarantees, because a theme generator that can't be trusted is a
 hobby, not a tool:
@@ -146,91 +144,131 @@ swatches) + `clusters.json`; `map-wal` writes `wallpaper.png` +
 `compare.png` (side-by-side thumbnails) + `report.json` (per-slot pixel
 coverage).
 
-## Usage
+## Setup
 
 ### With cargo
 
-The crate is plain cargo, and the image codecs (png/jpeg/webp) are pure
-Rust — a stock Rust toolchain is the only requirement. Requires 1.85 or
-newer (edition 2024); rustup handles that automatically via
+Plain cargo; the image codecs (png/jpeg/webp) are pure Rust — a stock
+Rust toolchain is the only requirement. Requires 1.85 or newer
+(edition 2024); rustup handles that automatically via
 [`rust-toolchain.toml`](rust-toolchain.toml).
+`cargo test` runs the test suite: snapshot and determinism checks.
 
 ```sh
 git clone https://github.com/fortesoft-co/rehue
 cd rehue
-cargo run --release -- map-scheme \
-  --wallpaper my-photo.jpg \
-  --scheme nord \
-  --out mapped
-# mapped/scheme.yaml + preview.png + clusters.json
-
 cargo install --path .          # installs the `rehue` binary
-rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --harmonize 1
-
-# Scheme names resolve from the embedded tinted collection — no yaml
-# path needed; `rehue schemes` prints all names:
-rehue map-wal --wallpaper my-photo.jpg --scheme gruvbox-light --out repainted --harmonize 1
-
-# Everyday options are named flags; register dials accept a target —
-# `--chroma bg 1.6`, repeatable per register — while a bare value is the
-# seed (map-wal's bare --light/--chroma stay the image-wide grade).
-# Ramp/stop distribution sculpting and extraction options still live in
-# `--config` — see the round trip in Examples.
 ```
-
-Scheme inputs are plain tinted-scheme YAML files — or a NAME resolving
-against the embedded
-[tinted-theming/schemes](https://github.com/tinted-theming/schemes)
-collection: 361 base16 schemes (MIT as a whole), packed into the
-`cargo` branch of the [fortesoft-co fork](https://github.com/fortesoft-co/schemes)
-and embedded at build time. Upstream changes arrive as a
-cargo update, and a test fixture keeps the embedded text pinned, so
-they show up as a test diff, not silently. `cargo test` runs the test
-suite: snapshot and determinism checks.
 
 ### With Nix
 
-The flake exposes the same flows plus builders a consumer flake can
-import directly — the Stylix wiring is four lines: the remapped
-palette feeds `stylix.base16Scheme`, the repainted wallpaper feeds
-`stylix.image`, and GTK/Firefox/Zed/terminals/GNOME all restyle from
-one store path.
+The flake exposes the package plus the builders for the nix wiring:
 
 ```nix
 inputs.rehue.url = "github:fortesoft-co/rehue";
-
-# in a module:
-let
-  mapped = rehue.lib.${system}.mapScheme {
-    wallpaper = ./assets/glitter.webp;
-    scheme = "${pkgs.base16-schemes}/share/themes/gruvbox-light.yaml";
-    # registers = { fg = { blend-hue = 0.4; chroma = 0.85; }; };
-  };
-  repainted = rehue.lib.${system}.mapWal {
-    wallpaper = ./assets/glitter.webp;
-    scheme = "${mapped}/scheme.yaml";
-    config = { harmonize = 1.0; };
-  };
-in {
-  stylix.base16Scheme = "${mapped}/scheme.yaml";
-  stylix.image = "${repainted}/wallpaper.png";
-}
 ```
 
-Every builder's output is a plain store path: the colour work happens
-inside the build sandbox (nothing reads global config state, nothing
-calls out), and the results — a scheme YAML, a PNG, the extraction
-report — commit and diff like the rest of your config.
+The devshell pins the same toolchain through Nix (`nix develop`).
 
-## Options
+## CLI
 
-Every option is opt-in; absent config is the sane default. Both flows
-share registers (`bg` = base00, `surfaces` = base01-03, `fg` =
-base04-07, `accents` = base08-0F) with an `all` record seeding every
-register. The deep version — per-dial mechanics, visual demos, and
-merge semantics — lives in [OPTIONS.md](OPTIONS.md).
+Four commands:
 
-### Shared arrangement (both flows)
+- `rehue map-scheme` — scheme + wallpaper → scheme
+- `rehue map-wal` — wallpaper + scheme → wallpaper
+- `rehue inspect` — a wallpaper's hue families, or a scheme's slots, terminal-first
+- `rehue schemes` — the embedded scheme names
+
+Every command has a `--help` flag that prints its full option set:
+each flag with what it does, the values it accepts, and an example
+line; `-h` shows the short form.
+
+### Basic usage
+
+```sh
+# map a reference scheme with a wallpaper's hues:
+rehue map-scheme --wallpaper my-photo.jpg --scheme nord --out mapped
+# mapped/scheme.yaml + preview.png + clusters.json
+
+# repaint a wallpaper with a scheme's palette:
+rehue map-wal --wallpaper my-photo.jpg --scheme gruvbox-light --out repainted --harmonize 1
+
+# or repaint with the scheme you just mapped (the full round trip is
+# in Examples):
+rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted
+```
+
+### --scheme
+
+A scheme refers to a base16 color scheme, either as its name, or a yaml file containing the scheme.
+
+The `--scheme` flag applies to map-wal, map-scheme, inspect. A scheme input is either a **name** or a **path**.
+
+#### Bundled schemes
+
+`--scheme` can be called with any of the schemes from tinted theming.
+The [tinted theming](https://github.com/tinted-theming/schemes) repo provides 
+a collection of 361 base16 schemes. 
+
+Use `rehue schemes` to print the list.
+
+#### Bring your own bundle
+
+If you have your own directory of schemes, you can use `--scheme-dir` to
+override the defaults to use your own names; a scheme name looks up in
+that directory **before** the embedded collection.
+
+### inspect
+
+Inspect is used to show the colors used in a scheme or wallpaper. 
+By default it prints the colors to the terminal, 
+providing `--out` generates a png.
+
+Inspect has two modes.
+
+**Families** — index a wallpaper's hue families: the `[i]` indices
+that distribution configs target, with hue, chroma and weight per
+family — plus a truecolor swatch row whose positions match the
+printed indices:
+
+```
+rehue inspect --wallpaper butterfly.webp
+```
+
+**Scheme** — show a scheme's colors in the terminal: all 16 slots as
+truecolor swatches, four per line, in canonical order:
+
+```sh
+rehue inspect --scheme gruvbox-light      # by collection name
+rehue inspect --scheme my-theme.yaml      # by path
+```
+
+## Color Mapping
+
+The mental model is two directions of the same move. 
+
+**map-wal** pushes a picture's pixels toward the chosen palette: blend-hue and blend-chroma are movement dials, harmonize controls both at once. 
+
+**map-scheme** pulls the palette toward the picture: its blend-hue adopts the wallpaper's hue families. 
+
+The grammar's address term is the **register**. Colour dials belong to
+groups — `bg` (base00), `surfaces` (base01-03), `fg` (base04-07),
+`accents` (base08-0F) — so each dial lands where a desktop theme
+lives.
+
+Addressing is one rule deep: a bare dial flag sets the global seed
+(`--chroma 1.2`), a dial with a register targets that group
+(`--chroma accents 1.6`), and per-register records outrank the seeds —
+whether from targeted flags or config records; targeted flags repeat
+per register.
+
+Every dial is opt-in; absent config is the sane default, and an `all`
+record seeds every register. 
+
+To get a better idea of how this works and what each dial does, the
+visual demos and merge semantics live in [EXAMPLES.md](EXAMPLES.md).
+
+### Shared dials (arrangement, both flows)
 
 | option | semantics |
 | --- | --- |
@@ -263,14 +301,46 @@ Extraction (`map-scheme --config` / `rehue inspect --config`):
 | `dithering` / `dithering-mode` | dithering strength 0..1 (0 off) / kernel (default blue-noise) |
 | `light` / `chroma` | image-wide grade, applied last (additive L, multiplicative C) |
 
+### Stylix wiring (nix)
+
+The nix builders are four lines around it: the remapped palette feeds
+`stylix.base16Scheme`, the repainted wallpaper feeds `stylix.image`,
+and GTK/Firefox/Zed/terminals/GNOME all restyle from one store path.
+Every builder's output is a plain store path: the colour work happens
+inside the build sandbox (nothing reads global config state, nothing
+calls out), and the results — a scheme YAML, a PNG, the extraction
+report — commit and diff like the rest of your config. The loop
+closed: divergence between the scheme and the picture it came from
+becomes structurally impossible.
+
+```nix
+# in a module:
+let
+  mapped = rehue.lib.${system}.mapScheme {
+    wallpaper = ./assets/glitter.webp;
+    scheme = "${pkgs.base16-schemes}/share/themes/gruvbox-light.yaml";
+    # registers = { fg = { blend-hue = 0.4; chroma = 0.85; }; };
+  };
+  repainted = rehue.lib.${system}.mapWal {
+    wallpaper = ./assets/glitter.webp;
+    scheme = "${mapped}/scheme.yaml";
+    config = { harmonize = 1.0; };
+  };
+in {
+  stylix.base16Scheme = "${mapped}/scheme.yaml";
+  stylix.image = "${repainted}/wallpaper.png";
+}
+```
+
 ## Repository
 
 ```
 src/color.rs     sRGB/OKLab/OKLCH + circular-hue math (one source of truth)
-src/scheme.rs    base16 YAML parse/render + slot access
+src/scheme.rs    base16 YAML parse/render + slot access + name resolution
 src/extract.rs   chroma^2 hue histogram + deterministic circular k-means
 src/register.rs  map-scheme: the register pipeline and its options
 src/map_wal.rs   map-wal: per-pixel blend/grade + territory + dithering
+src/terminal.rs  truecolor ANSI strips for inspect (scheme + families modes)
 src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
 src/bin/rehue.rs the CLI
 tests/golden.rs  snapshot + determinism + vocabulary-contract checks
@@ -294,9 +364,6 @@ rustup users, the devshell does the same through Nix.
 
 ## Roadmap
 
-- **Terminal previews** — `inspect` swatches and whole schemes
-  rendered as truecolor ANSI, straight in the terminal — no image
-  viewer hop.
 - **UI previews** — demo renders of the scheme applied to real
   surfaces: a terminal, a code block, a web page, GTK and Qt widgets,
   so a scheme can be judged before it's wired in.
