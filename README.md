@@ -171,10 +171,10 @@ cargo run --release -- map-scheme \
 cargo install --path .          # installs the `rehue` binary
 rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --harmonize 1
 
-# Everyday knobs are named flags; register dials accept a target —
+# Everyday options are named flags; register dials accept a target —
 # `--chroma bg 1.6`, repeatable per register — while a bare value is the
 # seed (map-wal's bare --light/--chroma stay the image-wide grade).
-# Ramp/stop distribution sculpting and extraction knobs still live in
+# Ramp/stop distribution sculpting and extraction options still live in
 # `--config`:
 rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted --config remap.json
 ```
@@ -218,28 +218,28 @@ inside the build sandbox (nothing reads global config state, nothing
 calls out), and the results — a scheme YAML, a PNG, the extraction
 report — commit and diff like the rest of your config.
 
-## Knobs
+## Options
 
-Every knob is opt-in; absent config is the sane default. Both flows
+Every option is opt-in; absent config is the sane default. Both flows
 share registers (`bg` = base00, `surfaces` = base01-03, `fg` =
 base04-07, `accents` = base08-0F) with an `all` record seeding every
 register. The deep version — per-dial mechanics, visual demos, and
-merge semantics — lives in [KNOBS.md](KNOBS.md).
+merge semantics — lives in [OPTIONS.md](OPTIONS.md).
 
 ### Shared arrangement (both flows)
 
-| knob | semantics |
+| option | semantics |
 | --- | --- |
-| `distribution` | how the register's slots adopt the wallpaper's hue families: `true` = weight-ordered ramp, integer = pin to one family, array = explicit stops (family indices; duplicates give flat runs) |
-| `rotate` | integer; rotates the register's assigned hues across its slots (`1` = one slot right, wraps) |
+| `distribution` | hue-family adoption (JSON syntax: `true` = ramp, `3` = pin, `[0,1,2,3]` = stops) |
+| `rotate` | rotate the register's hues across its slots (`1` = one right, wraps) |
 
 ### map-scheme (wallpaper → scheme)
 
-| knob | semantics |
+| option | semantics |
 | --- | --- |
-| `blend-hue` | 0 = reference hue verbatim, 1 = full wallpaper mapping (default 1; shortest-arc circular interpolation between) |
-| `reach-deg` | accent claim gate: how far (in hue-degrees) a wallpaper family may sit from an accent slot's hue and still claim it (default 45) |
-| `light` / `chroma` | per-register additive lightness shift / multiplicative chroma ratio (0.8 muted, 1.3 vivid) |
+| `blend-hue` | hue adoption from the wallpaper, 0..1 (default 1) |
+| `reach-deg` | accent claim gate in hue degrees (default 45) |
+| `light` / `chroma` | additive lightness shift / multiplicative chroma ratio, per register |
 
 Extraction (`map-scheme --config` / `rehue inspect --config`):
 `image-max-dimension`, `chroma-pixel-floor`, `lightness-window`,
@@ -248,21 +248,16 @@ Extraction (`map-scheme --config` / `rehue inspect --config`):
 
 ### map-wal (scheme → wallpaper)
 
-| knob | semantics |
+| option | semantics |
 | --- | --- |
-| `territory` | `soft` (default): every pixel's target is the palette's weighted mean under a smooth influence field — boundaries become smooth crossings, posterize disappears by construction. `hard`: nearest-slot snapping, exact palette colours, flat-constant look |
-| `harmonize` | the one-dial default, 0..1 (default 0). Seeds `blend-hue` + `blend-chroma` wherever they're unset; explicit dials win |
-| `blend-hue` / `blend-chroma` | how far hue / chroma move toward the palette (0 = raw pixel, 1 = full adoption) |
-| `blend-light` | lightness adoption, default 0 and never facade-seeded — photographic lightness survives by design |
-| `reach-deg` | hue-wheel falloff width (`soft`) / influence cutoff (`hard`), default 45 |
-| `gray-chroma-floor` | chroma below which pixels count as achromatic (default 0.02; they key to the scheme's neutrals by lightness and keep their raw hue) |
-| `dithering` / `dithering-mode` | 0..1 strength; `blue-noise` (default) / `bayer` / `floyd-steinberg` / `atkinson` / `none` |
-| `light` / `chroma` | image-wide grading, applied last (additive L, multiplicative C) |
-
-Per-register overrides accept every dial except `dithering`, which is
-global. Dithering is inert at zero adoption and at full-strength
-adoption (the target swallows the residual); it exists for the partial
--adopt look.
+| `territory` | how pixels see the palette: `soft` influence field (default) / `hard` flat-constant snapping |
+| `harmonize` | one-dial facade: seeds `blend-hue` + `blend-chroma` where unset (default 0) |
+| `blend-hue` / `blend-chroma` | hue / chroma movement toward the palette (0 = raw pixel, 1 = full snap) |
+| `blend-light` | lightness movement, default 0 — photographic |
+| `reach-deg` | influence reach in hue degrees (default 45) |
+| `gray-chroma-floor` | achromatic threshold (default 0.02) |
+| `dithering` / `dithering-mode` | dithering strength 0..1 (0 off) / kernel (default blue-noise) |
+| `light` / `chroma` | image-wide grade, applied last (additive L, multiplicative C) |
 
 ## Repository
 
@@ -270,7 +265,7 @@ adoption (the target swallows the residual); it exists for the partial
 src/color.rs     sRGB/OKLab/OKLCH + circular-hue math (one source of truth)
 src/scheme.rs    base16 YAML parse/render + slot access
 src/extract.rs   chroma^2 hue histogram + deterministic circular k-means
-src/register.rs  map-scheme: the register pipeline and its knobs
+src/register.rs  map-scheme: the register pipeline and its options
 src/map_wal.rs   map-wal: per-pixel blend/grade + territory + dithering
 src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
 src/bin/rehue.rs the CLI
@@ -305,7 +300,7 @@ rustup users, the devshell does the same through Nix.
   surfaces: a terminal, a code block, a web page, GTK and Qt widgets,
   so a scheme can be judged before it's wired in.
 - **base24 coverage** — base10-17 slots.
-- **Extraction tuning** — the extraction knobs documented as their own
+- **Extraction tuning** — the extraction options documented as their own
   surface, optionally backed by alternative extraction libraries.
 - **Scheme generation** — the big one: derive the lightness/chroma
   structure a designer would have built, guided by the wallpaper —

@@ -48,7 +48,7 @@ enum Commands {
         /// e.g. --out mapped
         #[arg(long)]
         out: PathBuf,
-        /// Map config JSON: extraction knobs + per-register records.
+        /// Map config JSON: extraction options + per-register records.
         ///
         /// e.g. --config roundtrip.json
         #[arg(long, value_name = "JSON")]
@@ -89,11 +89,11 @@ enum Commands {
         #[arg(long, value_name = "[REG] C", num_args = 1..=2)]
         chroma: Vec<String>,
     },
-    /// Map a scheme's palette onto a wallpaper's colours (all knobs opt-in).
+    /// Map a scheme's palette onto a wallpaper's colours (all options opt-in).
     ///
     /// Repaint an image with a base16 scheme's palette: every pixel
     /// moves toward its nearest palette slot — hue and chroma by dial,
-    /// lightness stays photographic by default.  All knobs are opt-in;
+    /// lightness stays photographic by default.  All options are opt-in;
     /// with all-zero dials the output is a re-encoded passthrough.
     ///
     /// Example: rehue map-wal --wallpaper glitter.webp --scheme gruvbox-light.yaml --out repainted --harmonize 1
@@ -115,7 +115,7 @@ enum Commands {
         /// e.g. --out repainted
         #[arg(long)]
         out: PathBuf,
-        /// Remap config JSON: extraction knobs + per-register records
+        /// Remap config JSON: extraction options + per-register records
         /// (records beat the bare-flag seeds).
         ///
         /// e.g. --config remap.json
@@ -216,7 +216,7 @@ enum Commands {
         /// e.g. --wallpaper ~/pictures/butterfly.webp
         #[arg(long)]
         wallpaper: PathBuf,
-        /// Extraction knobs as JSON.
+        /// Extraction options as JSON.
         ///
         /// e.g. --config extract.json
         #[arg(long, value_name = "JSON")]
@@ -415,7 +415,7 @@ fn wal_register(
     set(config.registers.entry(name).or_default());
 }
 
-/// The named-flag subset of map-scheme's knobs.  `reach-deg` is the
+/// The named-flag subset of map-scheme's options.  `reach-deg` is the
 /// config-level gate; the register dials exist only per register, so a
 /// bare flag seeds the `all` record (per-register records in `--config`
 /// still win) and a targeted `[register] value` occurrence writes the
@@ -472,7 +472,7 @@ impl SchemeOverrides {
     }
 }
 
-/// The named-flag subset of map-wal's knobs.  Global dials are bare
+/// The named-flag subset of map-wal's options.  Global dials are bare
 /// flags; register dials are targeted `[register] value` (CLI beats the
 /// file at that key), and `--distribution`/`--rotate` seed the `all`
 /// record when bare.  A bare `--light`/`--chroma` is the image-wide
@@ -787,7 +787,7 @@ fn run_map_wal(
     write_json_file(&out.join("report.json"), &report)?;
 
     if passive {
-        println!("rehue map-wal: passthrough (no knobs active)");
+        println!("rehue map-wal: passthrough (no options active)");
     } else {
         let total: u64 = coverage.iter().sum();
         println!("rehue map-wal: remapped {} px", total);

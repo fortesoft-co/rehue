@@ -48,7 +48,7 @@ pub fn slot_index(slot: &str) -> usize {
         .expect("canonical slot name")
 }
 
-/// The `distribution` knob: how a register's slots pick up the wallpaper's
+/// The `distribution` option: how a register's slots pick up the wallpaper's
 /// colour families.  Family indices are positions in the extraction output
 /// (weight-ordered, heaviest first) - what `rehue inspect` prints.
 ///
@@ -132,7 +132,7 @@ pub struct RegisterSettings {
     pub chroma: f64,
 }
 
-/// Map-scheme configuration: extraction knobs, `reach-deg` (the accent
+/// Map-scheme configuration: extraction options, `reach-deg` (the accent
 /// claim gate: how far a family hue may sit from an accent slot's hue and
 /// still claim it) and register overrides.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,7 +192,7 @@ pub fn resolve_distribution(
     Ok(state)
 }
 
-/// The `defaults // all // register` resolution, with knob validation.
+/// The `defaults // all // register` resolution, with option validation.
 pub fn resolved_registers(
     config: &MapConfig,
 ) -> Result<BTreeMap<&'static str, RegisterSettings>, String> {
@@ -332,7 +332,7 @@ fn choose_cluster(
 /// policy - neutrals adopt the heaviest family; accents anchor-match the
 /// nearest chroma-eligible clusters, near misses keeping the scheme
 /// colour.  Each slot's lightness and chroma come from the reference
-/// scheme and only ever change via the grade knobs and the legibility
+/// scheme and only ever change via the grade options and the legibility
 /// guard.
 pub fn retint(
     slot_hexes: &[String],

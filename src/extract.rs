@@ -10,7 +10,7 @@ use image::{DynamicImage, ImageReader, imageops};
 
 use crate::color::{circ_dist, floor_mod, rgb_to_oklch, weighted_circ_mean};
 
-/// Extraction knobs - deserialize from the map-scheme config JSON with
+/// Extraction options - deserialize from the map-scheme config JSON with
 /// kebab-case keys (underscore aliases accepted for backwards
 /// compatibility with the old nix wrapper's parameter names).
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

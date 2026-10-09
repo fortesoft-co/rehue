@@ -42,7 +42,7 @@ const BAYER8: [[u8; 8]; 8] = [
     [63, 31, 55, 23, 61, 29, 53, 21],
 ];
 
-/// The `dithering-mode` knob.  Ordered modes threshold the adopted share
+/// The `dithering-mode` option.  Ordered modes threshold the adopted share
 /// with a pixel mask; diffusion modes propagate the mix residual to
 /// neighbouring pixels (serpentine scan order, fully deterministic).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
@@ -74,7 +74,7 @@ impl DitherMode {
     }
 }
 
-/// The `territory` knob: how pixels relate to the palette.
+/// The `territory` option: how pixels relate to the palette.
 ///
 /// **hard** (opt-in): every pixel anchors to its nearest slot and adopts
 /// that slot's constants - fast, stylized, and exactly the mechanism that
@@ -121,7 +121,7 @@ pub struct WalRegisterConfig {
     pub chroma: Option<f64>,
 }
 
-/// Remap knobs; every one is opt-in.  Canonical keys kebab-case.  The
+/// Remap options; every one is opt-in.  Canonical keys kebab-case.  The
 /// flattened extraction section feeds the arrangement stage's family
 /// resolution (only needed when a register sets `distribution`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -273,7 +273,7 @@ pub struct SlotPalette {
     pub lch: Lch,
 }
 
-/// Per-slot mix/grade knobs: the slot's register's resolved settings.
+/// Per-slot mix/grade options: the slot's register's resolved settings.
 #[derive(Debug, Clone, Copy)]
 pub struct SlotKnobs {
     pub blend_hue: f64,
@@ -283,7 +283,7 @@ pub struct SlotKnobs {
     pub chroma: f64,
 }
 
-/// Per-slot knobs for the 16 canonical slots.
+/// Per-slot options for the 16 canonical slots.
 pub fn slot_knobs(regs: &BTreeMap<&'static str, WalRegisterSettings>) -> Vec<SlotKnobs> {
     BASE_SLOTS
         .iter()
@@ -349,7 +349,7 @@ pub struct RemapOutput {
     pub coverage: Vec<u64>,
 }
 
-/// True when no knob is active anywhere: the output is then a re-encoded
+/// True when no option is active anywhere: the output is then a re-encoded
 /// passthrough of the input (matching the documented contract).  Decided
 /// on the resolved values only - dithering is inert at zero adoption and
 /// does not decide passivity.
@@ -545,7 +545,7 @@ const ATKINSON_KERNEL: [(i64, i64, f64); 6] = [
 /// The full pipeline.  `pixels` is a flat rgb8 buffer of a
 /// `width x height` image; `slots` the 16 palette slot colours in
 /// canonical order (already arranged by `arrange_palette` when
-/// distribution knobs are in play); `knobs` the per-slot mix/grade
+/// distribution options are in play); `knobs` the per-slot mix/grade
 /// values; `neutral_slots` the indices of the scheme's low-chroma slots
 /// (achromatic pixels key against those by lightness rather than by hue).
 pub fn apply(

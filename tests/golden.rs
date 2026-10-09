@@ -332,7 +332,7 @@ fn rotate_composes_after_distribution() {
 fn stale_register_keys_are_rejected() {
     // The pre-v0.2 vocabulary fails loudly instead of aliasing.
     let err = serde_json::from_str::<MapConfig>("{\"registers\":{\"fg\":{\"harmonize\":0.5}}}")
-        .expect_err("renamed knobs are not silently ignored");
+        .expect_err("renamed options are not silently ignored");
     assert!(err.to_string().contains("unknown field"));
 }
 
@@ -416,7 +416,7 @@ fn wal_arrangement_reshapes_the_palette() {
 }
 
 #[test]
-fn wal_arrangement_and_per_register_knobs_are_deterministic() {
+fn wal_arrangement_and_per_register_options_are_deterministic() {
     let (_, slots) = solarized();
     let mut config = rehue::map_wal::RemapConfig::default();
     config.harmonize = 0.9;
@@ -670,7 +670,7 @@ fn map_wal_cli_flags_track_the_config_surface() {
         &["--harmonize", "0.9"],
     );
     let loud = run("rehue-cli-flags09", None, &["--harmonize", "0.9"]);
-    // A named flag beats the same knob in the config file...
+    // A named flag beats the same option in the config file...
     assert_eq!(mixed, loud, "flag wins over the config value");
     // ...and the override actually did something.
     assert_ne!(mixed, quiet, "the override changed the output");
