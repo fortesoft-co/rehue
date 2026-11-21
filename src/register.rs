@@ -17,6 +17,14 @@ use crate::scheme::BASE_SLOTS;
 
 pub const REGISTER_NAMES: [&str; 4] = ["bg", "surfaces", "fg", "accents"];
 
+/// What each register is, for the docs (same order as `REGISTER_NAMES`).
+pub const REGISTER_ROLES: [&str; 4] = [
+    "the background",
+    "panels, selections, comments",
+    "text",
+    "syntax colors, highlights, status colors",
+];
+
 /// Slot -> register ("bg" covers base00; surfaces base01-03; fg base04-07;
 /// accents base08-0F).
 pub fn register_of_slot(slot: &str) -> &'static str {

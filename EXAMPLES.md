@@ -355,18 +355,20 @@ feeds map-scheme's mapping and map-wal's distribution; `rehue inspect`
 prints its output as the index table (with `--out`, a swatch strip
 whose positions are the indices).
 
+<!-- gen:extraction-table -->
 | option | default | semantics |
 | --- | --- | --- |
-| `image-max-dimension` | 256 | work at this capped resolution (bilinear-free Lanczos resize) |
+| `image-max-dimension` | 256 | work at this capped resolution (Lanczos resize) |
 | `chroma-pixel-floor` | 0.04 | ignore pixels below this chroma |
-| `lightness-window` | [0.10, 0.92] | only pixels inside this L band vote |
+| `lightness-window` | [0.1, 0.92] | only pixels inside this lightness band vote |
 | `max-hues` | 6 | at most this many families survive |
 | `seed-separation-deg` | 25 | histogram seeding: minimum separation between seeds |
 | `cluster-iterations` | 30 | fixed k-means iteration count |
 | `merge-deg` | 18 | merge families closer than this |
 | `min-cluster-weight` | 0.02 | drop families lighter than this mass |
-| `accent-chroma-floor` | 0.06 | a family must be at least this chromatic to be claim-worthy by accents |
+| `accent-chroma-floor` | 0.06 | a family must be at least this chromatic to claim an accent slot |
 | `fg-contrast-floor` | 0.25 | legibility guard: restore fg-vs-bg contrast if graded below |
+<!-- /gen:extraction-table -->
 
 `max-hues` narrowing what survives, on the butterfly (2 / 4 / 6):
 

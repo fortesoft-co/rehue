@@ -29,7 +29,7 @@ rehue splits the job in two:
 - **Which hues** you get comes from the wallpaper.
 - **How those hues are shaped** (lightness, chroma, contrast) comes
   from a scheme a designer already built: Solarized, Gruvbox, Rosé
-  Pine, or any of the 375
+  Pine, or any of the <!-- gen:scheme-count -->375<!-- /gen:scheme-count -->
   [tinted-theming](https://github.com/tinted-theming/schemes) schemes.
 
 Then every part of it is a dial. Shift lightness on the accents only,
@@ -188,12 +188,14 @@ Two more tabs approximate how Stylix maps the same 16 slots onto GTK
 A base16 scheme's 16 slots fall into four groups, which rehue calls
 **registers**:
 
+<!-- gen:groups -->
 | register | slots | what it is |
 | --- | --- | --- |
 | `bg` | base00 | the background |
 | `surfaces` | base01-03 | panels, selections, comments |
 | `fg` | base04-07 | text |
 | `accents` | base08-0F | syntax colors, highlights, status colors |
+<!-- /gen:groups -->
 
 Every dial can apply to everything, or to one group:
 
@@ -223,40 +225,45 @@ The two commands are the same move pointed opposite ways.
 **map-scheme** pulls the palette toward the picture. **map-wal**
 pushes the picture's pixels toward the palette.
 
-#### Shared (both commands)
-
-| option | what it does |
-| --- | --- |
-| `distribution` | which wallpaper hue families go to which slots (JSON: `true` = spread across, `3` = pin to family 3, `[0,1,2,3]` = explicit list) |
-| `rotate` | rotate a group's hues across its slots (`1` = one step right, wraps around) |
-
-Family numbers come from `rehue inspect --wallpaper` (below).
-
 #### map-scheme (wallpaper → scheme)
 
-| option | what it does |
-| --- | --- |
-| `blend-hue` | how far slots adopt the wallpaper's hues, 0..1 (default 1) |
-| `reach-deg` | how far, in hue degrees, an accent can reach to claim a wallpaper hue (default 45) |
-| `light` / `chroma` | shift lightness (added) / scale chroma (multiplied), per group |
+<!-- gen:flags:map-scheme:grading -->
+| flag | value | what it does |
+| --- | --- | --- |
+| `--reach-deg` | `DEG` | How far, in hue degrees, an accent can reach to claim a wallpaper hue (default 45) |
+| `--distribution` | `[REG] VAL` | Which wallpaper hue families go to the group's slots: `true` = spread across, `3` = pin to family 3, `[0,1,2,3]` = explicit list |
+| `--rotate` | `[REG] N` | Rotate a group's hues across its slots (`1` = one step right, wraps around) |
+| `--blend-hue` | `[REG] 0..1` | How far slots adopt the wallpaper's hues, 0..1 (default 1) |
+| `--light` | `[REG] L` | Shift a group's lightness (added; e.g. -0.1 darker) |
+| `--chroma` | `[REG] C` | Scale a group's chroma (multiplied; 0.8 muted, 1.3 vivid) |
+<!-- /gen:flags:map-scheme:grading -->
 
-Extraction settings (via `--config` on `map-scheme` or `inspect`):
-`image-max-dimension`, `chroma-pixel-floor`, `lightness-window`,
-`max-hues`, `seed-separation-deg`, `cluster-iterations`, `merge-deg`,
-`min-cluster-weight`, `accent-chroma-floor`, `fg-contrast-floor`.
+Extraction settings go in the `--config` JSON (on `map-scheme` or
+`inspect`); [EXAMPLES.md](EXAMPLES.md#extraction) describes each:
+
+<!-- gen:extraction-keys -->
+`image-max-dimension`, `chroma-pixel-floor`, `lightness-window`, `max-hues`, `seed-separation-deg`, `cluster-iterations`, `merge-deg`, `min-cluster-weight`, `accent-chroma-floor`, `fg-contrast-floor`
+<!-- /gen:extraction-keys -->
 
 #### map-wal (scheme → wallpaper)
 
-| option | what it does |
-| --- | --- |
-| `harmonize` | one-dial shortcut: sets `blend-hue` and `blend-chroma` wherever they aren't set (default 0) |
-| `blend-hue` / `blend-chroma` | how far pixel hue / chroma move toward the palette (0 = untouched, 1 = full snap) |
-| `blend-light` | how far pixel lightness moves (default 0, which keeps the image photographic) |
-| `territory` | `soft`: each palette color pulls nearby pixels with smooth falloff (default). `hard`: pixels snap to flat palette colors |
-| `reach-deg` | how far, in hue degrees, a palette color's pull extends (default 45) |
-| `gray-chroma-floor` | below this chroma a pixel counts as gray (default 0.02) |
-| `dithering` / `dithering-mode` | dithering strength 0..1 (0 = off) / pattern (default blue-noise) |
-| `light` / `chroma` | final whole-image grade, applied last (lightness added, chroma multiplied) |
+<!-- gen:flags:map-wal:grading -->
+| flag | value | what it does |
+| --- | --- | --- |
+| `--territory` | `soft \| hard` | How palette colors pull pixels: `soft` = smooth falloff (default), `hard` = pixels snap to flat palette colors |
+| `--harmonize` | `0..1` | One-dial shortcut, 0..1: sets blend-hue and blend-chroma wherever they aren't set (default 0) |
+| `--blend-hue` | `[REG] 0..1` | How far pixel hue moves toward the palette (0 = untouched, 1 = full snap) |
+| `--blend-chroma` | `[REG] 0..1` | How far pixel chroma moves toward the palette (0 = untouched, 1 = adopt the slot's chroma) |
+| `--blend-light` | `[REG] 0..1` | How far pixel lightness moves toward the palette (default 0, which keeps the image photographic) |
+| `--reach-deg` | `DEG` | How far, in hue degrees, a palette color's pull extends (default 45) |
+| `--gray-chroma-floor` | `C` | Below this chroma a pixel counts as gray (default 0.02) |
+| `--dithering` | `0..1` | Dithering strength 0..1 (0 = off) |
+| `--dithering-mode` | `blue-noise \| bayer \| floyd-steinberg \| atkinson \| none` | Dithering pattern (default blue-noise) |
+| `--distribution` | `[REG] VAL` | Which wallpaper hue families recolor the group's slots before mapping: `true` = spread across, `3` = pin to family 3, `[0,1,2,3]` = explicit list |
+| `--rotate` | `[REG] N` | Rotate a group's hues across its slots (`1` = one step right, wraps around) |
+| `--light` | `[REG] L` | Lightness shift (added). Bare: the whole-image grade, applied last; targeted: that group's grade |
+| `--chroma` | `[REG] C` | Chroma scale (multiplied). Bare: the whole-image grade, applied last; targeted: that group's grade |
+<!-- /gen:flags:map-wal:grading -->
 
 #### LUT export
 
@@ -281,13 +288,15 @@ just its color.
 
 ## Commands
 
+<!-- gen:commands -->
 | command | what it does |
 | --- | --- |
-| `rehue map-scheme` | scheme + wallpaper → scheme |
-| `rehue map-wal` | wallpaper + scheme → wallpaper |
-| `rehue enhance` | upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
-| `rehue inspect` | show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
-| `rehue apply` | run a pipeline file and apply the result: scheme to tinty, wallpaper to your command |
+| `rehue map-scheme` | Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the scheme's structure |
+| `rehue map-wal` | Wallpaper + scheme → wallpaper: repaint the image with the scheme's palette |
+| `rehue inspect` | Show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
+| `rehue enhance` | Upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
+| `rehue apply` | Run a pipeline file and apply the result: scheme to tinty, wallpaper to your command |
+<!-- /gen:commands -->
 
 `--help` on any command prints every option with what it does, the
 values it accepts and an example; `-h` shows the short form. `--out`
@@ -296,7 +305,7 @@ defaults to `rehue-out`.
 ### Choosing a scheme
 
 `--scheme` (on `map-scheme`, `map-wal` and `inspect`) takes either a
-**name** from the bundled collection (all 375
+**name** from the bundled collection (all <!-- gen:scheme-count -->375<!-- /gen:scheme-count -->
 [tinted-theming](https://github.com/tinted-theming/schemes) base16
 schemes, the same set Stylix uses) or a **path** to a scheme YAML.
 
@@ -480,6 +489,10 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   pop, duotone) selectable by name, with your own presets as files and
   explicit options still overriding them. Applies to wallpapers, LUTs
   and icons alike.
+- **WCAG contrast mode**: a contrast-ratio option for map-scheme
+  (e.g. 4.5:1, the ratio theme designers check against) alongside the
+  lightness-gap guard `min-text-contrast`, and possibly covering more
+  foreground slots than base05.
 - **Scheme generation**: the big one. Derive the lightness/chroma/
   contrast structure a designer would have built, guided by the
   wallpaper, so map-scheme works without a reference scheme at all.

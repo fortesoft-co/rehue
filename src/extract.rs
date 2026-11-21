@@ -34,6 +34,39 @@ pub struct ExtractionParams {
     pub fg_contrast_floor: f64,
 }
 
+impl ExtractionParams {
+    /// Every config key with a one-line description, in declaration
+    /// order.  The docs tables render from this; a test checks it names
+    /// exactly the serialized keys.
+    pub const KEYS: [(&'static str, &'static str); 10] = [
+        (
+            "image-max-dimension",
+            "work at this capped resolution (Lanczos resize)",
+        ),
+        ("chroma-pixel-floor", "ignore pixels below this chroma"),
+        (
+            "lightness-window",
+            "only pixels inside this lightness band vote",
+        ),
+        ("max-hues", "at most this many families survive"),
+        (
+            "seed-separation-deg",
+            "histogram seeding: minimum separation between seeds",
+        ),
+        ("cluster-iterations", "fixed k-means iteration count"),
+        ("merge-deg", "merge families closer than this"),
+        ("min-cluster-weight", "drop families lighter than this mass"),
+        (
+            "accent-chroma-floor",
+            "a family must be at least this chromatic to claim an accent slot",
+        ),
+        (
+            "fg-contrast-floor",
+            "legibility guard: restore fg-vs-bg contrast if graded below",
+        ),
+    ];
+}
+
 impl Default for ExtractionParams {
     fn default() -> Self {
         Self {

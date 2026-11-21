@@ -5,6 +5,7 @@
 
 pub mod apply;
 pub mod bluenoise;
+pub mod cli;
 pub mod color;
 pub mod enhance;
 pub mod extract;
