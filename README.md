@@ -258,6 +258,27 @@ Extraction settings (via `--config` on `map-scheme` or `inspect`):
 | `dithering` / `dithering-mode` | dithering strength 0..1 (0 = off) / pattern (default blue-noise) |
 | `light` / `chroma` | final whole-image grade, applied last (lightness added, chroma multiplied) |
 
+#### LUT export
+
+`map-wal --lut hald` (or `--lut cube`) also bakes the grade into a 3D
+lookup table, `lut.png` (Hald CLUT) or `lut.cube`, so other tools can
+apply exactly the same grade to other images or to video:
+
+```sh
+rehue map-wal --wallpaper wall.webp --scheme mapped/scheme.yaml --out graded \
+  --harmonize 1 --lut hald --lut-level 16
+
+magick photo.jpg graded/lut.png -hald-clut photo-graded.jpg          # ImageMagick
+ffmpeg -i clip.mp4 -i graded/lut.png -filter_complex '[0][1]haldclut' out.mp4   # ffmpeg
+```
+
+`--lut-level` sets the resolution (default 8, i.e. 64 points per
+channel; `.cube` goes up to 8). At level 16 the Hald LUT covers every
+8-bit color, and ImageMagick reproduces rehue's own output pixel for
+pixel; lower levels are interpolated by the tool applying them. Needs
+`dithering` 0, because a dithered pixel depends on its position, not
+just its color.
+
 ## Commands
 
 | command | what it does |
@@ -451,11 +472,6 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   color mapping drives it (map-wal's, or one tuned for flat icon
   palettes) is an open design question. Includes a Nix builder whose
   output plugs into Stylix's `stylix.icons`.
-- **LUT export**: with dithering off, map-wal is a pure function of
-  each pixel's color, so the whole mapping can be baked into a Hald
-  CLUT or `.cube` file. Repaints become a table lookup (build once, at
-  roughly the cost of one 4K image), and the same grade can be applied
-  by ImageMagick, ffmpeg (video), GIMP, Darktable or OBS.
 - **Scheme generation**: the big one. Derive the lightness/chroma/
   contrast structure a designer would have built, guided by the
   wallpaper, so map-scheme works without a reference scheme at all.
@@ -465,7 +481,8 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
 - **base24 coverage**: slots base10-17.
 - **Media formats**: more inputs beyond png / jpeg / webp (gif, tiff,
   bmp, qoi, avif where a pure-Rust decoder allows), and animated
-  GIF / APNG / WebP once LUT export makes per-frame repaints cheap.
+  GIF / APNG / WebP (LUT export already makes per-frame repaints a
+  table lookup).
 - **Alternative extraction backends**: optional extraction libraries
   alongside the built-in histogram + circular k-means (the options
   themselves are documented in [EXAMPLES.md](EXAMPLES.md#extraction)).
@@ -477,6 +494,8 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   Non-dithered and ordered-dither modes parallelize cleanly (each
   pixel depends only on x, y), which should bring a 33MP remap from
   ~18s to ~2-3s; error-diffusion dithering stays sequential by nature.
+  For non-dithered runs, a LUT (already built across threads for
+  `--lut`) is the other fast path: build once, then look up.
 
 ## Development
 
@@ -519,7 +538,8 @@ src/color.rs     sRGB/OKLab/OKLCH + circular-hue math (one source of truth)
 src/scheme.rs    base16 YAML parse/render + slot access + name resolution
 src/extract.rs   chroma^2 hue histogram + deterministic circular k-means
 src/register.rs  map-scheme: the register pipeline and its options
-src/map_wal.rs   map-wal: per-pixel blend/grade + territory + dithering
+src/map_wal.rs   map-wal: the per-colour remap (ColorMap) + territory + dithering
+src/lut.rs       Hald CLUT / .cube export of a colour function
 src/terminal.rs  truecolor ANSI strips for inspect (scheme + families modes)
 src/enhance.rs   enhance: Lanczos + vulkan SR (realesrgan-ncnn-vulkan)
 src/preview.rs   the compiled-in preview.html (css-only views; gtk/qt mocks)
@@ -529,7 +549,7 @@ src/bin/rehue.rs the CLI
 build.rs         embeds vendor/tinted-schemes as the bundled scheme table
 vendor/          tinted-theming/schemes snapshot (scripts/update-schemes.sh)
 tests/           per-surface suites: extraction, map_scheme, map_wal,
-                 scheme, terminal, enhance, preview, cli, apply
+                 scheme, terminal, enhance, preview, cli, apply, lut
                  (+ common/ helpers)
 ```
 

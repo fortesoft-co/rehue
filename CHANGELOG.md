@@ -5,6 +5,18 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
+## [Unreleased]
+
+### Added
+
+- `map-wal --lut hald|cube [--lut-level 2..16]`: bake the grade into a
+  3D LUT (`lut.png` Hald CLUT or `lut.cube`) for ImageMagick, ffmpeg,
+  GIMP, Darktable or Resolve. At level 16 ImageMagick reproduces
+  rehue's output exactly. Needs dithering 0; `.cube` goes up to level 8.
+- Library: `map_wal::ColorMap`, the per-colour remap (`map_rgb`) that
+  `map_wal::apply` runs per pixel, and `rehue::lut` (Hald / .cube
+  builders, built across threads).
+
 ## [0.2.0] - 2026-11-21
 
 ### Added
