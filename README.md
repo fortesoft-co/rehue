@@ -53,7 +53,7 @@ repaint the wallpaper with that scheme.
 ## Quick start
 
 ```sh
-cargo install --git https://github.com/fortesoft-co/rehue
+cargo install rehue
 
 # your scheme, re-hued with your wallpaper's colors:
 rehue map-scheme --wallpaper my-photo.jpg --scheme nord --out mapped
@@ -315,9 +315,15 @@ row) and scheme mode writes `preview.html` (the same mock page
 ### With cargo
 
 The image codecs (png/jpeg/webp) are pure Rust, so a stock Rust
-toolchain (1.85 or newer, edition 2024) is all you need.
-[`rust-toolchain.toml`](rust-toolchain.toml) lets rustup pick the
-right version automatically.
+toolchain (1.88 or newer) is all you need.
+
+```sh
+cargo install rehue
+```
+
+Or the latest unreleased code, from a clone
+([`rust-toolchain.toml`](rust-toolchain.toml) lets rustup pick the
+right version automatically):
 
 ```sh
 git clone https://github.com/fortesoft-co/rehue
