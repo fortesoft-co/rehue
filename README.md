@@ -379,15 +379,13 @@ can apply it today. A built-in `rehue apply` is on the roadmap.
   binary, replacing the git dependency. This unblocks
   `cargo install rehue` from crates.io, and the pinned commit keeps
   the bundle reproducible.
-- **UI previews**: demo renders of a scheme applied to real surfaces
-  (a terminal, a code block, a web page, GTK and Qt widgets), so a
-  scheme can be judged before it's wired in.
 - **ADVANCED_EXAMPLES.md**: the complex combinations kept out of the
   main docs (distribution across groups, reach tuning, colorize
   recipes), each with the images to prove it.
 - **base24 coverage**: slots base10-17.
-- **Extraction tuning**: the extraction options documented on their
-  own, optionally backed by alternative extraction libraries.
+- **Alternative extraction backends**: optional extraction libraries
+  alongside the built-in histogram + circular k-means (the options
+  themselves are documented in [EXAMPLES.md](EXAMPLES.md#extraction)).
 - **Enhance expansion**: beyond v1 (Lanczos + Vulkan SR): denoise and
   JPEG-artifact restoration models (Real-CUGAN / realesrnet), a
   low-strength img2img restyle (sd.cpp) as a creative pass, and an
