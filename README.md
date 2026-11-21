@@ -443,6 +443,14 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
     inside existing CSS/config files, as lutgen's `patch` does. Never
     the default path: fidelity is uncertain and in-place writes can
     break files, so at minimum diff-first with explicit confirmation.
+- **Icon themes**: recolor whole icon themes (Papirus, Breeze, …) to a
+  scheme. Icon themes are mostly SVG, where colors are text, so the
+  vectors can be rewritten exactly rather than rasterized and traced;
+  PNG icons take the raster path. Icons the toolkit recolors at
+  runtime (stylesheet / `currentColor` icons) are left alone. Which
+  color mapping drives it (map-wal's, or one tuned for flat icon
+  palettes) is an open design question. Includes a Nix builder whose
+  output plugs into Stylix's `stylix.icons`.
 - **LUT export**: with dithering off, map-wal is a pure function of
   each pixel's color, so the whole mapping can be baked into a Hald
   CLUT or `.cube` file. Repaints become a table lookup (build once, at
