@@ -92,3 +92,39 @@ fn absent_out_defaults_to_rehue_out() {
 
     let _ = std::fs::remove_dir_all(&workdir);
 }
+
+#[test]
+fn register_dials_accept_negative_values() {
+    // The help text's own examples (`--light surfaces -0.02`,
+    // `--light bg -0.05`) must parse: a negative value is a value, not a flag.
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let wall = std::env::temp_dir().join(format!("rehue-neg-wall-{}.png", std::process::id()));
+    gradient_image((32, 32)).save(&wall).expect("wall writes");
+    let scheme = fixture("solarized-dark.yaml");
+
+    for command in ["map-scheme", "map-wal"] {
+        for dial in [
+            &["--light", "-0.05"][..],
+            &["--light", "surfaces", "-0.02"][..],
+            &["--rotate", "accents", "-1"][..],
+        ] {
+            let output = std::process::Command::new(bin)
+                .arg(command)
+                .arg("--wallpaper")
+                .arg(&wall)
+                .arg("--scheme")
+                .arg(&scheme)
+                .args(dial)
+                .arg("--dry-run")
+                .output()
+                .expect("rehue binary runs");
+            assert!(
+                output.status.success(),
+                "{command} {dial:?} rejected: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    let _ = std::fs::remove_file(&wall);
+}

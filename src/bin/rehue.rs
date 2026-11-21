@@ -80,28 +80,28 @@ enum Commands {
         /// only).
         ///
         /// e.g. --distribution accents '[0,1,2,3]'
-        #[arg(long, value_name = "[REG] VAL", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] VAL", num_args = 1..=2, allow_negative_numbers = true)]
         distribution: Vec<String>,
         /// Rotate the register's hues across its slots (1 = one right,
         /// wraps).
         ///
         /// e.g. --rotate accents 1
-        #[arg(long, value_name = "[REG] N", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] N", num_args = 1..=2, allow_negative_numbers = true)]
         rotate: Vec<String>,
         /// Hue adoption from the wallpaper, 0..1 (default 1).
         ///
         /// e.g. --blend-hue 0.4   --blend-hue accents 1
-        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
         blend_hue: Vec<String>,
         /// Additive lightness shift for the register's slots.
         ///
         /// e.g. --light 0.05   --light surfaces -0.02
-        #[arg(long, value_name = "[REG] L", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] L", num_args = 1..=2, allow_negative_numbers = true)]
         light: Vec<String>,
         /// Multiplicative chroma ratio (0.8 muted, 1.3 vivid).
         ///
         /// e.g. --chroma 1.6   --chroma accents 0.75
-        #[arg(long, value_name = "[REG] C", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] C", num_args = 1..=2, allow_negative_numbers = true)]
         chroma: Vec<String>,
     },
     /// Map a scheme's palette onto a wallpaper's colours (all options opt-in).
@@ -167,19 +167,19 @@ enum Commands {
         /// snap).
         ///
         /// e.g. --blend-hue 0.9   --blend-hue accents 1
-        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
         blend_hue: Vec<String>,
         /// Chroma movement toward the palette (0 = raw, 1 = adopt the
         /// slot's chroma).
         ///
         /// e.g. --blend-chroma 0.8   --blend-chroma bg 0.5
-        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
         blend_chroma: Vec<String>,
         /// Lightness movement toward the palette.  Default 0 —
         /// photographic, and never facade-seeded.
         ///
         /// e.g. --blend-light 0.3   --blend-light surfaces 0.1
-        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
         blend_light: Vec<String>,
         /// Influence reach on the hue wheel in degrees (default 45):
         /// the falloff width in soft territory, the cutoff in hard.
@@ -210,25 +210,25 @@ enum Commands {
         /// only).
         ///
         /// e.g. --distribution accents '[0,1,2,3]'
-        #[arg(long, value_name = "[REG] VAL", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] VAL", num_args = 1..=2, allow_negative_numbers = true)]
         distribution: Vec<String>,
         /// Rotate the register's hues across its slots (1 = one right,
         /// wraps).
         ///
         /// e.g. --rotate accents 1
-        #[arg(long, value_name = "[REG] N", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] N", num_args = 1..=2, allow_negative_numbers = true)]
         rotate: Vec<String>,
         /// Additive lightness.  Bare = image-wide grade (applied last);
         /// targeted = that register's tonal grade.
         ///
         /// e.g. --light 0.02   --light bg -0.05
-        #[arg(long, value_name = "[REG] L", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] L", num_args = 1..=2, allow_negative_numbers = true)]
         light: Vec<String>,
         /// Multiplicative chroma.  Bare = image-wide grade; targeted =
         /// the register's grade.
         ///
         /// e.g. --chroma 1.2   --chroma fg 0.9
-        #[arg(long, value_name = "[REG] C", num_args = 1..=2)]
+        #[arg(long, value_name = "[REG] C", num_args = 1..=2, allow_negative_numbers = true)]
         chroma: Vec<String>,
     },
     /// Print a wallpaper's colour families or a scheme's slots, rendered
