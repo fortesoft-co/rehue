@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 description = "Map base16 color schemes and wallpapers onto each other, deterministically"
+repository = "https://github.com/fortesoft-co/rehue"
+readme = "README.md"
+keywords = ["base16", "colorscheme", "wallpaper", "theming", "palette"]
+categories = ["command-line-utilities", "multimedia::images"]
+rust-version = "1.85"
+# Only what builds and tests the crate: the example images, docs assets,
+# nix files and maintenance scripts stay on GitHub.
+include = ["/src", "/tests", "/vendor", "/build.rs", "/README.md", "/LICENSE"]
 
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
