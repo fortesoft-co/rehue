@@ -51,7 +51,7 @@
         default = self.apps.${pkgs.system}.rehue;
       });
 
-      devShells = forAllSystems (pkgs: {
+      devShells = forAllSystems (pkgs: rec {
         default = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustc
@@ -60,6 +60,23 @@
             rustfmt
             rust-analyzer
           ];
+        };
+
+        # Everything scripts/readme-examples.sh needs on top of the
+        # toolchain: imagemagick for the montages, headless chromium for
+        # the preview.html screenshots (kept out of `default` so a plain
+        # `cargo test` shell doesn't pull a browser).
+        #   nix develop .#examples -c scripts/readme-examples.sh
+        examples = pkgs.mkShell {
+          inputsFrom = [ default ];
+          buildInputs =
+            with pkgs;
+            [
+              imagemagick
+              dejavu_fonts
+            ]
+            ++ lib.optionals stdenv.hostPlatform.isLinux [ chromium ];
+          FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
         };
       });
 
