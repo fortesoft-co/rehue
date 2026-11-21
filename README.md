@@ -29,7 +29,7 @@ rehue splits the job in two:
 - **Which hues** you get comes from the wallpaper.
 - **How those hues are shaped** (lightness, chroma, contrast) comes
   from a scheme a designer already built: Solarized, Gruvbox, Rosé
-  Pine, or any of the 361
+  Pine, or any of the 375
   [tinted-theming](https://github.com/tinted-theming/schemes) schemes.
 
 Then every part of it is a dial. Shift lightness on the accents only,
@@ -275,7 +275,7 @@ defaults to `rehue-out`.
 ### Choosing a scheme
 
 `--scheme` (on `map-scheme`, `map-wal` and `inspect`) takes either a
-**name** from the bundled collection (all 361
+**name** from the bundled collection (all 375
 [tinted-theming](https://github.com/tinted-theming/schemes) base16
 schemes, the same set Stylix uses) or a **path** to a scheme YAML.
 
@@ -393,11 +393,6 @@ can apply it today. A built-in `rehue apply` is on the roadmap.
 - **Scheme generation**: the big one. Derive the lightness/chroma/
   contrast structure a designer would have built, guided by the
   wallpaper, so map-scheme works without a reference scheme at all.
-- **Scheme bundle snapshot**: a release-time build step that pulls
-  tinted-theming/schemes at a pinned commit and compiles it into the
-  binary, replacing the git dependency. This unblocks
-  `cargo install rehue` from crates.io, and the pinned commit keeps
-  the bundle reproducible.
 - **ADVANCED_EXAMPLES.md**: the complex combinations kept out of the
   main docs (distribution across groups, reach tuning, colorize
   recipes), each with the images to prove it.
@@ -432,6 +427,19 @@ nix build .#rehue
 
 `cargo test` runs the snapshot and determinism suites.
 
+The bundled schemes are a vendored snapshot of
+[tinted-theming/schemes](https://github.com/tinted-theming/schemes)
+(MIT, see `vendor/tinted-schemes/LICENSE`), pinned to the commit
+recorded in `vendor/tinted-schemes/SOURCE`. base24 files are included
+for the base24 roadmap item but not used yet. To refresh before a
+release (it re-runs the scheme tests, so a malformed upstream scheme
+fails here):
+
+```sh
+nix develop -c scripts/update-schemes.sh            # upstream HEAD
+nix develop -c scripts/update-schemes.sh <commit>   # or a pinned commit/tag
+```
+
 The README's images are generated, not hand-made. To regenerate all of
 them from the current code (the `examples` devshell adds imagemagick
 and headless chromium):
@@ -451,6 +459,8 @@ src/enhance.rs   enhance: Lanczos + vulkan SR (realesrgan-ncnn-vulkan)
 src/preview.rs   the compiled-in preview.html (css-only views; gtk/qt mocks)
 src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
 src/bin/rehue.rs the CLI
+build.rs         embeds vendor/tinted-schemes as the bundled scheme table
+vendor/          tinted-theming/schemes snapshot (scripts/update-schemes.sh)
 tests/           per-surface suites: extraction, map_scheme, map_wal,
                  scheme, terminal, enhance, preview, cli (+ common/ helpers)
 ```
