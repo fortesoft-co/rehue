@@ -72,7 +72,7 @@ struct Record {
 }
 
 impl Record {
-    fn to_cluster(&self, total: f64) -> Cluster {
+    fn to_cluster(self, total: f64) -> Cluster {
         Cluster {
             hue: self.hue,
             weight: self.mass / total,

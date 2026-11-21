@@ -2,7 +2,7 @@
 //!
 //! CC0: Christoph Peters, momentsingraphics.de (void-and-cluster per
 //! Ulichney 1993).  The dither threshold scalar at (x, y) is
-//! (BLUE_NOISE64[y][x] as f64 + 0.5) / 256.0 - uniform in [0, 1),
+//! `(BLUE_NOISE64[y][x] as f64 + 0.5) / 256.0` - uniform in [0, 1),
 //! tileable, no visible crosshatch (unlike an 8x8 Bayer matrix).
 
 pub const BLUE_NOISE64: [[u8; 64]; 64] = [

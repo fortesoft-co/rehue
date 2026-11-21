@@ -401,7 +401,7 @@ pub fn retint(
     // "1 = move right one": slot i receives what slot i - 1 was assigned.
     for name in REGISTER_NAMES {
         let slots = register_slots(name);
-        let rotated_by = regs[name].rotate.rem_euclid(slots.len() as i64) as i64;
+        let rotated_by = regs[name].rotate.rem_euclid(slots.len() as i64);
         if rotated_by == 0 {
             continue;
         }

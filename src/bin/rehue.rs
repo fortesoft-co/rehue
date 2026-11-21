@@ -126,8 +126,8 @@ enum Commands {
         /// e.g. --scheme gruvbox-light.yaml
         #[arg(long)]
         scheme: String,
-        /// Output directory: wallpaper.png + compare.png + preview.html
-        /// + report.json (preview.html whenever an arrangement is
+        /// Output directory: wallpaper.png, compare.png, preview.html and
+        /// report.json (preview.html whenever an arrangement is
         /// live).  (absent: `rehue-out`)
         ///
         /// e.g. --out repainted
@@ -744,10 +744,11 @@ fn run_map_scheme(
         .map_err(|e| format!("can't write preview.png: {}", e))?;
     let scheme_name = parsed.meta_name();
     let wall_label = preview::image_label(wallpaper);
+    let wall_src = preview::relative_link(out, wallpaper);
     let input = preview::Preview {
         flow: preview::PreviewFlow::SchemeFromWallpaper,
         wallpaper_label: Some(&wall_label),
-        wallpaper_src: Some(&preview::relative_link(out, wallpaper)),
+        wallpaper_src: Some(&wall_src),
         scheme: &scheme_name,
         hexes: &mapped_hexes,
     };
@@ -962,7 +963,7 @@ fn run_map_wal(
             .zip(&coverage)
             .map(|(slot, count)| (slot, *count))
             .collect();
-        ranked.sort_by(|a, b| b.1.cmp(&a.1));
+        ranked.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
         if total > 0 {
             for (slot, count) in ranked.iter().take(6) {
                 println!(
@@ -1101,7 +1102,6 @@ fn run_enhance(
 }
 
 /// The embedded scheme collection, printed.
-
 fn run_schemes() -> Result<(), String> {
     let names: Vec<&'static str> = rehue::scheme::collection_names().collect();
     println!("rehue schemes: {} base16 scheme(s) embedded", names.len());

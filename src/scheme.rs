@@ -191,10 +191,10 @@ impl Scheme {
             format!("name: \"{} (hue-mapped)\"", quoted(&name)),
             format!("author: \"{} (hue-mapped by rehue)\"", quoted(&author)),
         ];
-        if let Some(variant) = self.attrs.get("variant") {
-            if !variant.is_empty() {
-                lines.push(format!("variant: \"{}\"", quoted(variant)));
-            }
+        if let Some(variant) = self.attrs.get("variant")
+            && !variant.is_empty()
+        {
+            lines.push(format!("variant: \"{}\"", quoted(variant)));
         }
         lines.push("palette:".to_string());
         for slot in BASE_SLOTS {

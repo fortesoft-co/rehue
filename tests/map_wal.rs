@@ -76,8 +76,10 @@ fn wal_arrangement_reshapes_the_palette() {
 #[test]
 fn wal_arrangement_and_per_register_options_are_deterministic() {
     let (_, slots) = solarized();
-    let mut config = RemapConfig::default();
-    config.harmonize = 0.9;
+    let mut config = RemapConfig {
+        harmonize: 0.9,
+        ..Default::default()
+    };
     config.registers.insert(
         "surfaces".to_string(),
         WalRegisterConfig {
@@ -111,9 +113,11 @@ fn wal_arrangement_and_per_register_options_are_deterministic() {
 
 #[test]
 fn blend_dial_resolution() {
-    let mut config = RemapConfig::default();
-    config.harmonize = 0.5;
-    config.blend_light = 0.3;
+    let mut config = RemapConfig {
+        harmonize: 0.5,
+        blend_light: 0.3,
+        ..Default::default()
+    };
     config.registers.insert(
         "accents".to_string(),
         WalRegisterConfig {
@@ -150,8 +154,10 @@ fn dithering_varies_full_blend_and_is_deterministic() {
     let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
     let image = gradient_image((64, 64));
     let rgb = image.to_rgb8();
-    let mut config = RemapConfig::default();
-    config.harmonize = 1.0;
+    let mut config = RemapConfig {
+        harmonize: 1.0,
+        ..Default::default()
+    };
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
     let options = rehue::map_wal::slot_options(&regs);
 
@@ -173,18 +179,20 @@ fn dither_modes_differ_and_each_is_deterministic() {
     let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
     let image = gradient_image((64, 64));
     let rgb = image.to_rgb8();
-    let mut config = RemapConfig::default();
     // Partial adoption is what separates the kernels: at full strength
     // l2/c2 are the adopted targets themselves - independent of the
     // diffused residual - so every diffusion kernel would emit identical
     // pixels (and in soft territory the weighted-mean target absorbs the
     // residual entirely).  Full hue with half L/C keeps a residual field
     // the kernels actually fight over.
-    config.blend_hue = Some(1.0);
-    config.blend_light = 0.5;
-    config.blend_chroma = Some(0.5);
-    config.dithering = 1.0;
-    config.territory = Some(Territory::Hard);
+    let mut config = RemapConfig {
+        blend_hue: Some(1.0),
+        blend_light: 0.5,
+        blend_chroma: Some(0.5),
+        dithering: 1.0,
+        territory: Some(Territory::Hard),
+        ..Default::default()
+    };
     let regs = rehue::map_wal::resolved_registers(&config).expect("valid config");
     let options = rehue::map_wal::slot_options(&regs);
     let mut run = |mode: DitherMode| {

@@ -8,7 +8,7 @@ repository = "https://github.com/fortesoft-co/rehue"
 readme = "README.md"
 keywords = ["base16", "colorscheme", "wallpaper", "theming", "palette"]
 categories = ["command-line-utilities", "multimedia::images"]
-rust-version = "1.85"
+rust-version = "1.88"
 # Only what builds and tests the crate: the example images, docs assets,
 # nix files and maintenance scripts stay on GitHub.
 include = ["/src", "/tests", "/vendor", "/build.rs", "/README.md", "/LICENSE"]
