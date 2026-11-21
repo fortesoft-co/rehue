@@ -3,6 +3,7 @@
 //!
 //! Licensed AGPL-3.0-or-later.
 
+pub mod apply;
 pub mod bluenoise;
 pub mod color;
 pub mod enhance;

@@ -10,7 +10,7 @@ use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
 use rehue::register::DistributionState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
 use rehue::terminal::{families_strip, scheme_strip};
-use rehue::{extract, map_wal, preview, register};
+use rehue::{apply, extract, map_wal, preview, register};
 
 #[derive(Parser)]
 #[command(
@@ -320,7 +320,49 @@ enum Commands {
     },
     /// List the scheme names embedded in the binary (base16 collection).
     Schemes,
+    /// Run a pipeline file and apply the result: the scheme to tinty, the
+    /// wallpaper through your own command.
+    ///
+    /// The pipeline is TOML: `wallpaper`, `scheme`, then a `[map-scheme]`
+    /// and/or `[map-wal]` table (the same keys as their JSON --config
+    /// files; a table's presence turns its step on) and an `[apply]`
+    /// table.  The mapped scheme is installed as a tinty custom scheme
+    /// and applied with `tinty apply base16-<tinty-name>`; the wallpaper
+    /// command runs with `{wallpaper}` filled in.
+    ///
+    /// Example: rehue apply --pipeline ~/.config/rehue/pipeline.toml
+    #[command(after_help = APPLY_PIPELINE)]
+    Apply {
+        /// The pipeline file.
+        ///
+        /// e.g. --pipeline ~/.config/rehue/pipeline.toml
+        #[arg(long)]
+        pipeline: PathBuf,
+        /// Print the previews and what would run; write nothing, run
+        /// nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
+
+const APPLY_PIPELINE: &str = "
+Pipeline example:
+  wallpaper = \"~/pictures/glitter.webp\"
+  scheme = \"gruvbox-light\"        # a bundled name, or a path to yaml
+  # out = \"~/.local/share/rehue/current\"   (the default)
+
+  [map-scheme]                     # re-hue the scheme (empty = defaults)
+  [map-scheme.registers.accents]
+  chroma = 1.2
+
+  [map-wal]                        # repaint the wallpaper with it
+  harmonize = 1.0
+
+  [apply]
+  tinty = true                     # default; tinty-name = \"rehue\"
+  wallpaper-command = \"swww img {wallpaper}\"
+  # tinty-config / tinty-data-dir: point tinty somewhere else (testing)
+";
 
 const MAP_SCHEME_REGISTERS: &str = "
 Registers:
@@ -672,18 +714,14 @@ impl WalOverrides {
     }
 }
 
+/// Returns the mapped scheme's yaml (written to `out` unless dry-run).
 fn run_map_scheme(
     wallpaper: &Path,
-    scheme: &str,
-    scheme_dir: Option<&Path>,
+    parsed: &Scheme,
     out: &Path,
-    config_path: Option<&Path>,
+    config: register::MapConfig,
     dry_run: bool,
-    overrides: SchemeOverrides,
-) -> Result<(), String> {
-    let mut config = read_json::<register::MapConfig>(config_path)?;
-    overrides.apply(&mut config)?;
-    let parsed = Scheme::resolve(scheme, scheme_dir)?;
+) -> Result<String, String> {
     println!(
         "rehue map-scheme: reference '{}' by {}",
         parsed.meta_name(),
@@ -724,13 +762,14 @@ fn run_map_scheme(
     println!("rehue map-scheme: palette - mapped");
     println!("{}", scheme_strip(&mapped_hexes));
 
+    let rendered = parsed.render(&mapped);
     if dry_run {
         println!("rehue map-scheme: dry run (nothing written)");
-        return Ok(());
+        return Ok(rendered);
     }
 
     std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {}", out.display(), e))?;
-    std::fs::write(out.join("scheme.yaml"), parsed.render(&mapped))
+    std::fs::write(out.join("scheme.yaml"), &rendered)
         .map_err(|e| format!("can't write scheme.yaml: {}", e))?;
 
     let original: BTreeMap<String, String> = BASE_SLOTS
@@ -764,7 +803,7 @@ fn run_map_scheme(
     write_json_file(&out.join("clusters.json"), &report)?;
 
     println!("rehue map-scheme: wrote scheme.yaml, preview.png, preview.html, clusters.json");
-    Ok(())
+    Ok(rendered)
 }
 
 /// Extraction, only when an arrangement dial is live (keeps plain blend
@@ -792,17 +831,12 @@ fn wal_clusters(
 
 fn run_map_wal(
     wallpaper: &Path,
-    scheme: &str,
-    scheme_dir: Option<&Path>,
+    parsed: &Scheme,
     out: &Path,
-    config_path: Option<&Path>,
+    config: map_wal::RemapConfig,
     dry_run: bool,
-    overrides: WalOverrides,
 ) -> Result<(), String> {
-    let mut config = read_json::<map_wal::RemapConfig>(config_path)?;
-    overrides.apply(&mut config)?;
     let regs = map_wal::resolved_registers(&config)?;
-    let parsed = Scheme::resolve(scheme, scheme_dir)?;
     let slot_hexes = parsed.slot_hexes()?;
     println!(
         "rehue map-wal: painting with '{}' by {}",
@@ -1111,6 +1145,100 @@ fn run_schemes() -> Result<(), String> {
     Ok(())
 }
 
+/// `rehue apply`: map-scheme and/or map-wal per the pipeline, then the
+/// scheme to tinty and the wallpaper to the user's command.
+fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
+    let pipeline = apply::Pipeline::load(pipeline_path)?;
+    let out = pipeline.out_dir();
+    let reference = Scheme::resolve(&pipeline.scheme, pipeline.scheme_dir.as_deref())?;
+
+    // The scheme that gets applied: mapped when [map-scheme] runs, else
+    // the reference as-is.
+    let (scheme_yaml, scheme) = match &pipeline.map_scheme {
+        Some(config) => {
+            let yaml = run_map_scheme(
+                &pipeline.wallpaper,
+                &reference,
+                &out.join("scheme"),
+                config.clone(),
+                dry_run,
+            )?;
+            let mapped = Scheme::parse_text(&yaml)?;
+            (yaml, mapped)
+        }
+        None => (
+            Scheme::resolve_text(&pipeline.scheme, pipeline.scheme_dir.as_deref())?,
+            reference,
+        ),
+    };
+    let scheme_path = out.join("scheme/scheme.yaml");
+
+    // The wallpaper that gets set: repainted (with the applied scheme)
+    // when [map-wal] runs, else the source.
+    let wallpaper = match &pipeline.map_wal {
+        Some(config) => {
+            let dir = out.join("wallpaper");
+            run_map_wal(&pipeline.wallpaper, &scheme, &dir, config.clone(), dry_run)?;
+            dir.join("wallpaper.png")
+        }
+        None => pipeline.wallpaper.clone(),
+    };
+
+    let target = &pipeline.apply;
+    if dry_run {
+        if pipeline.map_scheme.is_none() {
+            println!("rehue apply: would write {}", scheme_path.display());
+        }
+        if target.tinty {
+            println!(
+                "rehue apply: would install the scheme as <tinty data dir>/custom-schemes/base16/{}.yaml",
+                target.tinty_name
+            );
+            println!(
+                "rehue apply: would run: {}",
+                apply::tinty_apply_line(target)
+            );
+        }
+        if let Some(template) = &target.wallpaper_command {
+            println!(
+                "rehue apply: would run: {}",
+                apply::wallpaper_command_line(template, &wallpaper)
+            );
+        }
+        println!("rehue apply: dry run (nothing written, nothing run)");
+        return Ok(());
+    }
+
+    // map-scheme writes its own scheme.yaml; the reference case needs one
+    // too, so `out` always holds what was applied.
+    if pipeline.map_scheme.is_none() {
+        let dir = out.join("scheme");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("can't create {}: {}", dir.display(), e))?;
+        std::fs::write(&scheme_path, &scheme_yaml)
+            .map_err(|e| format!("can't write {}: {}", scheme_path.display(), e))?;
+    }
+    if target.tinty {
+        let installed = apply::tinty_apply(target, &scheme_yaml)?;
+        println!(
+            "rehue apply: tinty applied base16-{} ({})",
+            target.tinty_name,
+            installed.display()
+        );
+    }
+    if let Some(template) = &target.wallpaper_command {
+        let line = apply::wallpaper_command_line(template, &wallpaper);
+        apply::run_shell(&line, &pipeline.base_dir, &wallpaper, &scheme_path)?;
+        println!("rehue apply: wallpaper set ({})", wallpaper.display());
+    }
+    println!(
+        "rehue apply: '{}' applied; outputs in {}",
+        scheme.meta_name(),
+        out.display()
+    );
+    Ok(())
+}
+
 fn run(command: Commands) -> Result<(), String> {
     self_test();
     match command {
@@ -1127,13 +1255,8 @@ fn run(command: Commands) -> Result<(), String> {
             blend_hue,
             light,
             chroma,
-        } => run_map_scheme(
-            &wallpaper,
-            &scheme,
-            scheme_dir.as_deref(),
-            out.as_deref().unwrap_or(Path::new("rehue-out")),
-            config.as_deref(),
-            dry_run,
+        } => {
+            let mut map_config = read_json::<register::MapConfig>(config.as_deref())?;
             SchemeOverrides {
                 reach_deg,
                 distribution,
@@ -1141,8 +1264,18 @@ fn run(command: Commands) -> Result<(), String> {
                 blend_hue,
                 light,
                 chroma,
-            },
-        ),
+            }
+            .apply(&mut map_config)?;
+            let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
+            run_map_scheme(
+                &wallpaper,
+                &parsed,
+                out.as_deref().unwrap_or(Path::new("rehue-out")),
+                map_config,
+                dry_run,
+            )
+            .map(|_| ())
+        }
         Commands::MapWal {
             wallpaper,
             scheme,
@@ -1163,13 +1296,8 @@ fn run(command: Commands) -> Result<(), String> {
             rotate,
             light,
             chroma,
-        } => run_map_wal(
-            &wallpaper,
-            &scheme,
-            scheme_dir.as_deref(),
-            out.as_deref().unwrap_or(Path::new("rehue-out")),
-            config.as_deref(),
-            dry_run,
+        } => {
+            let mut wal_config = read_json::<map_wal::RemapConfig>(config.as_deref())?;
             WalOverrides {
                 territory,
                 harmonize,
@@ -1184,8 +1312,17 @@ fn run(command: Commands) -> Result<(), String> {
                 rotate,
                 light,
                 chroma,
-            },
-        ),
+            }
+            .apply(&mut wal_config)?;
+            let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
+            run_map_wal(
+                &wallpaper,
+                &parsed,
+                out.as_deref().unwrap_or(Path::new("rehue-out")),
+                wal_config,
+                dry_run,
+            )
+        }
         Commands::Inspect {
             wallpaper,
             scheme,
@@ -1215,6 +1352,7 @@ fn run(command: Commands) -> Result<(), String> {
             sr_tool.as_deref(),
         ),
         Commands::Schemes => run_schemes(),
+        Commands::Apply { pipeline, dry_run } => run_apply(&pipeline, dry_run),
     }
 }
 

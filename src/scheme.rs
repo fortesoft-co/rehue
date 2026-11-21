@@ -99,8 +99,19 @@ impl Scheme {
     /// before the collection; bare names resolve locally when a matching
     /// file exists.  Failure stays loud, with the nearest embedded names.
     pub fn resolve(input: &str, scheme_dir: Option<&Path>) -> Result<Self, String> {
+        Self::parse_text(&Self::resolve_text(input, scheme_dir)?)
+    }
+
+    /// The yaml text a scheme input resolves to (same rules as `resolve`):
+    /// a PATH is read, a NAME is looked up in `scheme_dir` first, then the
+    /// embedded collection.
+    pub fn resolve_text(input: &str, scheme_dir: Option<&Path>) -> Result<String, String> {
+        let read = |path: &Path| {
+            std::fs::read_to_string(path)
+                .map_err(|e| format!("can't read scheme {}: {}", path.display(), e))
+        };
         if input.contains('/') {
-            return Self::parse_file(Path::new(input));
+            return read(Path::new(input));
         }
         if let Some(dir) = scheme_dir {
             for candidate in [
@@ -109,7 +120,7 @@ impl Scheme {
                 dir.join(format!("{input}.yml")),
             ] {
                 if candidate.is_file() {
-                    return Self::parse_file(&candidate);
+                    return read(&candidate);
                 }
             }
         }
@@ -118,11 +129,11 @@ impl Scheme {
             .or_else(|| input.strip_suffix(".yml"))
             .unwrap_or(input);
         if let Some(text) = collection_text(name) {
-            return Self::parse_text(text);
+            return Ok(text.to_string());
         }
         let as_file = Path::new(input);
         if as_file.is_file() {
-            return Self::parse_file(as_file);
+            return read(as_file);
         }
         let mut nearest = collection_names()
             .map(|other| (edit_distance(input, other), other))
