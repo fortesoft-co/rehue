@@ -136,7 +136,7 @@ fn the_heading_flows_match_the_commands() {
     let html = render(&page).expect("map-wal page");
     assert_eq!(tab_of(&html), "Gruvbox Light → Bango - rehue preview");
     assert!(html.contains("<h1 class=\"rev\">"));
-    assert!(html.contains("h1.rev { flex-direction: row-reverse; }"));
+    assert!(html.contains("h1.rev .par { transform: rotate(180deg); }"));
     assert!(html.contains("src=\"wallpaper.png\""));
 
     // inspect --scheme: no wallpaper side at all

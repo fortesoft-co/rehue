@@ -155,13 +155,15 @@ nav [for] { padding: 5px 14px; border-radius: 6px; cursor: pointer;
 .gbtn.destructive { background: var(--base08); color: var(--base00); }
 .gbtn[disabled] { opacity: .45; }
 .gentry { padding: 9px 1px; }
-.gentry input { width: 100%; padding: 9px 12px; border-radius: 6px; font: inherit;
+.gentry input:not([type]) { width: 100%; padding: 9px 12px; border-radius: 6px; font: inherit;
                 border: 1px solid var(--border); background: var(--base00);
                 color: var(--base05); outline: none; }
-.gentry input:focus { border: 2px solid var(--base0d); padding: 8px 11px; }
+.gentry input:not([type]):focus { border: 2px solid var(--base0d); padding: 8px 11px; }
 .gprog { height: 5px; border-radius: 3px; overflow: hidden; background: var(--base03); }
 .gprog span { display: block; height: 100%; width: 62%; background: var(--base0d); }
 .gtkwin input[type="checkbox"], .gtkwin input[type="radio"] { accent-color: var(--base0d); }
+.gtkwin .row.gentry { display: flex; flex-wrap: wrap; align-items: center; }
+.gtkwin .inline { display: inline-flex; gap: 6px; align-items: center; font-size: 13.5px; }
 
 /* ---- Qt mock: the kvconfig colour mapping, exactly
       (window 01, base 00, button 02, text 05, disabled 04,
