@@ -56,11 +56,11 @@
           ];
         };
 
-        # Everything scripts/readme-examples.sh needs on top of the
+        # Everything the docs image builder needs on top of the
         # toolchain: imagemagick for the montages, headless chromium for
         # the preview.html screenshots (kept out of `default` so a plain
         # `cargo test` shell doesn't pull a browser).
-        #   nix develop .#examples -c scripts/readme-examples.sh
+        #   nix develop .#examples -c cargo run --release --example docs-images
         examples = pkgs.mkShell {
           inputsFrom = [ default ];
           buildInputs =

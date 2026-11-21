@@ -1,0 +1,329 @@
+# Every documented command and every docs image, defined once.
+#
+# The docs render from this (README / EXAMPLES regions `run:ID` and
+# `ladder:ID`, checked by `cargo test --test docs`), and the images are
+# built from it:
+#
+#   nix develop .#examples -c cargo run --release --example docs-images
+#
+# `{name}` expands from [vars]; `{out}` is a run's output directory
+# (shown as the run's `out` in the docs) and `{out:ID}` another run's.
+
+[vars]
+glitter = "assets/vidsplay-rainbow-glitter.webp"
+butterfly = "assets/kelly-ishmael-butterfly-closeup.webp"
+bango = "assets/bango-renders-3d-abstract.webp"
+
+# ------------------------------------------------------------ README
+
+[[run]]
+id = "glitter"
+args = "map-wal --wallpaper {glitter} --scheme gruvbox-light --out {out} --harmonize 1"
+out = "glitter"
+
+[[image]]
+file = "assets/examples/glitter-facade1-pair.webp"
+kind = "montage"
+tile = "2x1"
+width = 960
+cells = [
+  { label = "before", src = "{glitter}" },
+  { label = "gruvbox-light, harmonize 1", src = "{out:glitter}/wallpaper.png" },
+]
+
+[[run]]
+id = "butterfly-mapped"
+args = "map-scheme --wallpaper {butterfly} --scheme rose-pine-dawn --out {out}"
+out = "mapped"
+
+[[image]]
+file = "assets/examples/butterfly-rose-pine-dawn.png"
+kind = "copy"
+cells = [{ src = "{out:butterfly-mapped}/preview.png" }]
+
+[[run]]
+id = "butterfly-repainted"
+args = "map-wal --wallpaper {butterfly} --scheme {out:butterfly-mapped}/scheme.yaml --out {out} --harmonize 1"
+out = "repainted"
+
+[[image]]
+file = "assets/examples/butterfly-roundtrip-pair.webp"
+kind = "montage"
+tile = "2x1"
+width = 480
+cells = [
+  { label = "before", src = "{butterfly}" },
+  { label = "rose-pine-dawn (re-hued), harmonize 1", src = "{out:butterfly-repainted}/wallpaper.png" },
+]
+
+[[run]]
+id = "bango-mapped"
+args = "map-scheme --wallpaper {bango} --scheme tokyo-night-dark --out {out}"
+out = "mapped"
+
+[[image]]
+file = "assets/examples/bango-schemes-roundtrip.png"
+kind = "copy"
+cells = [{ src = "{out:bango-mapped}/preview.png" }]
+
+[[run]]
+id = "bango-repainted"
+args = "map-wal --wallpaper {bango} --scheme {out:bango-mapped}/scheme.yaml --out {out} --harmonize 1"
+out = "repainted"
+
+[[image]]
+file = "assets/examples/bango-roundtrip-pair.webp"
+kind = "montage"
+tile = "2x1"
+width = 480
+cells = [
+  { label = "before", src = "{bango}" },
+  { label = "tokyo-night-dark (re-hued)", src = "{out:bango-repainted}/wallpaper.png" },
+]
+
+[[image]]
+file = "assets/examples/preview-palette.webp"
+kind = "shot"
+views = ["palette"]
+cells = [{ src = "{out:bango-repainted}/preview.html" }]
+
+[[image]]
+file = "assets/examples/preview-toolkits.webp"
+kind = "shot"
+views = ["gtk", "qt"]
+cells = [{ src = "{out:bango-repainted}/preview.html" }]
+
+[[run]]
+id = "inspect-butterfly"
+args = "inspect --wallpaper {butterfly} --out {out}"
+out = "inspect"
+
+[[image]]
+file = "assets/examples/inspect-families.png"
+kind = "scale"
+scale = 300
+cells = [{ src = "{out:inspect-butterfly}/inspect.png" }]
+
+[[ladder]]
+id = "grading-groups"
+file = "assets/examples/grading-groups.png"
+base = "map-scheme --wallpaper {butterfly} --scheme rose-pine-dawn --out {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "" },
+  { args = "--chroma accents 1.6" },
+  { args = "--light fg -0.1" },
+  { args = "--distribution accents [0,1,2,3] --rotate accents 1" },
+]
+
+# ---------------------------------------------------------- EXAMPLES
+# map-wal ladders: bango + gruvbox-light, each opening with the original.
+
+[[ladder]]
+id = "wal-territory"
+file = "assets/examples/options/wal-territory.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [
+  { args = "--harmonize 1", note = "soft (the default), harmonize 1" },
+  { args = "--harmonize 1 --territory hard", note = "hard, harmonize 1" },
+]
+
+[[ladder]]
+id = "wal-harmonize"
+file = "assets/examples/options/wal-harmonize.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [{ args = "--harmonize 0.5" }, { args = "--harmonize 1" }]
+
+[[ladder]]
+id = "wal-blend-hue"
+file = "assets/examples/options/wal-blend-hue.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [{ args = "--blend-hue 0.6" }, { args = "--blend-hue 1" }]
+
+[[ladder]]
+id = "wal-blend-chroma"
+file = "assets/examples/options/wal-blend-chroma.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [{ args = "--blend-chroma 0.6" }, { args = "--blend-chroma 1" }]
+
+[[ladder]]
+id = "wal-blend-light"
+file = "assets/examples/options/wal-blend-light.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [{ args = "--blend-light 0.5" }, { args = "--blend-light 1" }]
+
+[[ladder]]
+id = "wal-reach"
+file = "assets/examples/options/wal-reach.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+common = "--harmonize 1"
+rungs = [
+  { args = "--reach-deg 15" },
+  { args = "--reach-deg 45", note = "the default" },
+  { args = "--reach-deg 140" },
+]
+
+[[ladder]]
+id = "wal-gray-chroma-floor"
+file = "assets/examples/options/wal-gray-chroma-floor.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+common = "--harmonize 1"
+rungs = [
+  { args = "--gray-chroma-floor 0" },
+  { args = "--gray-chroma-floor 0.02", note = "the default" },
+  { args = "--gray-chroma-floor 0.12" },
+]
+
+[[ladder]]
+id = "wal-dithering"
+file = "assets/examples/options/wal-dithering.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+common = "--territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9"
+rungs = [
+  { args = "--dithering 0" },
+  { args = "--dithering 0.5" },
+  { args = "--dithering 1" },
+]
+
+[[ladder]]
+id = "wal-dithering-mode"
+file = "assets/examples/options/wal-dithering-mode.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+width = 380
+common = "--territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 1"
+rungs = [
+  { args = "--dithering-mode blue-noise" },
+  { args = "--dithering-mode bayer" },
+  { args = "--dithering-mode floyd-steinberg" },
+  { args = "--dithering-mode atkinson" },
+]
+
+[[ladder]]
+id = "wal-distribution"
+file = "assets/examples/options/wal-distribution.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+common = "--harmonize 1"
+rungs = [
+  { args = "", note = "no distribution" },
+  { args = "--distribution accents [0,1,2,3]" },
+  { args = "--distribution accents [0,1,2,3] --rotate accents 1", note = "...and rotate" },
+]
+
+[[ladder]]
+id = "wal-light"
+file = "assets/examples/options/wal-light.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [{ args = "--light -0.1" }, { args = "--light 0.1" }]
+
+[[ladder]]
+id = "wal-chroma"
+file = "assets/examples/options/wal-chroma.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [{ args = "--chroma 0.6" }, { args = "--chroma 1.4" }]
+
+[[ladder]]
+id = "wal-register-grades"
+file = "assets/examples/options/wal-register-grades.webp"
+base = "map-wal --wallpaper {bango} --scheme gruvbox-light --out {out}"
+output = "wallpaper.png"
+original = "{bango}"
+rungs = [{ args = "--chroma accents 1.6" }, { args = "--chroma fg 0.5" }]
+
+# map-scheme ladders: the butterfly onto rose-pine-dawn; each strip shows
+# the reference on top and the result below.
+
+[[ladder]]
+id = "scheme-blend-hue"
+file = "assets/examples/options/scheme-blend-hue.png"
+base = "map-scheme --wallpaper {butterfly} --scheme rose-pine-dawn --out {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "", note = "blend-hue 1, the default" },
+  { args = "--blend-hue 0.4" },
+  { args = "--blend-hue 0", note = "the reference scheme verbatim" },
+]
+
+[[ladder]]
+id = "scheme-distribution"
+file = "assets/examples/options/scheme-distribution.png"
+base = "map-scheme --wallpaper {butterfly} --scheme rose-pine-dawn --out {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "", note = "defaults: accents claim, the rest take the heaviest family" },
+  { args = "--distribution accents [0,1,2,3]" },
+  { args = "--distribution surfaces true --distribution fg true", note = "surfaces and fg spread across the families" },
+]
+
+[[ladder]]
+id = "scheme-rotate"
+file = "assets/examples/options/scheme-rotate.png"
+base = "map-scheme --wallpaper {butterfly} --scheme rose-pine-dawn --out {out}"
+output = "preview.png"
+width = 384
+common = "--distribution accents [0,1,2,3]"
+rungs = [
+  { args = "" },
+  { args = "--rotate accents 1" },
+  { args = "--rotate accents 3" },
+]
+
+[[ladder]]
+id = "scheme-chroma"
+file = "assets/examples/options/scheme-chroma.png"
+base = "map-scheme --wallpaper {butterfly} --scheme rose-pine-dawn --out {out}"
+output = "preview.png"
+width = 384
+rungs = [{ args = "--chroma accents 0.75" }, { args = "--chroma accents 1.6" }]
+
+[[ladder]]
+id = "scheme-reach"
+file = "assets/examples/options/scheme-reach.png"
+base = "map-scheme --wallpaper {butterfly} --scheme rose-pine-dawn --out {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "--reach-deg 20" },
+  { args = "--reach-deg 45", note = "the default" },
+  { args = "--reach-deg 90" },
+]
+
+# extraction: inspect on the butterfly (config-only options)
+
+[[ladder]]
+id = "extract-max-hues"
+file = "assets/examples/options/extract-max-hues.png"
+base = "inspect --wallpaper {butterfly} --out {out}"
+output = "inspect.png"
+width = 384
+rungs = [
+  { config = { max-hues = 2 } },
+  { config = { max-hues = 4 } },
+  { config = { max-hues = 6 }, note = "the default" },
+]

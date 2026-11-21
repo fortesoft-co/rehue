@@ -84,6 +84,7 @@ pixel toward the palette, but leaves lightness alone, so the glitter
 keeps its sparkle and loses its rainbow (the image at the top of this
 page).
 
+<!-- gen:run:glitter -->
 ```sh
 rehue map-wal \
   --wallpaper assets/vidsplay-rainbow-glitter.webp \
@@ -91,6 +92,7 @@ rehue map-wal \
   --out glitter \
   --harmonize 1
 ```
+<!-- /gen:run:glitter -->
 
 The colors land spread wide: the scheme's brightest surface covers 39%
 of the pixels, the next about 11%, and the rest single digits each. One
@@ -102,12 +104,14 @@ No dials at all. rehue extracts the butterfly's hue families, weighted
 by how colorful and how common they are, and assigns them slot by
 slot. Rosé Pine Dawn's lightness, chroma and contrast are untouched.
 
+<!-- gen:run:butterfly-mapped -->
 ```sh
 rehue map-scheme \
   --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
   --scheme rose-pine-dawn \
   --out mapped
 ```
+<!-- /gen:run:butterfly-mapped -->
 
 <p><img src="assets/kelly-ishmael-butterfly-closeup.webp" width="420" alt="kelly-ishmael butterfly closeup original"></p>
 
@@ -116,6 +120,7 @@ rehue map-scheme \
 And the other direction: the butterfly repainted with the scheme it
 just produced.
 
+<!-- gen:run:butterfly-repainted -->
 ```sh
 rehue map-wal \
   --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
@@ -123,6 +128,7 @@ rehue map-wal \
   --out repainted \
   --harmonize 1
 ```
+<!-- /gen:run:butterfly-repainted -->
 
 ![the butterfly before/after repainting through its re-hued rose-pine-dawn](assets/examples/butterfly-roundtrip-pair.webp)
 
@@ -130,12 +136,14 @@ rehue map-wal \
 
 First, paint Tokyo Night Dark with the wallpaper's hues, at defaults:
 
+<!-- gen:run:bango-mapped -->
 ```sh
 rehue map-scheme \
   --wallpaper assets/bango-renders-3d-abstract.webp \
-  --scheme tokyo-night-dark.yaml \
+  --scheme tokyo-night-dark \
   --out mapped
 ```
+<!-- /gen:run:bango-mapped -->
 
 Scheme before (top) and after (bottom). Tokyo Night's structure is
 kept; only the hues move:
@@ -144,6 +152,7 @@ kept; only the hues move:
 
 Then feed the new scheme back into the image:
 
+<!-- gen:run:bango-repainted -->
 ```sh
 rehue map-wal \
   --wallpaper assets/bango-renders-3d-abstract.webp \
@@ -151,6 +160,7 @@ rehue map-wal \
   --out repainted \
   --harmonize 1
 ```
+<!-- /gen:run:bango-repainted -->
 
 ![bango before/after repainting through its own recolored scheme](assets/examples/bango-roundtrip-pair.webp)
 
@@ -320,9 +330,13 @@ there first, then in the bundled set.
 hue, chroma and weight, above a row of truecolor swatches in the same
 order. The indices are what `distribution` refers to.
 
+<!-- gen:run:inspect-butterfly -->
 ```sh
-rehue inspect --wallpaper butterfly.webp
+rehue inspect \
+  --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
+  --out inspect
 ```
+<!-- /gen:run:inspect-butterfly -->
 
 The butterfly's four families, indices 0 to 3 left to right:
 
@@ -546,12 +560,26 @@ nix develop -c scripts/update-schemes.sh            # upstream HEAD
 nix develop -c scripts/update-schemes.sh <commit>   # or a pinned commit/tag
 ```
 
-The README's images are generated, not hand-made. To regenerate all of
-them from the current code (the `examples` devshell adds imagemagick
-and headless chromium):
+The docs are partly generated, and `cargo test` keeps them honest.
+Reference tables, example commands and counts sit between
+`<!-- gen:NAME -->` markers and render from the code; everything
+outside the markers is hand-written. A test fails when a region is
+stale, or when the hand-written text names a flag or option that
+doesn't exist:
 
 ```sh
-nix develop .#examples -c scripts/readme-examples.sh
+REHUE_BLESS=1 cargo test --test docs    # re-render every region
+```
+
+Every image in the docs, and the command that made it, is defined once
+in `docs/examples.toml`. The builder runs the commands and assembles
+the images (the `examples` devshell adds imagemagick and headless
+chromium); `docs/examples.lock` records what was built, so a test fails
+when an example changes without a rebuild:
+
+```sh
+nix develop .#examples -c cargo run --release --example docs-images
+nix develop .#examples -c cargo run --release --example docs-images -- wal-territory   # just one
 ```
 
 ```
@@ -566,12 +594,15 @@ src/enhance.rs   enhance: Lanczos + vulkan SR (realesrgan-ncnn-vulkan)
 src/preview.rs   the compiled-in preview.html (css-only views; gtk/qt mocks)
 src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
 src/apply.rs     apply: pipeline files, the tinty handoff, the wallpaper command
-src/bin/rehue.rs the CLI
+src/cli.rs       the CLI's commands, flags and help (the docs render from it)
+src/bin/rehue.rs the CLI's command handlers
 build.rs         embeds vendor/tinted-schemes as the bundled scheme table
 vendor/          tinted-theming/schemes snapshot (scripts/update-schemes.sh)
+docs/            examples.toml (every docs image + command), its lock, manifest.rs
+examples/        docs-images: builds the docs images from docs/examples.toml
 tests/           per-surface suites: extraction, map_scheme, map_wal,
-                 scheme, terminal, enhance, preview, cli, apply, lut
-                 (+ common/ helpers)
+                 scheme, terminal, enhance, preview, cli, apply, lut,
+                 docs (generated regions + drift check) (+ common/ helpers)
 ```
 
 ## License

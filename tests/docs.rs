@@ -19,6 +19,13 @@ use std::path::PathBuf;
 use clap::CommandFactory;
 use rehue::cli::Cli;
 
+#[path = "../docs/manifest.rs"]
+mod manifest;
+
+fn examples() -> manifest::Manifest {
+    manifest::Manifest::load(env!("CARGO_MANIFEST_DIR").as_ref()).unwrap()
+}
+
 const DOCS: [&str; 2] = ["README.md", "EXAMPLES.md"];
 
 // ---------------------------------------------------------------- parser
@@ -86,7 +93,10 @@ fn markers(text: &str) -> Result<Vec<(usize, bool, String, usize)>, String> {
         while let Some(i) = text[from..].find(prefix) {
             let at = from + i;
             from = at + prefix.len();
-            if in_fence(at) {
+            // inside a fenced block, or an inline `code span` (an odd
+            // number of backticks earlier on the line)
+            let line_start = text[..at].rfind('\n').map_or(0, |i| i + 1);
+            if in_fence(at) || text[line_start..at].matches('`').count() % 2 == 1 {
                 continue;
             }
             let rest = &text[at + prefix.len()..];
@@ -378,7 +388,21 @@ fn render_region(name: &str) -> Result<String, String> {
             .to_string();
         return flags_table(command, &heading);
     }
+    if let Some(id) = name.strip_prefix("run:") {
+        let m = examples();
+        return manifest::display_run(&m, m.run(id)?);
+    }
+    if let Some(id) = name.strip_prefix("ladder:") {
+        let m = examples();
+        let ladder = m
+            .ladder
+            .iter()
+            .find(|l| l.id == id)
+            .ok_or_else(|| format!("no ladder '{id}' in {}", manifest::MANIFEST))?;
+        return manifest::display_ladder(&m, ladder);
+    }
     match name {
+        "ladder-bases" => manifest::display_bases(&examples()),
         "commands" => Ok(commands_table()),
         "groups" => Ok(groups_table()),
         "extraction-table" => Ok(extraction_table()),
@@ -428,6 +452,99 @@ fn extraction_keys_are_documented_exactly() {
     sorted.sort();
     serialized.sort();
     assert_eq!(sorted, serialized);
+}
+
+// -------------------------------------------------------------- examples
+
+#[test]
+fn example_images_are_current() {
+    let m = examples();
+    let want = m.lock().unwrap();
+    let have = std::fs::read_to_string(path(manifest::LOCK)).unwrap_or_default();
+    let have: BTreeSet<&str> = have.lines().collect();
+    let stale: Vec<&str> = want
+        .lines()
+        .filter(|l| !have.contains(l))
+        .map(|l| l.split(' ').next().unwrap())
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "example images out of date with {}:\n  {}\nrebuild: nix develop .#examples -c cargo run --release --example docs-images",
+        manifest::MANIFEST,
+        stale.join("\n  ")
+    );
+}
+
+#[test]
+fn every_docs_image_is_built_from_the_manifest() {
+    let m = examples();
+    let built: BTreeSet<&str> = m
+        .image
+        .iter()
+        .map(|i| i.file.as_str())
+        .chain(m.ladder.iter().map(|l| l.file.as_str()))
+        .collect();
+    for file in &built {
+        assert!(
+            path(file).is_file(),
+            "{file} is in the manifest but missing"
+        );
+    }
+    let mut orphans = Vec::new();
+    for doc in DOCS {
+        let text = std::fs::read_to_string(path(doc)).unwrap();
+        let mut rest = text.as_str();
+        while let Some(i) = rest.find("assets/examples/") {
+            let tail = &rest[i..];
+            let end = tail
+                .find(|c: char| c == ')' || c == '"' || c.is_whitespace())
+                .unwrap_or(tail.len());
+            let file = &tail[..end];
+            if !built.contains(file) {
+                orphans.push(format!("{doc}: {file}"));
+            }
+            rest = &tail[end..];
+        }
+    }
+    assert!(
+        orphans.is_empty(),
+        "docs images with no recipe in {}:\n  {}",
+        manifest::MANIFEST,
+        orphans.join("\n  ")
+    );
+}
+
+#[test]
+fn manifest_commands_use_real_flags() {
+    let m = examples();
+    let cli = Cli::command();
+    let mut bad = Vec::new();
+    let mut check = |what: &str, line: &str| {
+        let mut words = line.split_whitespace();
+        let Some(command) = words.next() else { return };
+        let Some(sub) = cli.find_subcommand(command) else {
+            bad.push(format!("{what}: no command '{command}'"));
+            return;
+        };
+        let flags: BTreeSet<&str> = sub.get_arguments().filter_map(|a| a.get_long()).collect();
+        for w in words.filter_map(|w| w.strip_prefix("--")) {
+            if !flags.contains(w) {
+                bad.push(format!("{what}: {command} has no --{w}"));
+            }
+        }
+    };
+    for r in &m.run {
+        check(&format!("run {}", r.id), &r.args);
+    }
+    for l in &m.ladder {
+        for rung in &l.rungs {
+            check(
+                &format!("ladder {}", l.id),
+                &format!("{} {} {}", l.base, l.common, rung.args),
+            );
+        }
+    }
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
 }
 
 // ----------------------------------------------------------- drift check
@@ -611,8 +728,8 @@ fn renders_block_and_inline_regions_and_keeps_the_rest() {
 }
 
 #[test]
-fn markers_in_code_fences_are_ignored() {
-    let doc = "```markdown\n<!-- gen:table -->\nexample\n<!-- /gen:table -->\n```\n~~~\n<!-- gen:nope -->\n~~~\n";
+fn markers_in_code_are_ignored() {
+    let doc = "```markdown\n<!-- gen:table -->\nexample\n<!-- /gen:table -->\n```\n~~~\n<!-- gen:nope -->\n~~~\nprose `<!-- gen:NAME -->` too\n";
     assert_eq!(render(doc, &fake).unwrap(), doc);
 }
 

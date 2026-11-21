@@ -2,21 +2,24 @@
 
 Every dial, what it does, what values it takes, and a demo of a
 generation actually turning. Each montage opens with the demo subject's
-original image; **the code block under each montage is the recipe that
-produced it** — one command per cell, comment-labelled.
+original image (where there is one), and each cell is labelled with the
+flags that produced it; **the code block under each montage is the
+recipe**, one command per cell. Recipes leave out the inputs, which are
+the same for every montage of a command:
 
-Common bits, used verbatim in the recipes below:
-
+<!-- gen:ladder-bases -->
 ```sh
-WAL="map-wal --wallpaper assets/bango-renders-3d-abstract.webp --scheme gruvbox-light.yaml --out out"
-SCH="map-scheme --wallpaper assets/kelly-ishmael-butterfly-closeup.webp --scheme rose-pine-dawn.yaml --out out"
+# map-scheme recipes run as:
+rehue map-scheme --wallpaper assets/kelly-ishmael-butterfly-closeup.webp --scheme rose-pine-dawn --out out
+# map-wal recipes run as:
+rehue map-wal --wallpaper assets/bango-renders-3d-abstract.webp --scheme gruvbox-light --out out
+# inspect recipes run as:
+rehue inspect --wallpaper assets/kelly-ishmael-butterfly-closeup.webp --out out
 ```
+<!-- /gen:ladder-bases -->
 
-(`map-wal` / `map-scheme` stand in for the full command; prefix `rehue` and
-create the directory. Cells labelled *original* are the untouched
-source, no command.) Cells whose montage came from several separate
-generations are assembled with
-`magick montage -background '#232327' -fill '#e8e8ef' -label '<label>' cell.png ... -tile <t>x<n> -geometry 480x+3+10`.
+The montages and recipes are generated from
+[docs/examples.toml](docs/examples.toml), so they always match.
 
 - **map-wal** repaints [bango-renders-3d-abstract](assets/bango-renders-3d-abstract.webp)
   with Gruvbox Light. Every map-wal montage below opens with the
@@ -57,12 +60,14 @@ output is a re-encoded passthrough.
 
 ![original / soft, harmonize 1 / hard, harmonize 1](assets/examples/options/wal-territory.webp)
 
+<!-- gen:ladder:wal-territory -->
 ```sh
-# soft, harmonize 1
+# soft (the default), harmonize 1
 rehue map-wal --harmonize 1
 # hard, harmonize 1
 rehue map-wal --harmonize 1 --territory hard
 ```
+<!-- /gen:ladder:wal-territory -->
 
 ### harmonize — `0..1`, default `0`
 
@@ -74,12 +79,12 @@ you opt in by name.
 
 ![original / harmonize 0.5 / 1 on bango](assets/examples/options/wal-harmonize.webp)
 
+<!-- gen:ladder:wal-harmonize -->
 ```sh
-# harmonize 0.5
 rehue map-wal --harmonize 0.5
-# harmonize 1
 rehue map-wal --harmonize 1
 ```
+<!-- /gen:ladder:wal-harmonize -->
 
 ### blend-hue — `0..1`, default `0` (facade-seeded)
 
@@ -88,12 +93,12 @@ target: 0 = raw pixel hue, 1 = full adoption.
 
 ![original / blend-hue 0.6 / 1 on bango](assets/examples/options/wal-blend-hue.webp)
 
+<!-- gen:ladder:wal-blend-hue -->
 ```sh
-# blend-hue 0.6
 rehue map-wal --blend-hue 0.6
-# blend-hue 1
 rehue map-wal --blend-hue 1
 ```
+<!-- /gen:ladder:wal-blend-hue -->
 
 ### blend-chroma — `0..1`, default `0` (facade-seeded)
 
@@ -102,12 +107,12 @@ the "repaint" feel; harmonize seeds it along with blend-hue.
 
 ![original / blend-chroma 0.6 / 1 on bango](assets/examples/options/wal-blend-chroma.webp)
 
+<!-- gen:ladder:wal-blend-chroma -->
 ```sh
-# blend-chroma 0.6
 rehue map-wal --blend-chroma 0.6
-# blend-chroma 1
 rehue map-wal --blend-chroma 1
 ```
+<!-- /gen:ladder:wal-blend-chroma -->
 
 ### blend-light — `0..1`, default `0`, decoupled
 
@@ -118,12 +123,12 @@ lightness shape at every harmonize level.
 
 ![original / blend-light 0.5 / 1 on bango, the washout ladder](assets/examples/options/wal-blend-light.webp)
 
+<!-- gen:ladder:wal-blend-light -->
 ```sh
-# blend-light 0.5
 rehue map-wal --blend-light 0.5
-# blend-light 1
 rehue map-wal --blend-light 1
 ```
+<!-- /gen:ladder:wal-blend-light -->
 
 ### reach-deg — degrees, default `45`
 
@@ -134,14 +139,14 @@ the falloff width (larger = farther slots pull on each pixel); in
 
 ![original / reach 15, 45, 140 with harmonize 1](assets/examples/options/wal-reach.webp)
 
+<!-- gen:ladder:wal-reach -->
 ```sh
-# reach 15
 rehue map-wal --harmonize 1 --reach-deg 15
-# reach 45
+# the default
 rehue map-wal --harmonize 1 --reach-deg 45
-# reach 140
 rehue map-wal --harmonize 1 --reach-deg 140
 ```
+<!-- /gen:ladder:wal-reach -->
 
 ### gray-chroma-floor — default `0.02`
 
@@ -153,14 +158,14 @@ reach: the effect only exists at nonzero blends.
 
 ![original / floor 0, 0.02, 0.12 with harmonize 1](assets/examples/options/wal-gray-chroma-floor.webp)
 
+<!-- gen:ladder:wal-gray-chroma-floor -->
 ```sh
-# floor 0
 rehue map-wal --harmonize 1 --gray-chroma-floor 0
-# floor 0.02
+# the default
 rehue map-wal --harmonize 1 --gray-chroma-floor 0.02
-# floor 0.12
 rehue map-wal --harmonize 1 --gray-chroma-floor 0.12
 ```
+<!-- /gen:ladder:wal-gray-chroma-floor -->
 
 ### dithering — `0..1`, default `0`
 
@@ -171,13 +176,13 @@ hard territory with a full hue blend and partial light/chroma.
 
 ![original / dithering 0, 0.5, 1 (hard + partial blend)](assets/examples/options/wal-dithering.webp)
 
+<!-- gen:ladder:wal-dithering -->
 ```sh
-# shared companion: --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9
-# dithering 0.5
+rehue map-wal --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 0
 rehue map-wal --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 0.5
-# dithering 1
 rehue map-wal --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 1
 ```
+<!-- /gen:ladder:wal-dithering -->
 
 ### dithering-mode — `blue-noise` (default) | `bayer` | `floyd-steinberg` | `atkinson` | `none`
 
@@ -188,13 +193,14 @@ everything; Atkinson drops 2/8, which reads gentler.
 
 ![original + four dithering kernels side by side](assets/examples/options/wal-dithering-mode.webp)
 
+<!-- gen:ladder:wal-dithering-mode -->
 ```sh
-# same companion base, plus:
-# blue-noise:  ... --dithering 1 --dithering-mode blue-noise
-# bayer:       ... --dithering 1 --dithering-mode bayer
-# floyd-steinberg: ... --dithering 1 --dithering-mode floyd-steinberg
-# atkinson:    ... --dithering 1 --dithering-mode atkinson
+rehue map-wal --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 1 --dithering-mode blue-noise
+rehue map-wal --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 1 --dithering-mode bayer
+rehue map-wal --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 1 --dithering-mode floyd-steinberg
+rehue map-wal --territory hard --blend-hue 1 --blend-light 0.5 --blend-chroma 0.9 --dithering 1 --dithering-mode atkinson
 ```
+<!-- /gen:ladder:wal-dithering-mode -->
 
 ### distribution — per register
 
@@ -207,14 +213,15 @@ Family indices come from `rehue inspect`. Bare (untargeted): pin-only —
 
 ![original / harmonize 1 / accents stops [0,1,2,3] / + rotate 1](assets/examples/options/wal-distribution.webp)
 
+<!-- gen:ladder:wal-distribution -->
 ```sh
-# harmonize 1 (no distribution)
+# no distribution
 rehue map-wal --harmonize 1
-# accents stops [0,1,2,3]
 rehue map-wal --harmonize 1 --distribution accents '[0,1,2,3]'
-# ...and rotate 1
+# ...and rotate
 rehue map-wal --harmonize 1 --distribution accents '[0,1,2,3]' --rotate accents 1
 ```
+<!-- /gen:ladder:wal-distribution -->
 
 ### rotate — per register, integer
 
@@ -230,30 +237,30 @@ before the image-wide one.
 
 ![original / wide light -0.1 / +0.1](assets/examples/options/wal-light.webp)
 
+<!-- gen:ladder:wal-light -->
 ```sh
-# wide light -0.1
 rehue map-wal --light -0.1
-# wide light +0.1
 rehue map-wal --light 0.1
 ```
+<!-- /gen:ladder:wal-light -->
 
 ![original / wide chroma 0.6 / 1.4](assets/examples/options/wal-chroma.webp)
 
+<!-- gen:ladder:wal-chroma -->
 ```sh
-# wide chroma 0.6
 rehue map-wal --chroma 0.6
-# wide chroma 1.4
 rehue map-wal --chroma 1.4
 ```
+<!-- /gen:ladder:wal-chroma -->
 
 ![original / accents chroma 1.6 / fg chroma 0.5](assets/examples/options/wal-register-grades.webp)
 
+<!-- gen:ladder:wal-register-grades -->
 ```sh
-# accents chroma 1.6
 rehue map-wal --chroma accents 1.6
-# fg chroma 0.5
 rehue map-wal --chroma fg 0.5
 ```
+<!-- /gen:ladder:wal-register-grades -->
 
 ---
 
@@ -274,14 +281,15 @@ pixels *toward the scheme*; here slots pull *toward the wallpaper*.)
 
 ![blend-hue 1 / 0.4 / 0 on the butterfly](assets/examples/options/scheme-blend-hue.png)
 
+<!-- gen:ladder:scheme-blend-hue -->
 ```sh
-# blend-hue 1 (the default; no flags)
+# blend-hue 1, the default
 rehue map-scheme
-# blend-hue 0.4 — seeds `all`
 rehue map-scheme --blend-hue 0.4
-# blend-hue 0 — the reference scheme verbatim
+# the reference scheme verbatim
 rehue map-scheme --blend-hue 0
 ```
+<!-- /gen:ladder:scheme-blend-hue -->
 
 ### distribution — per register
 
@@ -292,12 +300,15 @@ map-wal, over the accent claim behaviour.
 
 ![butterfly: defaults, accents [0,1,2,3], surfaces+fg ramp](assets/examples/options/scheme-distribution.png)
 
+<!-- gen:ladder:scheme-distribution -->
 ```sh
-# accents stops [0,1,2,3]
+# defaults: accents claim, the rest take the heaviest family
+rehue map-scheme
 rehue map-scheme --distribution accents '[0,1,2,3]'
-# surfaces+fg ramp
+# surfaces and fg spread across the families
 rehue map-scheme --distribution surfaces true --distribution fg true
 ```
+<!-- /gen:ladder:scheme-distribution -->
 
 ### rotate — per register, integer
 
@@ -306,12 +317,13 @@ register's slots.
 
 ![accents with distribution [0,1,2,3] at rotate 0 / 1 / 3](assets/examples/options/scheme-rotate.png)
 
+<!-- gen:ladder:scheme-rotate -->
 ```sh
-# rotate 1
+rehue map-scheme --distribution accents '[0,1,2,3]'
 rehue map-scheme --distribution accents '[0,1,2,3]' --rotate accents 1
-# rotate 3
 rehue map-scheme --distribution accents '[0,1,2,3]' --rotate accents 3
 ```
+<!-- /gen:ladder:scheme-rotate -->
 
 ### light / chroma — per register
 
@@ -320,12 +332,12 @@ to the register's slots — the scheme's structure stays unless you ask.
 
 ![accents chroma 0.75 vs 1.6 on the butterfly](assets/examples/options/scheme-chroma.png)
 
+<!-- gen:ladder:scheme-chroma -->
 ```sh
-# accents chroma 0.75
 rehue map-scheme --chroma accents 0.75
-# accents chroma 1.6
 rehue map-scheme --chroma accents 1.6
 ```
+<!-- /gen:ladder:scheme-chroma -->
 
 ### reach-deg — degrees, default `45`
 
@@ -335,14 +347,14 @@ families; narrowing forces them back to the heaviest ones.
 
 ![reach-deg 20 / 45 / 90 on the butterfly](assets/examples/options/scheme-reach.png)
 
+<!-- gen:ladder:scheme-reach -->
 ```sh
-# reach 20
 rehue map-scheme --reach-deg 20
-# reach 45 (default)
+# the default
 rehue map-scheme --reach-deg 45
-# reach 90
 rehue map-scheme --reach-deg 90
 ```
+<!-- /gen:ladder:scheme-reach -->
 
 ---
 
@@ -374,11 +386,17 @@ whose positions are the indices).
 
 ![extraction at max-hues 2 / 4 / 6](assets/examples/options/extract-max-hues.png)
 
+<!-- gen:ladder:extract-max-hues -->
 ```sh
-# cells: max-hues 2, 4, 6 — one config file each, e.g. extract.json: {"max-hues": 2}
-rehue inspect --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
-  --config extract.json --out inspect
+# config.json: {"max-hues":2}
+rehue inspect --config config.json
+# config.json: {"max-hues":4}
+rehue inspect --config config.json
+# the default
+# config.json: {"max-hues":6}
+rehue inspect --config config.json
 ```
+<!-- /gen:ladder:extract-max-hues -->
 
 ---
 
