@@ -378,6 +378,14 @@ result to your desktop. rehue makes the colors and the wallpaper;
 into every app you've set up in it (terminals, shells, editors, bars),
 using the tinted-theming templates.
 
+**Prerequisite:** a working tinty setup. rehue hands tinty the scheme,
+but which apps get themed, and how each one picks up its theme (an
+import line in the app's config, or a hook), is tinty's configuration.
+See tinty's [README](https://github.com/tinted-theming/tinty#readme)
+and [USAGE](https://github.com/tinted-theming/tinty/blob/main/USAGE.md)
+to set it up; each template repo's README shows the matching config
+line or hook for its apps.
+
 ```toml
 # ~/.config/rehue/pipeline.toml
 wallpaper = "~/Pictures/glitter.webp"
