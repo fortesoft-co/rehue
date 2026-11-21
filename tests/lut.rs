@@ -1,5 +1,5 @@
 //! LUT export and the per-colour remap it bakes: `ColorMap::map_rgb` is
-//! exactly what `map_wal::apply` paints at dithering 0, and the Hald /
+//! exactly what `grade_wal::apply` paints at dithering 0, and the Hald /
 //! .cube grids reproduce it.
 
 mod common;
@@ -7,10 +7,10 @@ mod common;
 use std::process::Command;
 
 use common::{fixture, gradient_image, solarized};
+use rehue::grade_wal::{ColorMap, Mode, WalConfig};
 use rehue::lut::{self, grid_color, grid_value, hald, hald_lookup, samples};
-use rehue::map_wal::{ColorMap, RemapConfig, Territory};
 
-fn neutral(slots: &[rehue::map_wal::SlotPalette]) -> Vec<usize> {
+fn neutral(slots: &[rehue::grade_wal::SlotPalette]) -> Vec<usize> {
     (0..16).filter(|i| slots[*i].lch.c < 0.08).collect()
 }
 
@@ -21,16 +21,16 @@ fn color_map_matches_apply_pixel_for_pixel() {
     let (_, slots) = solarized();
     let neutral = neutral(&slots);
     let rgb = gradient_image((64, 48)).to_rgb8();
-    for territory in [Territory::Soft, Territory::Hard] {
-        let config = RemapConfig {
+    for mode in [Mode::Blend, Mode::Snap] {
+        let config = WalConfig {
             harmonize: 1.0,
-            blend_light: 0.4,
-            territory: Some(territory),
+            match_lightness: 0.4,
+            mode: Some(mode),
             ..Default::default()
         };
-        let regs = rehue::map_wal::resolved_registers(&config).unwrap();
-        let options = rehue::map_wal::slot_options(&regs);
-        let out = rehue::map_wal::apply(
+        let regs = rehue::grade_wal::resolved_roles(&config).unwrap();
+        let options = rehue::grade_wal::slot_options(&regs);
+        let out = rehue::grade_wal::apply(
             rgb.as_raw(),
             rgb.width(),
             rgb.height(),
@@ -42,7 +42,7 @@ fn color_map_matches_apply_pixel_for_pixel() {
         let map = ColorMap::new(&slots, &neutral, &options, &config);
         for (i, px) in rgb.pixels().enumerate() {
             let want = &out.pixels[i * 3..i * 3 + 3];
-            assert_eq!(map.map_rgb(&px.0), want, "{territory:?} pixel {i}");
+            assert_eq!(map.map_rgb(&px.0), want, "{mode:?} pixel {i}");
         }
     }
 }
@@ -88,7 +88,7 @@ fn hald_build_is_deterministic() {
     assert_eq!(hald(4, f).into_raw(), hald(4, f).into_raw());
 }
 
-/// map-wal on a wallpaper made only of level-4 grid colours: looking each
+/// wal on a wallpaper made only of level-4 grid colours: looking each
 /// pixel up in the exported Hald LUT must reproduce wallpaper.png exactly.
 #[test]
 fn exported_hald_reproduces_the_wallpaper() {
@@ -104,7 +104,7 @@ fn exported_hald_reproduces_the_wallpaper() {
 
     let out = dir.join("out");
     let status = Command::new(env!("CARGO_BIN_EXE_rehue"))
-        .args(["map-wal", "--wallpaper"])
+        .args(["wal", "-i"])
         .arg(&wall_path)
         .arg("--scheme")
         .arg(fixture("solarized-dark.yaml"))
@@ -131,7 +131,7 @@ fn lut_refuses_dithering_and_bad_levels() {
     gradient_image((16, 16)).save(&wall).unwrap();
     let run = |extra: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_rehue"))
-            .args(["map-wal", "--wallpaper"])
+            .args(["wal", "-i"])
             .arg(&wall)
             .arg("--scheme")
             .arg(fixture("solarized-dark.yaml"))

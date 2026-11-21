@@ -75,7 +75,7 @@
       });
 
       # Derivation builders a consumer flake can import directly, e.g.:
-      #   mapped = rehue.lib.${system}.mapScheme {
+      #   mapped = rehue.lib.${system}.scheme {
       #     wallpaper = ./wallpaper.png;
       #     scheme = "${pkgs.base16-schemes}/share/themes/rose-pine.yaml";
       #   };
@@ -86,37 +86,39 @@
           rehue = self.packages.${pkgs.system}.rehue;
         in
         {
-          mapScheme =
+          # rehue a scheme with a wallpaper's hues (`rehue scheme`)
+          scheme =
             { wallpaper, scheme, config ? { } }:
             let
-              configFile = pkgs.writeText "rehue-map-config.json" (builtins.toJSON config);
+              configFile = pkgs.writeText "rehue-scheme-config.json" (builtins.toJSON config);
             in
-            pkgs.runCommand "rehue-mapped-scheme" {
+            pkgs.runCommand "rehue-scheme" {
               nativeBuildInputs = [ rehue ];
               wallpaperArg = "${wallpaper}";
               schemeArg = "${scheme}";
               configArg = configFile;
             } ''
-              rehue map-scheme \
+              rehue scheme \
+                --input "$schemeArg" \
                 --wallpaper "$wallpaperArg" \
-                --scheme "$schemeArg" \
                 --config "$configArg" \
                 --out "$out"
             '';
 
-          mapWal =
+          # repaint a wallpaper with a scheme's palette (`rehue wal`)
+          wal =
             { wallpaper, scheme, config ? { } }:
             let
-              configFile = pkgs.writeText "rehue-map-wal-config.json" (builtins.toJSON config);
+              configFile = pkgs.writeText "rehue-wal-config.json" (builtins.toJSON config);
             in
-            pkgs.runCommand "rehue-mapped-wallpaper" {
+            pkgs.runCommand "rehue-wal" {
               nativeBuildInputs = [ rehue ];
               wallpaperArg = "${wallpaper}";
               schemeArg = "${scheme}";
               configArg = configFile;
             } ''
-              rehue map-wal \
-                --wallpaper "$wallpaperArg" \
+              rehue wal \
+                --input "$wallpaperArg" \
                 --scheme "$schemeArg" \
                 --config "$configArg" \
                 --out "$out"

@@ -90,9 +90,9 @@ wallpaper = "wall.png"
 scheme = "gruvbox-light"
 out = "out"
 
-[map-scheme]
+[rehue.scheme]
 
-[map-wal]
+[rehue.wal]
 harmonize = 1.0
 
 [apply]
@@ -146,7 +146,7 @@ fn dry_run_writes_nothing_and_runs_nothing() {
 }
 
 #[test]
-fn map_wal_only_applies_the_reference_scheme() {
+fn wal_only_applies_the_reference_scheme() {
     let sb = Sandbox::new("walonly");
     let pipeline = sb.write_pipeline(
         r#"
@@ -154,7 +154,7 @@ wallpaper = "wall.png"
 scheme = "gruvbox-light"
 out = "out"
 
-[map-wal]
+[rehue.wal]
 harmonize = 1.0
 
 [apply]
@@ -231,19 +231,19 @@ fn pipeline_load_resolves_paths_and_rejects_bad_files() {
     assert_eq!(pipeline.wallpaper, sb.path("wall.png"));
     assert_eq!(pipeline.out_dir(), sb.path("out"));
     assert_eq!(pipeline.apply.tinty_name, "rehue");
-    assert_eq!(pipeline.map_wal.as_ref().unwrap().harmonize, 1.0);
+    assert_eq!(pipeline.rehue.wal.as_ref().unwrap().harmonize, 1.0);
 
     let no_steps = sb.write_pipeline("wallpaper = \"wall.png\"\nscheme = \"nord\"\n");
     let err = Pipeline::load(&no_steps).unwrap_err();
     assert!(err.contains("no steps"), "{err}");
 
     let typo = sb.write_pipeline(
-        "wallpaper = \"wall.png\"\nscheme = \"nord\"\nwalpaper = 1\n[map-scheme]\n",
+        "wallpaper = \"wall.png\"\nscheme = \"nord\"\nwalpaper = 1\n[rehue.scheme]\n",
     );
     assert!(Pipeline::load(&typo).is_err(), "unknown keys are rejected");
 
     let bad_name = sb.write_pipeline(
-        "wallpaper = \"wall.png\"\nscheme = \"nord\"\n[map-scheme]\n[apply]\ntinty-name = \"../x\"\n",
+        "wallpaper = \"wall.png\"\nscheme = \"nord\"\n[rehue.scheme]\n[apply]\ntinty-name = \"../x\"\n",
     );
     let err = Pipeline::load(&bad_name).unwrap_err();
     assert!(err.contains("tinty-name"), "{err}");

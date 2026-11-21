@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use rehue::color::hex_to_oklch;
 use rehue::extract::Cluster;
-use rehue::map_wal::SlotPalette;
+use rehue::grade_wal::SlotPalette;
 use rehue::scheme::{BASE_SLOTS, Scheme};
 
 pub fn fixture(name: &str) -> PathBuf {

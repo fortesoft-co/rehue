@@ -1,5 +1,5 @@
 //! Wallpaper enhancement: resolution scaling on the source image, with
-//! the palette work left to map-wal.  Two methods: built-in Lanczos
+//! the palette work left to wal.  Two methods: built-in Lanczos
 //! resampling (deterministic, pure) and opt-in AI super-resolution via
 //! the ncnn/vulkan tool `realesrgan-ncnn-vulkan` (BSD-3 code and
 //! weights; vulkan means no CUDA and no assumptions about the driver).

@@ -1,11 +1,12 @@
-//! map-scheme: the register pipeline — distribution/stop semantics,
+//! scheme: the role pipeline — assign/stop semantics,
 //! dial behaviour, the config contract, and the CLI surface.
 
 use std::collections::BTreeMap;
 
 use rehue::color::{Lch, circ_dist, circ_lerp, hex_to_oklch, oklch_to_hex};
 use rehue::extract::Cluster;
-use rehue::register::{Distribution, MapConfig, RegisterConfig, retint};
+use rehue::grade_scheme::{SchemeConfig, SchemeRoleConfig, retint};
+use rehue::role::Assign;
 use rehue::scheme::{BASE_SLOTS, Scheme};
 
 mod common;
@@ -29,7 +30,7 @@ fn solarized_mapping_matches_snapshot() {
             chroma: 0.12484408205764291,
         },
     ];
-    let mapped = retint(&slot_hexes, &clusters, &MapConfig::default()).expect("engine runs");
+    let mapped = retint(&slot_hexes, &clusters, &SchemeConfig::default()).expect("engine runs");
     let rendered = Scheme::parse_file(&fixture("solarized-dark.yaml"))
         .expect("fixture parses")
         .render(&mapped);
@@ -38,8 +39,8 @@ fn solarized_mapping_matches_snapshot() {
     assert_eq!(rendered, expected);
 }
 
-/// A synthetic 16-slot scheme whose fg register is chromatic at mid
-/// lightness, so distribution tests can measure hue through the 8-bit
+/// A synthetic 16-slot scheme whose fg role is chromatic at mid
+/// lightness, so assign tests can measure hue through the 8-bit
 /// render (solarized's near-neutral fg slots smear hue beyond tolerance).
 fn vivid_slot_hexes() -> Vec<String> {
     let mut slots: Vec<String> = vec!["1b1b1b".to_string(); 4];
@@ -78,10 +79,10 @@ fn hue_close(a: f64, b: f64, tolerance: f64) {
 #[test]
 fn distribution_hues_exact() {
     let families = four_families();
-    let assigned = rehue::register::distribution_hues(4, &[3, 1, 0, 2], &families);
+    let assigned = rehue::role::assign_hues(4, &[3, 1, 0, 2], &families);
     assert_eq!(assigned, vec![330.0, 130.0, 40.0, 250.0]);
 
-    let two_stop = rehue::register::distribution_hues(4, &[0, 2], &families);
+    let two_stop = rehue::role::assign_hues(4, &[0, 2], &families);
     assert_eq!(two_stop[0], 40.0);
     assert_eq!(two_stop[3], 250.0);
     assert!((two_stop[1] - circ_lerp(40.0, 250.0, 1.0 / 3.0)).abs() < 1e-9);
@@ -91,11 +92,11 @@ fn distribution_hues_exact() {
 #[test]
 fn full_length_distribution_assigns_without_interpolating() {
     let slot_hexes = vivid_slot_hexes();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "fg".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Stops(vec![3, 1, 0, 2])),
+        SchemeRoleConfig {
+            assign: Some(Assign::Stops(vec![3, 1, 0, 2])),
             ..Default::default()
         },
     );
@@ -112,11 +113,11 @@ fn full_length_distribution_assigns_without_interpolating() {
 #[test]
 fn partial_distribution_interpolates_across_the_span() {
     let slot_hexes = vivid_slot_hexes();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "fg".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Stops(vec![0, 2])),
+        SchemeRoleConfig {
+            assign: Some(Assign::Stops(vec![0, 2])),
             ..Default::default()
         },
     );
@@ -140,11 +141,11 @@ fn partial_distribution_interpolates_across_the_span() {
 #[test]
 fn distribution_replaces_accent_anchor_matching() {
     let (slot_hexes, _) = solarized();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "accents".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Stops(vec![0, 1, 0, 1, 0, 1, 0, 1])),
+        SchemeRoleConfig {
+            assign: Some(Assign::Stops(vec![0, 1, 0, 1, 0, 1, 0, 1])),
             ..Default::default()
         },
     );
@@ -157,11 +158,11 @@ fn distribution_replaces_accent_anchor_matching() {
 #[test]
 fn auto_ramp_spreads_weight_order() {
     let (slot_hexes, _) = solarized();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "surfaces".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Auto(true)),
+        SchemeRoleConfig {
+            assign: Some(Assign::AUTO),
             ..Default::default()
         },
     );
@@ -175,48 +176,48 @@ fn auto_ramp_spreads_weight_order() {
 #[test]
 fn bg_takes_a_pin_but_rejects_true_and_arrays() {
     let (slot_hexes, _) = solarized();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "bg".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Pin(1)),
+        SchemeRoleConfig {
+            assign: Some(Assign::Pin(1)),
             ..Default::default()
         },
     );
     let mapped = retint(&slot_hexes, &four_families(), &config).expect("engine runs");
     hue_close(mapped_hue(&mapped, "base00"), 130.0, 15.0);
 
-    config.registers.insert(
+    config.roles.insert(
         "bg".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Auto(true)),
+        SchemeRoleConfig {
+            assign: Some(Assign::AUTO),
             ..Default::default()
         },
     );
     let err = retint(&slot_hexes, &four_families(), &config)
-        .expect_err("single-slot register rejects the auto ramp");
+        .expect_err("single-slot role rejects the auto ramp");
     assert!(err.contains("1 slot"), "unexpected error: {}", err);
 
-    config.registers.insert(
+    config.roles.insert(
         "bg".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Stops(vec![0, 1])),
+        SchemeRoleConfig {
+            assign: Some(Assign::Stops(vec![0, 1])),
             ..Default::default()
         },
     );
     let err = retint(&slot_hexes, &four_families(), &config)
-        .expect_err("single-slot register rejects arrays");
+        .expect_err("single-slot role rejects arrays");
     assert!(err.contains("1 slot"), "unexpected error: {}", err);
 }
 
 #[test]
 fn distribution_out_of_bounds_is_an_error() {
     let (slot_hexes, _) = solarized();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "fg".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Stops(vec![0, 1, 2, 3, 0])),
+        SchemeRoleConfig {
+            assign: Some(Assign::Stops(vec![0, 1, 2, 3, 0])),
             ..Default::default()
         },
     );
@@ -224,10 +225,10 @@ fn distribution_out_of_bounds_is_an_error() {
         .expect_err("more stops than slots is an error");
     assert!(err.contains("5 stop(s)"), "unexpected error: {}", err);
 
-    config.registers.insert(
+    config.roles.insert(
         "fg".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Stops(vec![9])),
+        SchemeRoleConfig {
+            assign: Some(Assign::Stops(vec![9])),
             ..Default::default()
         },
     );
@@ -239,12 +240,12 @@ fn distribution_out_of_bounds_is_an_error() {
 #[test]
 fn rotate_composes_after_distribution() {
     let (slot_hexes, _) = solarized();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "accents".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Stops(vec![0, 1, 0, 1, 0, 1, 0, 1])),
-            rotate: Some(1),
+        SchemeRoleConfig {
+            assign: Some(Assign::Stops(vec![0, 1, 0, 1, 0, 1, 0, 1])),
+            cycle: Some(1),
             ..Default::default()
         },
     );
@@ -260,7 +261,7 @@ fn rotate_composes_after_distribution() {
 #[test]
 fn stale_register_keys_are_rejected() {
     // The pre-v0.2 vocabulary fails loudly instead of aliasing.
-    let err = serde_json::from_str::<MapConfig>("{\"registers\":{\"fg\":{\"harmonize\":0.5}}}")
+    let err = serde_json::from_str::<SchemeConfig>("{\"roles\":{\"fg\":{\"harmonize\":0.5}}}")
         .expect_err("renamed options are not silently ignored");
     assert!(err.to_string().contains("unknown field"));
 }
@@ -268,11 +269,11 @@ fn stale_register_keys_are_rejected() {
 #[test]
 fn distribution_is_deterministic() {
     let (slot_hexes, _) = solarized();
-    let mut config = MapConfig::default();
-    config.registers.insert(
+    let mut config = SchemeConfig::default();
+    config.roles.insert(
         "accents".to_string(),
-        RegisterConfig {
-            distribution: Some(Distribution::Auto(true)),
+        SchemeRoleConfig {
+            assign: Some(Assign::AUTO),
             chroma: Some(1.2),
             ..Default::default()
         },
@@ -283,7 +284,7 @@ fn distribution_is_deterministic() {
 }
 
 #[test]
-fn map_scheme_cli_flags_track_the_config_surface() {
+fn scheme_cli_flags_track_the_config_surface() {
     let bin = env!("CARGO_BIN_EXE_rehue");
     let scheme = fixture("solarized-dark.yaml");
     let wall = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -297,9 +298,9 @@ fn map_scheme_cli_flags_track_the_config_surface() {
             std::fs::write(&cfg, text).expect("config writes");
         }
         let mut cmd = std::process::Command::new(bin);
-        cmd.args(["map-scheme", "--wallpaper"]);
+        cmd.args(["scheme", "-w"]);
         cmd.arg(&wall);
-        cmd.args(["--scheme"]);
+        cmd.args(["-i"]);
         cmd.arg(&scheme);
         cmd.args(["--out"]);
         cmd.arg(&out);
@@ -311,18 +312,18 @@ fn map_scheme_cli_flags_track_the_config_surface() {
             cmd.arg(flag);
         }
         let status = cmd.status().expect("rehue binary runs");
-        assert!(status.success(), "map-scheme {dir} exited with {status}");
+        assert!(status.success(), "scheme {dir} exited with {status}");
         std::fs::read(out.join("scheme.yaml")).expect("output readable")
     };
 
     let by_flags = run(
         "rehue-scheme-flags",
         None,
-        &["--distribution", "3", "--rotate", "3", "--chroma", "0.75"],
+        &["--assign", "3", "--cycle", "3", "--chroma", "0.75"],
     );
     let by_config = run(
         "rehue-scheme-json",
-        Some("{\"registers\":{\"all\":{\"distribution\":3,\"rotate\":3,\"chroma\":0.75}}}"),
+        Some("{\"roles\":{\"all\":{\"assign\":3,\"cycle\":3,\"chroma\":0.75}}}"),
         &[],
     );
     assert_eq!(
@@ -330,15 +331,15 @@ fn map_scheme_cli_flags_track_the_config_surface() {
         "flags seeding `all` must match the config record"
     );
 
-    // Per-register records beat the `all` seed, whichever way it arrives.
+    // Per-role records beat the `all` seed, whichever way it arrives.
     let sculpted = run(
         "rehue-scheme-sculpt",
-        Some("{\"registers\":{\"all\":{\"chroma\":0.75},\"accents\":{\"chroma\":1.2}}}"),
+        Some("{\"roles\":{\"all\":{\"chroma\":0.75},\"accents\":{\"chroma\":1.2}}}"),
         &[],
     );
     let sculpted_mixed = run(
         "rehue-scheme-sculpt-mixed",
-        Some("{\"registers\":{\"accents\":{\"chroma\":1.2}}}"),
+        Some("{\"roles\":{\"ac\":{\"chroma\":1.2}}}"),
         &["--chroma", "0.75"],
     );
     assert_eq!(
@@ -351,43 +352,33 @@ fn map_scheme_cli_flags_track_the_config_surface() {
         "rehue-scheme-targeted",
         None,
         &[
-            "--distribution",
-            "accents",
-            "[0,1,2,3]",
-            "--rotate",
-            "accents",
-            "3",
-            "--chroma",
-            "accents",
-            "1.2",
+            "--assign", "ac", "0,1,2,3", "--cycle", "accents", "3", "--chroma", "accents", "1.2",
         ],
     );
     let targeted_json = run(
         "rehue-scheme-targeted-json",
-        Some(
-            "{\"registers\":{\"accents\":{\"distribution\":[0,1,2,3],\"rotate\":3,\"chroma\":1.2}}}",
-        ),
+        Some("{\"roles\":{\"accents\":{\"assign\":[0,1,2,3],\"cycle\":3,\"chroma\":1.2}}}"),
         &[],
     );
     assert_eq!(
         targeted, targeted_json,
-        "targeted flags match register records"
+        "targeted flags (short role names, comma stops) match role records"
     );
 
-    // A wrong register name errors loudly instead of ghosting.
+    // A wrong role name errors loudly instead of ghosting.
     let out = std::env::temp_dir().join("rehue-scheme-badtarget");
     let _ = std::fs::remove_dir_all(&out);
     let status = std::process::Command::new(bin)
-        .args(["map-scheme", "--wallpaper"])
+        .args(["scheme", "-w"])
         .arg(&wall)
-        .args(["--scheme"])
+        .args(["-i"])
         .arg(&scheme)
         .args(["--out"])
         .arg(&out)
         .args(["--chroma", "wall", "1.6"])
         .status()
         .expect("rehue binary runs");
-    assert!(!status.success(), "unknown register targets are rejected");
+    assert!(!status.success(), "unknown role targets are rejected");
 
     for dir in [
         "rehue-scheme-flags",

@@ -10,59 +10,47 @@ use image::{DynamicImage, ImageReader, imageops};
 
 use crate::color::{circ_dist, floor_mod, rgb_to_oklch, weighted_circ_mean};
 
-/// Extraction options - deserialize from the map-scheme config JSON with
-/// kebab-case keys (underscore aliases accepted for backwards
-/// compatibility with the old nix wrapper's parameter names).
+/// Extraction options, read from the `scheme` / `wal` / `inspect`
+/// config JSON with kebab-case keys.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ExtractionParams {
-    pub image_max_dimension: u32,
-    #[serde(alias = "chroma_pixel_floor")]
-    pub chroma_pixel_floor: f64,
-    pub lightness_window: [f64; 2],
-    pub max_hues: usize,
-    #[serde(alias = "seed_separation_deg")]
-    pub seed_separation_deg: f64,
-    pub cluster_iterations: u32,
-    #[serde(alias = "merge_deg")]
-    pub merge_deg: f64,
-    #[serde(alias = "min_cluster_weight")]
-    pub min_cluster_weight: f64,
-    #[serde(alias = "accent_chroma_floor")]
-    pub accent_chroma_floor: f64,
-    #[serde(alias = "fg_contrast_floor")]
-    pub fg_contrast_floor: f64,
+    pub max_dimension: u32,
+    pub min_pixel_chroma: f64,
+    pub lightness_range: [f64; 2],
+    pub max_families: usize,
+    pub seed_spacing: f64,
+    pub iterations: u32,
+    pub merge_within: f64,
+    pub min_family_weight: f64,
+    pub min_accent_chroma: f64,
 }
 
 impl ExtractionParams {
     /// Every config key with a one-line description, in declaration
     /// order.  The docs tables render from this; a test checks it names
     /// exactly the serialized keys.
-    pub const KEYS: [(&'static str, &'static str); 10] = [
+    pub const KEYS: [(&'static str, &'static str); 9] = [
         (
-            "image-max-dimension",
+            "max-dimension",
             "work at this capped resolution (Lanczos resize)",
         ),
-        ("chroma-pixel-floor", "ignore pixels below this chroma"),
+        ("min-pixel-chroma", "ignore pixels below this chroma"),
         (
-            "lightness-window",
+            "lightness-range",
             "only pixels inside this lightness band vote",
         ),
-        ("max-hues", "at most this many families survive"),
+        ("max-families", "at most this many families survive"),
         (
-            "seed-separation-deg",
+            "seed-spacing",
             "histogram seeding: minimum separation between seeds",
         ),
-        ("cluster-iterations", "fixed k-means iteration count"),
-        ("merge-deg", "merge families closer than this"),
-        ("min-cluster-weight", "drop families lighter than this mass"),
+        ("iterations", "fixed k-means iteration count"),
+        ("merge-within", "merge families closer than this"),
+        ("min-family-weight", "drop families lighter than this mass"),
         (
-            "accent-chroma-floor",
+            "min-accent-chroma",
             "a family must be at least this chromatic to claim an accent slot",
-        ),
-        (
-            "fg-contrast-floor",
-            "legibility guard: restore fg-vs-bg contrast if graded below",
         ),
     ];
 }
@@ -70,16 +58,15 @@ impl ExtractionParams {
 impl Default for ExtractionParams {
     fn default() -> Self {
         Self {
-            image_max_dimension: 256,
-            chroma_pixel_floor: 0.04,
-            lightness_window: [0.10, 0.92],
-            max_hues: 6,
-            seed_separation_deg: 25.0,
-            cluster_iterations: 30,
-            merge_deg: 18.0,
-            min_cluster_weight: 0.02,
-            accent_chroma_floor: 0.06,
-            fg_contrast_floor: 0.25,
+            max_dimension: 256,
+            min_pixel_chroma: 0.04,
+            lightness_range: [0.10, 0.92],
+            max_families: 6,
+            seed_spacing: 25.0,
+            iterations: 30,
+            merge_within: 18.0,
+            min_family_weight: 0.02,
+            min_accent_chroma: 0.06,
         }
     }
 }
@@ -125,8 +112,8 @@ pub fn extract_hues(path: &Path, params: &ExtractionParams) -> Result<Vec<Cluste
 /// Extraction from an image already in memory (used by tests).
 pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> Vec<Cluster> {
     let rgb = image.to_rgb8();
-    let scale = 1.0f64
-        .min(f64::from(params.image_max_dimension) / f64::from(rgb.width().max(rgb.height())));
+    let scale =
+        1.0f64.min(f64::from(params.max_dimension) / f64::from(rgb.width().max(rgb.height())));
     let resized: image::RgbImage = if scale < 1.0 {
         let w = 1u32.max((f64::from(rgb.width()) * scale).round_ties_even() as u32);
         let h = 1u32.max((f64::from(rgb.height()) * scale).round_ties_even() as u32);
@@ -137,11 +124,11 @@ pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> 
 
     let mut hist_mass = [0.0f64; 360];
     let mut hist_chroma = [0.0f64; 360];
-    let lo = params.lightness_window[0];
-    let hi = params.lightness_window[1];
+    let lo = params.lightness_range[0];
+    let hi = params.lightness_range[1];
     for pixel in resized.pixels() {
         let lch = rgb_to_oklch(&[pixel[0], pixel[1], pixel[2]]);
-        if lch.c < params.chroma_pixel_floor || !(lo <= lch.l && lch.l <= hi) {
+        if lch.c < params.min_pixel_chroma || !(lo <= lch.l && lch.l <= hi) {
             continue;
         }
         let bin = floor_mod(lch.h, 360.0) as usize % 360;
@@ -157,7 +144,7 @@ pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> 
     let total: f64 = records.iter().map(|r| r.mass).sum();
     let mut survivors: Vec<Cluster> = records
         .iter()
-        .filter(|r| r.mass / total >= params.min_cluster_weight)
+        .filter(|r| r.mass / total >= params.min_family_weight)
         .map(|r| r.to_cluster(total))
         .collect();
     if survivors.is_empty() {
@@ -186,14 +173,14 @@ pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> 
                     .unwrap_or(std::cmp::Ordering::Equal),
             )
     });
-    survivors.truncate(params.max_hues);
+    survivors.truncate(params.max_families);
     survivors
 }
 
 /// Deterministic circular k-means over a 360-bin hue histogram.
 ///
 /// Seeding greedily picks the heaviest bins sitting at least
-/// `seed_separation_deg` from every already-picked seed - reproducible,
+/// `seed_spacing` from every already-picked seed - reproducible,
 /// unlike random k-means++ initialisations.
 fn circular_kmeans(
     hist_mass: &[f64; 360],
@@ -222,11 +209,11 @@ fn circular_kmeans(
         }
         if seeds
             .iter()
-            .all(|s| circ_dist(i as f64, *s) >= params.seed_separation_deg)
+            .all(|s| circ_dist(i as f64, *s) >= params.seed_spacing)
         {
             seeds.push(i as f64);
         }
-        if seeds.len() >= params.max_hues {
+        if seeds.len() >= params.max_families {
             break;
         }
     }
@@ -271,11 +258,11 @@ fn circular_kmeans(
 
     // Fixed iteration count keeps seed -> output pure.
     // Fixed iteration count keeps seed -> output pure.  The sequence is
-    // initial assignment, cluster_iterations - 1 refinement passes, then
+    // initial assignment, iterations - 1 refinement passes, then
     // one final pass so each record's mass/chroma matches its settled
     // centre.
     let mut records = assign(&centers);
-    for _ in 1..params.cluster_iterations {
+    for _ in 1..params.iterations {
         centers = records.iter().map(|r| r.hue).collect();
         if centers.is_empty() {
             return Vec::new();
@@ -296,7 +283,7 @@ fn circular_kmeans(
     for rec in records {
         let mut absorbed = false;
         for m in merged.iter_mut() {
-            if circ_dist(m.hue, rec.hue) < params.merge_deg {
+            if circ_dist(m.hue, rec.hue) < params.merge_within {
                 m.s += rec.s;
                 m.cos_sum += rec.cos_sum;
                 m.mass += rec.mass;

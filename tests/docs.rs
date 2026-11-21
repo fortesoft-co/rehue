@@ -320,19 +320,19 @@ fn flags_table(command: &str, heading: &str) -> Result<String, String> {
     Ok(t)
 }
 
-/// `| register | slots | what it is |`.
-fn groups_table() -> String {
-    use rehue::register::{REGISTER_NAMES, REGISTER_ROLES, register_slots};
-    let mut t = String::from("| register | slots | what it is |\n| --- | --- | --- |\n");
-    for (name, role) in REGISTER_NAMES.iter().zip(REGISTER_ROLES) {
-        let slots = register_slots(name);
+/// `| role | short | slots | what it is |`.
+fn roles_table() -> String {
+    use rehue::role::{ROLE_DOCS, ROLE_NAMES, ROLE_SHORT, role_slots};
+    let mut t = String::from("| role | short | slots | what it is |\n| --- | --- | --- | --- |\n");
+    for ((name, short), role) in ROLE_NAMES.iter().zip(ROLE_SHORT).zip(ROLE_DOCS) {
+        let slots = role_slots(name);
         let first = format!("base{}", slots[0][4..].to_uppercase());
         let span = if slots.len() == 1 {
             first
         } else {
             format!("{first}-{}", slots[slots.len() - 1][4..].to_uppercase())
         };
-        t.push_str(&format!("| `{name}` | {span} | {role} |\n"));
+        t.push_str(&format!("| `{name}` | `{short}` | {span} | {role} |\n"));
     }
     t
 }
@@ -404,7 +404,7 @@ fn render_region(name: &str) -> Result<String, String> {
     match name {
         "ladder-bases" => manifest::display_bases(&examples()),
         "commands" => Ok(commands_table()),
-        "groups" => Ok(groups_table()),
+        "roles" => Ok(roles_table()),
         "extraction-table" => Ok(extraction_table()),
         "extraction-keys" => Ok(rehue::extract::ExtractionParams::KEYS
             .iter()
@@ -526,10 +526,15 @@ fn manifest_commands_use_real_flags() {
             bad.push(format!("{what}: no command '{command}'"));
             return;
         };
-        let flags: BTreeSet<&str> = sub.get_arguments().filter_map(|a| a.get_long()).collect();
-        for w in words.filter_map(|w| w.strip_prefix("--")) {
-            if !flags.contains(w) {
-                bad.push(format!("{what}: {command} has no --{w}"));
+        let longs: BTreeSet<&str> = sub.get_arguments().filter_map(|a| a.get_long()).collect();
+        let shorts: BTreeSet<char> = sub.get_arguments().filter_map(|a| a.get_short()).collect();
+        for w in words.filter(|w| manifest::is_flag(w)) {
+            let known = match w.strip_prefix("--") {
+                Some(long) => longs.contains(long),
+                None => w.len() == 2 && shorts.contains(&w.chars().nth(1).unwrap()),
+            };
+            if !known {
+                bad.push(format!("{what}: {command} has no {w}"));
             }
         }
     };
@@ -584,18 +589,16 @@ fn known_names() -> BTreeSet<String> {
             out.extend(m.keys().cloned());
         }
     };
-    keys(serde_json::to_value(rehue::map_wal::RemapConfig::default()).unwrap());
-    keys(serde_json::to_value(rehue::register::MapConfig::default()).unwrap());
-    keys(serde_json::to_value(rehue::map_wal::WalRegisterConfig::default()).unwrap());
-    keys(serde_json::to_value(rehue::register::RegisterConfig::default()).unwrap());
+    keys(serde_json::to_value(rehue::grade_wal::WalConfig::default()).unwrap());
+    keys(serde_json::to_value(rehue::grade_scheme::SchemeConfig::default()).unwrap());
+    keys(serde_json::to_value(rehue::grade_wal::WalRoleConfig::default()).unwrap());
+    keys(serde_json::to_value(rehue::grade_scheme::SchemeRoleConfig::default()).unwrap());
     for (k, _) in rehue::extract::ExtractionParams::KEYS {
         out.insert(k.to_string());
     }
     // pipeline keys (src/apply.rs; deserialize-only structs)
     for k in [
         "scheme-dir",
-        "map-scheme",
-        "map-wal",
         "tinty-name",
         "tinty-config",
         "tinty-data-dir",

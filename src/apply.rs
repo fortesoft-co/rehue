@@ -1,6 +1,6 @@
 //! `rehue apply`: run a pipeline file and hand the result to the desktop.
 //!
-//! The pipeline is a TOML file.  `[map-scheme]` and `[map-wal]` are the
+//! The pipeline is a TOML file.  `[rehue.scheme]` and `[rehue.wal]` are the
 //! same records the JSON `--config` files take (same keys, same merge
 //! rules), so a dial means the same thing everywhere; a table's presence
 //! is what turns its step on.  `[apply]` says where the result goes:
@@ -16,8 +16,8 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-use crate::map_wal::RemapConfig;
-use crate::register::MapConfig;
+use crate::grade_scheme::SchemeConfig;
+use crate::grade_wal::WalConfig;
 
 /// A pipeline file.  Paths are resolved against the file's directory;
 /// a leading `~/` expands to `$HOME`.
@@ -36,16 +36,26 @@ pub struct Pipeline {
     /// and commands run in it.
     #[serde(skip)]
     pub base_dir: PathBuf,
-    /// Present: re-hue the scheme with the wallpaper (an empty table runs
-    /// at defaults).  The mapped scheme is what gets applied.
-    pub map_scheme: Option<MapConfig>,
-    /// Present: repaint the wallpaper (with the mapped scheme when
-    /// `[map-scheme]` ran, else the reference).  The repainted image is
-    /// what gets set.
-    pub map_wal: Option<RemapConfig>,
+    /// The grading steps, `[rehue.scheme]` and `[rehue.wal]`.
+    #[serde(default)]
+    pub rehue: Steps,
     /// Where the result goes.
     #[serde(default)]
     pub apply: ApplyTarget,
+}
+
+/// The `[rehue]` tables: a table's presence turns its step on (an empty
+/// table runs at defaults).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Steps {
+    /// Rehue the scheme with the wallpaper; the result is what gets
+    /// applied.
+    pub scheme: Option<SchemeConfig>,
+    /// Repaint the wallpaper (with the rehued scheme when
+    /// `[rehue.scheme]` ran, else the reference); the result is what gets
+    /// set.
+    pub wal: Option<WalConfig>,
 }
 
 /// The `[apply]` table.
@@ -84,9 +94,9 @@ impl Pipeline {
             .map_err(|e| format!("can't read pipeline {}: {}", path.display(), e))?;
         let mut pipeline: Pipeline =
             toml::from_str(&text).map_err(|e| format!("bad pipeline {}: {}", path.display(), e))?;
-        if pipeline.map_scheme.is_none() && pipeline.map_wal.is_none() {
+        if pipeline.rehue.scheme.is_none() && pipeline.rehue.wal.is_none() {
             return Err(format!(
-                "pipeline {} has no steps: add [map-scheme] and/or [map-wal]",
+                "pipeline {} has no steps: add [rehue.scheme] and/or [rehue.wal]",
                 path.display()
             ));
         }

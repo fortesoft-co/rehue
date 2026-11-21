@@ -1,11 +1,11 @@
-//! Per-pixel palette remap: arrange (distribution + rotate), then blend
+//! Per-pixel palette remap: arrange (assign + cycle), then blend
 //! toward the palette (hue, light and chroma channel fidelity), then
-//! per-register grading, then image-wide grading.  Deterministic and
+//! per-role grading, then image-wide grading.  Deterministic and
 //! sandbox-pure.
 //!
-//! The `harmonize` facade is the one-dial surface: it seeds `blend-hue`
-//! and `blend-chroma` wherever they are left unset, while explicit dials
-//! win and `blend-light` stays decoupled (default 0 - photographic
+//! The `harmonize` facade is the one-dial surface: it seeds `match-hue`
+//! and `match-chroma` wherever they are left unset, while explicit dials
+//! win and `match-lightness` stays decoupled (default 0 - photographic
 //! lightness, since adopting lightness flattens contrast).  The adopted
 //! lightness/chroma share can be dithered so full-strength adoption
 //! doesn't band: `dithering` scales an ordered-dither threshold
@@ -23,9 +23,9 @@ use serde::{Deserialize, Serialize};
 use crate::bluenoise::BLUE_NOISE64;
 use crate::color::{Lch, circ_dist, circ_lerp, oklch_to_rgb, rgb_to_oklch, weighted_circ_mean};
 use crate::extract::{Cluster, ExtractionParams};
-use crate::register::{
-    Distribution, DistributionState, REGISTER_NAMES, distribution_hues, family_indices,
-    register_of_slot, register_slots, resolve_distribution, slot_index,
+use crate::role::{
+    Assign, AssignState, ROLE_NAMES, assign_hues, family_indices, resolve_assign, role_of_slot,
+    role_slots, slot_index,
 };
 use crate::scheme::BASE_SLOTS;
 
@@ -74,191 +74,188 @@ impl DitherMode {
     }
 }
 
-/// The `territory` option: how pixels relate to the palette.
+/// The `mode` option: how pixels relate to the palette.
 ///
-/// **hard** (opt-in): every pixel anchors to its nearest slot and adopts
+/// **snap** (opt-in): every pixel anchors to its nearest slot and adopts
 /// that slot's constants - fast, stylized, and exactly the mechanism that
 /// bands and hard edges come from.
 ///
-/// **soft**: slot influence falls off with distance instead of cutting off
+/// **blend** (the default): slot influence falls off with distance instead of cutting off
 /// (circular hue distance for chromatic pixels, lightness distance for
 /// achromatic ones); every target is the weighted mean over the palette.
 /// Boundaries between slots become smooth crossings and the flat-constant
-/// posterize largely disappears by construction.  Soft bypasses the
-/// hard-mode cutoffs: `reach-deg` acts as the falloff temperature there
-/// (and must be positive), and as the influence cutoff in hard mode.
+/// posterize largely disappears by construction.  Blend bypasses the
+/// snap-mode cutoffs: `reach` acts as the falloff temperature there
+/// (and must be positive), and as the influence cutoff in snap mode.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
-pub enum Territory {
+pub enum Mode {
     /// The default: continuous weighted mixing (palette as influence field).
-    Soft,
+    Blend,
     /// Opt-in stylized mode: nearest-slot snapping + flat-constant
-    /// adoption (the flat-look with posterize and hard edges, by design).
-    Hard,
+    /// adoption (the flat look with posterize and hard edges, by design).
+    Snap,
 }
 
-impl Territory {
+impl Mode {
     pub fn describe(&self) -> &'static str {
         match self {
-            Self::Soft => "soft",
-            Self::Hard => "hard",
+            Self::Blend => "blend",
+            Self::Snap => "snap",
         }
     }
 }
 
-/// Per-register override; every field optional (the
-/// `globals // all // register` merge fills the gaps).  Canonical keys are
+/// Per-role override; every field optional (the
+/// `globals // all // role` merge fills the gaps).  Canonical keys are
 /// kebab-case in the config JSON.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
-pub struct WalRegisterConfig {
-    pub distribution: Option<Distribution>,
-    pub rotate: Option<i64>,
-    pub blend_hue: Option<f64>,
-    pub blend_light: Option<f64>,
-    pub blend_chroma: Option<f64>,
-    pub light: Option<f64>,
+pub struct WalRoleConfig {
+    pub assign: Option<Assign>,
+    pub cycle: Option<i64>,
+    pub match_hue: Option<f64>,
+    pub match_lightness: Option<f64>,
+    pub match_chroma: Option<f64>,
+    pub lightness: Option<f64>,
     pub chroma: Option<f64>,
 }
 
 /// Remap options; every one is opt-in.  Canonical keys kebab-case.  The
 /// flattened extraction section feeds the arrangement stage's family
-/// resolution (only needed when a register sets `distribution`).
+/// resolution (only needed when a role sets `assign`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-pub struct RemapConfig {
+pub struct WalConfig {
     #[serde(flatten)]
     pub extraction: ExtractionParams,
-    /// Facade: seeds `blend-hue` and `blend-chroma` where they are unset
+    /// Facade: seeds `match-hue` and `match-chroma` where they are unset
     /// (see [`facade_defaults`]).
     pub harmonize: f64,
-    /// Falloff width in `soft` territory (degrees on the hue wheel; must
+    /// Falloff width in `blend` mode (degrees on the hue wheel; must
     /// be positive there), influence cutoff for the blend and adoption
-    /// gates in `hard` territory.
-    pub reach_deg: f64,
+    /// gates in `snap` mode.
+    pub reach: f64,
     /// Channel-fidelity dials; defaults filled from the facade.
-    pub blend_hue: Option<f64>,
-    pub blend_chroma: Option<f64>,
+    pub match_hue: Option<f64>,
+    pub match_chroma: Option<f64>,
     /// Lightness adoption is decoupled from the facade and defaults to 0
     /// (photographic lightness).
-    pub blend_light: f64,
+    pub match_lightness: f64,
     /// Dithering strength (0 off; scales the mask offsets, resp. the
     /// diffusion).
     pub dithering: f64,
     /// Which ordered mask / diffusion kernel the strength applies to.
     pub dithering_mode: Option<DitherMode>,
-    /// Territory mode: soft weighted mixing (default) or hard stylized
-    /// snapping.
-    pub territory: Option<Territory>,
-    #[serde(alias = "gray_chroma_floor")]
-    pub gray_chroma_floor: f64,
-    pub light: f64,
+    /// How pixels find their palette color: `blend` (weighted mixing,
+    /// the default) or `snap` (nearest slot).
+    pub mode: Option<Mode>,
+    pub max_gray_chroma: f64,
+    pub lightness: f64,
     pub chroma: f64,
-    pub registers: HashMap<String, WalRegisterConfig>,
+    pub roles: HashMap<String, WalRoleConfig>,
 }
 
-impl Default for RemapConfig {
+impl Default for WalConfig {
     fn default() -> Self {
         Self {
             extraction: ExtractionParams::default(),
             harmonize: 0.0,
-            reach_deg: 45.0,
-            blend_hue: None,
-            blend_chroma: None,
-            blend_light: 0.0,
+            reach: 45.0,
+            match_hue: None,
+            match_chroma: None,
+            match_lightness: 0.0,
             dithering: 0.0,
             dithering_mode: None,
-            territory: None,
-            gray_chroma_floor: 0.02,
-            light: 0.0,
+            mode: None,
+            max_gray_chroma: 0.02,
+            lightness: 0.0,
             chroma: 1.0,
-            registers: HashMap::new(),
+            roles: HashMap::new(),
         }
     }
 }
 
-/// Resolved per-register settings the wall pipeline runs with.
+/// Resolved per-role settings the wall pipeline runs with.
 #[derive(Debug, Clone)]
-pub struct WalRegisterSettings {
-    pub distribution: DistributionState,
-    pub rotate: i64,
-    pub blend_hue: f64,
-    pub blend_light: f64,
-    pub blend_chroma: f64,
-    pub light: f64,
+pub struct WalRoleSettings {
+    pub assign: AssignState,
+    pub cycle: i64,
+    pub match_hue: f64,
+    pub match_lightness: f64,
+    pub match_chroma: f64,
+    pub lightness: f64,
     pub chroma: f64,
 }
 
-/// The facade's seed rule: where the config leaves `blend-hue` /
-/// `blend-chroma` unset they adopt `harmonize`; explicit dials win and
-/// `blend-light` never follows the facade.  Returns (hue, light, chroma).
-pub fn facade_defaults(config: &RemapConfig) -> (f64, f64, f64) {
+/// The facade's seed rule: where the config leaves `match-hue` /
+/// `match-chroma` unset they adopt `harmonize`; explicit dials win and
+/// `match-lightness` never follows the facade.  Returns (hue, light, chroma).
+pub fn facade_defaults(config: &WalConfig) -> (f64, f64, f64) {
     (
-        config.blend_hue.unwrap_or(config.harmonize),
-        config.blend_light,
-        config.blend_chroma.unwrap_or(config.harmonize),
+        config.match_hue.unwrap_or(config.harmonize),
+        config.match_lightness,
+        config.match_chroma.unwrap_or(config.harmonize),
     )
 }
 
-/// The `globals // all // register` resolution, with validation.
-pub fn resolved_registers(
-    config: &RemapConfig,
-) -> Result<BTreeMap<&'static str, WalRegisterSettings>, String> {
+/// The `globals // all // role` resolution, with validation.
+pub fn resolved_roles(
+    config: &WalConfig,
+) -> Result<BTreeMap<&'static str, WalRoleSettings>, String> {
     if !(0.0..=1.0).contains(&config.dithering) {
         return Err("dithering must be within [0, 1]".to_string());
     }
-    let territory = config.territory.unwrap_or(Territory::Soft);
-    if territory == Territory::Soft && config.reach_deg <= 0.0 {
-        return Err("territory 'soft' needs a positive reach (reach-deg)".to_string());
+    let mode = config.mode.unwrap_or(Mode::Blend);
+    if mode == Mode::Blend && config.reach <= 0.0 {
+        return Err("mode 'blend' needs a positive reach".to_string());
     }
-    let all = config.registers.get("all").cloned().unwrap_or_default();
+    let roles = crate::role::canonical_roles(&config.roles)?;
+    let all = roles.get("all").cloned().unwrap_or_default();
     let (seed_hue, seed_light, seed_chroma) = facade_defaults(config);
     let mut out = BTreeMap::new();
-    for name in REGISTER_NAMES {
-        let given = config.registers.get(name).cloned().unwrap_or_default();
-        let distribution = resolve_distribution(
-            name,
-            given.distribution.or_else(|| all.distribution.clone()),
-        )?;
-        let rotate = given.rotate.or(all.rotate).unwrap_or(0);
-        let blend_hue = given.blend_hue.or(all.blend_hue).unwrap_or(seed_hue);
-        let blend_light = given.blend_light.or(all.blend_light).unwrap_or(seed_light);
-        let blend_chroma = given
-            .blend_chroma
-            .or(all.blend_chroma)
+    for name in ROLE_NAMES {
+        let given = roles.get(name).cloned().unwrap_or_default();
+        let assign = resolve_assign(name, given.assign.or_else(|| all.assign.clone()))?;
+        let cycle = given.cycle.or(all.cycle).unwrap_or(0);
+        let match_hue = given.match_hue.or(all.match_hue).unwrap_or(seed_hue);
+        let match_lightness = given
+            .match_lightness
+            .or(all.match_lightness)
+            .unwrap_or(seed_light);
+        let match_chroma = given
+            .match_chroma
+            .or(all.match_chroma)
             .unwrap_or(seed_chroma);
-        let light = given.light.or(all.light).unwrap_or(config.light);
+        let light = given
+            .lightness
+            .or(all.lightness)
+            .unwrap_or(config.lightness);
         let chroma = given.chroma.or(all.chroma).unwrap_or(config.chroma);
-        if !(0.0..=1.0).contains(&blend_hue) {
+        if !(0.0..=1.0).contains(&match_hue) {
+            return Err(format!("roles.{}.match-hue must be within [0, 1]", name));
+        }
+        if !(0.0..=1.0).contains(&match_lightness) {
             return Err(format!(
-                "registers.{}.blend-hue must be within [0, 1]",
+                "roles.{}.match-lightness must be within [0, 1]",
                 name
             ));
         }
-        if !(0.0..=1.0).contains(&blend_light) {
-            return Err(format!(
-                "registers.{}.blend-light must be within [0, 1]",
-                name
-            ));
-        }
-        if !(0.0..=1.0).contains(&blend_chroma) {
-            return Err(format!(
-                "registers.{}.blend-chroma must be within [0, 1]",
-                name
-            ));
+        if !(0.0..=1.0).contains(&match_chroma) {
+            return Err(format!("roles.{}.match-chroma must be within [0, 1]", name));
         }
         if chroma <= 0.0 {
-            return Err(format!("registers.{}.chroma must be positive", name));
+            return Err(format!("roles.{}.chroma must be positive", name));
         }
         out.insert(
             name,
-            WalRegisterSettings {
-                distribution,
-                rotate,
-                blend_hue,
-                blend_light,
-                blend_chroma,
-                light,
+            WalRoleSettings {
+                assign,
+                cycle,
+                match_hue,
+                match_lightness,
+                match_chroma,
+                lightness: light,
                 chroma,
             },
         );
@@ -273,27 +270,27 @@ pub struct SlotPalette {
     pub lch: Lch,
 }
 
-/// Per-slot mix/grade options: the slot's register's resolved settings.
+/// Per-slot mix/grade options: the slot's role's resolved settings.
 #[derive(Debug, Clone, Copy)]
 pub struct SlotOptions {
-    pub blend_hue: f64,
-    pub blend_light: f64,
-    pub blend_chroma: f64,
-    pub light: f64,
+    pub match_hue: f64,
+    pub match_lightness: f64,
+    pub match_chroma: f64,
+    pub lightness: f64,
     pub chroma: f64,
 }
 
 /// Per-slot options for the 16 canonical slots.
-pub fn slot_options(regs: &BTreeMap<&'static str, WalRegisterSettings>) -> Vec<SlotOptions> {
+pub fn slot_options(regs: &BTreeMap<&'static str, WalRoleSettings>) -> Vec<SlotOptions> {
     BASE_SLOTS
         .iter()
         .map(|slot| {
-            let s = &regs[register_of_slot(slot)];
+            let s = &regs[role_of_slot(slot)];
             SlotOptions {
-                blend_hue: s.blend_hue,
-                blend_light: s.blend_light,
-                blend_chroma: s.blend_chroma,
-                light: s.light,
+                match_hue: s.match_hue,
+                match_lightness: s.match_lightness,
+                match_chroma: s.match_chroma,
+                lightness: s.lightness,
                 chroma: s.chroma,
             }
         })
@@ -301,33 +298,33 @@ pub fn slot_options(regs: &BTreeMap<&'static str, WalRegisterSettings>) -> Vec<S
 }
 
 /// The arrangement stage - shared semantics with the scheme side: each
-/// register's `distribution` recolours its slots' hues from the wallpaper's
-/// families (lightness and chroma stay slot-local), then `rotate` permutes
-/// the register's hues across its slots.  A palette with no hues extracted
-/// (e.g. greyscale wallpaper, or no register distributes) passes through.
+/// role's `assign` recolours its slots' hues from the wallpaper's
+/// families (lightness and chroma stay slot-local), then `cycle` permutes
+/// the role's hues across its slots.  A palette with no hues extracted
+/// (e.g. greyscale wallpaper, or no role distributes) passes through.
 pub fn arrange_palette(
     slots: &[SlotPalette],
     clusters: &[Cluster],
-    regs: &BTreeMap<&'static str, WalRegisterSettings>,
+    regs: &BTreeMap<&'static str, WalRoleSettings>,
 ) -> Result<Vec<SlotPalette>, String> {
     let mut out = slots.to_vec();
-    for name in REGISTER_NAMES {
+    for name in ROLE_NAMES {
         let settings = &regs[name];
-        let reg_slots = register_slots(name);
+        let reg_slots = role_slots(name);
         let k = reg_slots.len();
-        if !clusters.is_empty() && settings.distribution != DistributionState::Off {
-            let stops = match &settings.distribution {
-                DistributionState::Auto => (0..k.min(clusters.len())).collect::<Vec<usize>>(),
-                DistributionState::Pin(i) => family_indices(&[*i], clusters, name)?,
-                DistributionState::Stops(v) => family_indices(v, clusters, name)?,
-                DistributionState::Off => unreachable!("checked above"),
+        if !clusters.is_empty() && settings.assign != AssignState::Off {
+            let stops = match &settings.assign {
+                AssignState::Auto => (0..k.min(clusters.len())).collect::<Vec<usize>>(),
+                AssignState::Pin(i) => family_indices(&[*i], clusters, name)?,
+                AssignState::Stops(v) => family_indices(v, clusters, name)?,
+                AssignState::Off => unreachable!("checked above"),
             };
-            let hues = distribution_hues(k, &stops, clusters);
+            let hues = assign_hues(k, &stops, clusters);
             for (pos, slot) in reg_slots.iter().copied().enumerate() {
                 out[slot_index(slot)].lch.h = hues[pos];
             }
         }
-        let rotated_by = settings.rotate.rem_euclid(k as i64) as usize;
+        let rotated_by = settings.cycle.rem_euclid(k as i64) as usize;
         if rotated_by != 0 {
             let hues: Vec<f64> = (0..k)
                 .map(|pos| out[slot_index(reg_slots[pos])].lch.h)
@@ -343,7 +340,7 @@ pub fn arrange_palette(
 
 /// Result of a remap pass.
 #[derive(Debug, Clone)]
-pub struct RemapOutput {
+pub struct WalOutput {
     pub pixels: Vec<u8>,
     /// matched-pixel counts per slot, in canonical base order
     pub coverage: Vec<u64>,
@@ -354,19 +351,19 @@ pub struct RemapOutput {
 /// on the resolved values only - dithering is inert at zero adoption and
 /// does not decide passivity.
 pub fn is_passive(
-    regs: &BTreeMap<&'static str, WalRegisterSettings>,
+    regs: &BTreeMap<&'static str, WalRoleSettings>,
     image_light: f64,
     image_chroma: f64,
 ) -> bool {
     image_light == 0.0
         && (image_chroma - 1.0).abs() < 1e-9
         && regs.values().all(|r| {
-            matches!(r.distribution, DistributionState::Off)
-                && r.rotate == 0
-                && r.blend_hue == 0.0
-                && r.blend_light == 0.0
-                && r.blend_chroma == 0.0
-                && r.light == 0.0
+            matches!(r.assign, AssignState::Off)
+                && r.cycle == 0
+                && r.match_hue == 0.0
+                && r.match_lightness == 0.0
+                && r.match_chroma == 0.0
+                && r.lightness == 0.0
                 && (r.chroma - 1.0).abs() < 1e-9
         })
 }
@@ -385,8 +382,8 @@ pub struct ColorMap<'a> {
     slots: &'a [SlotPalette],
     neutral_slots: &'a [usize],
     options: &'a [SlotOptions],
-    config: &'a RemapConfig,
-    territory: Territory,
+    config: &'a WalConfig,
+    mode: Mode,
 }
 
 impl<'a> ColorMap<'a> {
@@ -396,7 +393,7 @@ impl<'a> ColorMap<'a> {
         slots: &'a [SlotPalette],
         neutral_slots: &'a [usize],
         options: &'a [SlotOptions],
-        config: &'a RemapConfig,
+        config: &'a WalConfig,
     ) -> Self {
         debug_assert_eq!(slots.len(), options.len());
         ColorMap {
@@ -404,7 +401,7 @@ impl<'a> ColorMap<'a> {
             neutral_slots,
             options,
             config,
-            territory: config.territory.unwrap_or(Territory::Soft),
+            mode: config.mode.unwrap_or(Mode::Blend),
         }
     }
 
@@ -419,8 +416,8 @@ impl<'a> ColorMap<'a> {
     /// Returns the final (l, c, h) before the 8-bit render, plus the
     /// anchor slot index.
     fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, usize) {
-        let reach = self.config.reach_deg;
-        let gray_floor = self.config.gray_chroma_floor;
+        let reach = self.config.reach;
+        let gray_floor = self.config.max_gray_chroma;
         let (mut l2, mut c2, h2);
         let best_index;
         if raw.c < gray_floor {
@@ -438,10 +435,10 @@ impl<'a> ColorMap<'a> {
             best_index = best;
             let slots_target = self.slots[best].lch;
             let n = self.options[best];
-            // In soft mode the target is the palette's weighted mean over
+            // In blend mode the target is the palette's weighted mean over
             // the neutral slots (by lightness closeness), not one slot's
             // the constant - the lightness ramp blends smoothly.
-            let (target_l, target_c) = if self.territory == Territory::Soft {
+            let (target_l, target_c) = if self.mode == Mode::Blend {
                 let t = reach.max(1e-3);
                 let mut ls = Vec::new();
                 let mut cs = Vec::new();
@@ -464,11 +461,11 @@ impl<'a> ColorMap<'a> {
                 (slots_target.l, slots_target.c)
             };
             l2 = l_in;
-            if n.blend_light > 0.0 {
-                l2 = l_in + (target_l - l_in) * n.blend_light * jitter;
+            if n.match_lightness > 0.0 {
+                l2 = l_in + (target_l - l_in) * n.match_lightness * jitter;
             }
-            if n.blend_chroma > 0.0 {
-                c2 = (c_in + (target_c - c_in) * n.blend_chroma * jitter).max(0.0);
+            if n.match_chroma > 0.0 {
+                c2 = (c_in + (target_c - c_in) * n.match_chroma * jitter).max(0.0);
             } else {
                 c2 = c_in;
             }
@@ -477,7 +474,7 @@ impl<'a> ColorMap<'a> {
             h2 = raw.h;
         } else {
             // Chromatic: nearest slot by raw hue (first minimum), then
-            // the opt-in blend moves, reach-gated in hard territory.
+            // the opt-in blend moves, reach-gated in snap mode.
             let mut best = 0usize;
             let mut best_d = f64::INFINITY;
             for (idx, slots_target) in self.slots.iter().enumerate() {
@@ -490,11 +487,11 @@ impl<'a> ColorMap<'a> {
             best_index = best;
             let target = self.slots[best].lch;
             let n = self.options[best];
-            // In soft mode the targets are the palette's weighted means
+            // In blend mode the targets are the palette's weighted means
             // over all slots by circular hue distance; influence falls off
             // with distance instead of cutting off at the reach, so the
-            // hard-mode cutoff is bypassed.
-            let (hue_t, l_t, c_t) = if self.territory == Territory::Soft {
+            // snap-mode cutoff is bypassed.
+            let (hue_t, l_t, c_t) = if self.mode == Mode::Blend {
                 let t = reach.max(1e-3);
                 let mut hues = Vec::new();
                 let mut ls = Vec::new();
@@ -521,26 +518,26 @@ impl<'a> ColorMap<'a> {
             } else {
                 (target.h, target.l, target.c)
             };
-            if n.blend_hue > 0.0 && (self.territory == Territory::Soft || best_d <= reach) {
-                h2 = circ_lerp(raw.h, hue_t, n.blend_hue);
+            if n.match_hue > 0.0 && (self.mode == Mode::Blend || best_d <= reach) {
+                h2 = circ_lerp(raw.h, hue_t, n.match_hue);
             } else {
                 h2 = raw.h;
             }
-            if (n.blend_light > 0.0 || n.blend_chroma > 0.0)
-                && (self.territory == Territory::Soft || best_d <= reach)
+            if (n.match_lightness > 0.0 || n.match_chroma > 0.0)
+                && (self.mode == Mode::Blend || best_d <= reach)
             {
-                l2 = l_in + (l_t - l_in) * n.blend_light * jitter;
-                c2 = (c_in + (c_t - c_in) * n.blend_chroma * jitter).max(0.0);
+                l2 = l_in + (l_t - l_in) * n.match_lightness * jitter;
+                c2 = (c_in + (c_t - c_in) * n.match_chroma * jitter).max(0.0);
             } else {
                 l2 = l_in;
                 c2 = c_in;
             }
         }
-        // Per-slot (register) grade, then the image-wide grade last.
+        // Per-slot (role) grade, then the image-wide grade last.
         let n = self.options[best_index];
-        l2 = (l2 + n.light).clamp(0.0, 1.0);
+        l2 = (l2 + n.lightness).clamp(0.0, 1.0);
         c2 = (c2 * n.chroma).max(0.0);
-        l2 = (l2 + self.config.light).clamp(0.0, 1.0);
+        l2 = (l2 + self.config.lightness).clamp(0.0, 1.0);
         c2 = (c2 * self.config.chroma).max(0.0);
         (l2, c2, h2, best_index)
     }
@@ -576,7 +573,7 @@ const ATKINSON_KERNEL: [(i64, i64, f64); 6] = [
 /// The full pipeline.  `pixels` is a flat rgb8 buffer of a
 /// `width x height` image; `slots` the 16 palette slot colours in
 /// canonical order (already arranged by `arrange_palette` when
-/// distribution options are in play); `options` the per-slot mix/grade
+/// assign options are in play); `options` the per-slot mix/grade
 /// values; `neutral_slots` the indices of the scheme's low-chroma slots
 /// (achromatic pixels key against those by lightness rather than by hue).
 pub fn apply(
@@ -586,8 +583,8 @@ pub fn apply(
     slots: &[SlotPalette],
     neutral_slots: &[usize],
     options: &[SlotOptions],
-    config: &RemapConfig,
-) -> RemapOutput {
+    config: &WalConfig,
+) -> WalOutput {
     debug_assert_eq!(slots.len(), options.len());
     debug_assert_eq!(
         pixels.len(),
@@ -687,7 +684,7 @@ pub fn apply(
         }
     }
 
-    RemapOutput {
+    WalOutput {
         pixels: out,
         coverage: counts,
     }

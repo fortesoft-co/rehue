@@ -33,42 +33,44 @@ rehue splits the job in two:
   [tinted-theming](https://github.com/tinted-theming/schemes) schemes.
 
 Then every part of it is a dial. Shift lightness on the accents only,
-boost chroma on the surfaces, rotate which hue lands in which slot,
+boost chroma on the surfaces, cycle which hue lands in which slot,
 pin a favorite color to a specific slot. You build the pipeline to
 your own spec, and it gives the same answer every time.
 
 It works in both directions:
 
-- **`rehue map-scheme`** (scheme + wallpaper → scheme): your scheme,
-  re-hued with the wallpaper's colors. It feels like your wallpaper
+- **`rehue scheme`** (scheme + wallpaper → scheme): your scheme,
+  rehued with the wallpaper's colors. It feels like your wallpaper
   but stays as readable as the scheme.
-- **`rehue map-wal`** (wallpaper + scheme → wallpaper): your
+- **`rehue wal`** (wallpaper + scheme → wallpaper): your
   wallpaper, repainted with the scheme's palette. No more hunting for
   a wallpaper that matches. The picture you love becomes the one that
   matches.
 
-Use both and the loop closes: map a scheme from your wallpaper, then
-repaint the wallpaper with that scheme.
+Use both and the loop closes: rehue a scheme from your wallpaper, then
+repaint the wallpaper with that scheme. Every command takes the thing
+it rehues with `-i`; the other input is `-s` (a scheme) or `-w` (a
+wallpaper).
 
 ## Quick start
 
 ```sh
 cargo install rehue
 
-# your scheme, re-hued with your wallpaper's colors:
-rehue map-scheme --wallpaper my-photo.jpg --scheme nord --out mapped
+# your scheme, rehued with your wallpaper's colors:
+rehue scheme -i nord -w my-photo.jpg -o mapped
 # writes mapped/scheme.yaml, plus previews (preview.png, preview.html)
 # and the extraction report (clusters.json)
 
 # your wallpaper, repainted with a scheme's palette:
-rehue map-wal --wallpaper my-photo.jpg --scheme gruvbox-light --out repainted --harmonize 1
+rehue wal -i my-photo.jpg -s gruvbox-light -o repainted -H 1
 
 # the round trip: repaint the wallpaper with the scheme you just made
-rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repainted
+rehue wal -i my-photo.jpg -s mapped/scheme.yaml -o repainted -H 1
 ```
 
 Both commands print the palettes in your terminal as they finish. Add
-`--dry-run` to preview a change without writing anything, which is
+`-n` (`--dry-run`) to preview a change without writing anything, which is
 the fastest way to try out dials. `rehue inspect --schemes` shows
 every bundled scheme with its colors (`--schemes gruvbox` filters).
 
@@ -86,11 +88,11 @@ page).
 
 <!-- gen:run:glitter -->
 ```sh
-rehue map-wal \
-  --wallpaper assets/vidsplay-rainbow-glitter.webp \
-  --scheme gruvbox-light \
-  --out glitter \
-  --harmonize 1
+rehue wal \
+  -i assets/vidsplay-rainbow-glitter.webp \
+  -s gruvbox-light \
+  -o glitter \
+  -H 1
 ```
 <!-- /gen:run:glitter -->
 
@@ -106,10 +108,10 @@ slot. Rosé Pine Dawn's lightness, chroma and contrast are untouched.
 
 <!-- gen:run:butterfly-mapped -->
 ```sh
-rehue map-scheme \
-  --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
-  --scheme rose-pine-dawn \
-  --out mapped
+rehue scheme \
+  -i rose-pine-dawn \
+  -w assets/kelly-ishmael-butterfly-closeup.webp \
+  -o mapped
 ```
 <!-- /gen:run:butterfly-mapped -->
 
@@ -122,11 +124,11 @@ just produced.
 
 <!-- gen:run:butterfly-repainted -->
 ```sh
-rehue map-wal \
-  --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
-  --scheme mapped/scheme.yaml \
-  --out repainted \
-  --harmonize 1
+rehue wal \
+  -i assets/kelly-ishmael-butterfly-closeup.webp \
+  -s mapped/scheme.yaml \
+  -o repainted \
+  -H 1
 ```
 <!-- /gen:run:butterfly-repainted -->
 
@@ -138,10 +140,10 @@ First, paint Tokyo Night Dark with the wallpaper's hues, at defaults:
 
 <!-- gen:run:bango-mapped -->
 ```sh
-rehue map-scheme \
-  --wallpaper assets/bango-renders-3d-abstract.webp \
-  --scheme tokyo-night-dark \
-  --out mapped
+rehue scheme \
+  -i tokyo-night-dark \
+  -w assets/bango-renders-3d-abstract.webp \
+  -o mapped
 ```
 <!-- /gen:run:bango-mapped -->
 
@@ -154,11 +156,11 @@ Then feed the new scheme back into the image:
 
 <!-- gen:run:bango-repainted -->
 ```sh
-rehue map-wal \
-  --wallpaper assets/bango-renders-3d-abstract.webp \
-  --scheme mapped/scheme.yaml \
-  --out repainted \
-  --harmonize 1
+rehue wal \
+  -i assets/bango-renders-3d-abstract.webp \
+  -s mapped/scheme.yaml \
+  -o repainted \
+  -H 1
 ```
 <!-- /gen:run:bango-repainted -->
 
@@ -169,7 +171,7 @@ painted with.
 
 ### The preview page
 
-Every `map-scheme` and `map-wal` run also writes `preview.html`, a
+Every `scheme` and `wal` run also writes `preview.html`, a
 self-contained page (no scripts) that shows the scheme on a terminal, a
 code block and common widgets, next to the wallpaper, so you can judge
 it before wiring it in. This is the round trip's page:
@@ -193,37 +195,37 @@ Two more tabs approximate how Stylix maps the same 16 slots onto GTK
 
 ## Grading
 
-### Color groups
+### Roles
 
-A base16 scheme's 16 slots fall into four groups, which rehue calls
-**registers**:
+A base16 scheme's 16 slots fall into four **roles**. Each has a short
+form for typing; rehue prints the full names:
 
-<!-- gen:groups -->
-| register | slots | what it is |
-| --- | --- | --- |
-| `bg` | base00 | the background |
-| `surfaces` | base01-03 | panels, selections, comments |
-| `fg` | base04-07 | text |
-| `accents` | base08-0F | syntax colors, highlights, status colors |
-<!-- /gen:groups -->
+<!-- gen:roles -->
+| role | short | slots | what it is |
+| --- | --- | --- | --- |
+| `background` | `bg` | base00 | the background |
+| `surfaces` | `sf` | base01-03 | panels, selections, comments |
+| `foreground` | `fg` | base04-07 | text |
+| `accents` | `ac` | base08-0F | syntax colors, highlights, status colors |
+<!-- /gen:roles -->
 
-Every dial can apply to everything, or to one group:
+Every dial can apply to everything, or to one role:
 
 ```sh
-rehue map-scheme ... --chroma 1.2             # every group
-rehue map-scheme ... --chroma accents 1.6     # accents only
-rehue map-scheme ... --chroma accents 1.6 --light fg 0.05   # repeat per group
+rehue scheme ... --chroma 1.2                  # every role
+rehue scheme ... --chroma accents 1.6          # accents only
+rehue scheme ... --chroma ac 1.6 --lightness fg 0.05   # short forms, one per role
 ```
 
 Each row below is the butterfly mapped onto Rosé Pine Dawn (the
-reference on top, the result below), with one group changed at a time:
+reference on top, the result below), with one role changed at a time:
 
-![rose-pine-dawn scheme strips: defaults, accents chroma 1.6, fg light -0.1, and accents distribution + rotate](assets/examples/grading-groups.png)
+![rose-pine-dawn scheme strips: defaults, accents chroma 1.6, foreground lightness -0.1, and accents assign + cycle](assets/examples/grading-groups.png)
 
-A group-specific setting always wins over the global one. For a
+A role-specific setting always wins over the global one. For a
 pipeline you want to keep, put the settings in a JSON file and pass
-`--config`; an `all` record there sets every group, and records for
-named groups override it. Every dial is optional: with no config at
+`-c` (`--config`); an `all` record there sets every role, and records
+for named roles override it. Every dial is optional: with no config at
 all you get sensible defaults.
 
 [EXAMPLES.md](EXAMPLES.md) shows every dial turning, with the exact
@@ -232,58 +234,58 @@ command for each image, and covers how settings combine.
 ### Both directions
 
 The two commands are the same move pointed opposite ways.
-**map-scheme** pulls the palette toward the picture. **map-wal**
-pushes the picture's pixels toward the palette.
+**scheme** pulls the palette toward the picture. **wal** pushes the
+picture's pixels toward the palette.
 
-#### map-scheme (wallpaper → scheme)
+#### scheme (wallpaper → scheme)
 
-<!-- gen:flags:map-scheme:grading -->
+<!-- gen:flags:scheme:grading -->
 | flag | value | what it does |
 | --- | --- | --- |
-| `--reach-deg` | `DEG` | How far, in hue degrees, an accent can reach to claim a wallpaper hue (default 45) |
-| `--distribution` | `[REG] VAL` | Which wallpaper hue families go to the group's slots: `true` = spread across, `3` = pin to family 3, `[0,1,2,3]` = explicit list |
-| `--rotate` | `[REG] N` | Rotate a group's hues across its slots (`1` = one step right, wraps around) |
-| `--blend-hue` | `[REG] 0..1` | How far slots adopt the wallpaper's hues, 0..1 (default 1) |
-| `--light` | `[REG] L` | Shift a group's lightness (added; e.g. -0.1 darker) |
-| `--chroma` | `[REG] C` | Scale a group's chroma (multiplied; 0.8 muted, 1.3 vivid) |
-<!-- /gen:flags:map-scheme:grading -->
+| `--reach` | `DEG` | How far, in hue degrees, an accent can reach to claim a wallpaper hue (default 45) |
+| `--assign` | `[ROLE] VAL` | Give a role's slots hues taken from the wallpaper's families: `auto` = spread the heaviest across, `3` = all from family 3, `0,2,5` = these families across the slots |
+| `--cycle` | `[ROLE] N` | Move each of a role's hues N slots along, wrapping around (slots, not degrees) |
+| `--match-hue` | `[ROLE] 0..1` | How much of the wallpaper's hue the slots take on, 0..1 (default 1) |
+| `--lightness` | `[ROLE] L` | Shift a role's lightness (added; -0.1 is darker) |
+| `--chroma` | `[ROLE] C` | Scale a role's chroma (multiplied; 0.8 muted, 1.3 vivid) |
+<!-- /gen:flags:scheme:grading -->
 
-Extraction settings go in the `--config` JSON (on `map-scheme` or
+Extraction settings go in the `--config` JSON (on `scheme`, `wal` or
 `inspect`); [EXAMPLES.md](EXAMPLES.md#extraction) describes each:
 
 <!-- gen:extraction-keys -->
-`image-max-dimension`, `chroma-pixel-floor`, `lightness-window`, `max-hues`, `seed-separation-deg`, `cluster-iterations`, `merge-deg`, `min-cluster-weight`, `accent-chroma-floor`, `fg-contrast-floor`
+`max-dimension`, `min-pixel-chroma`, `lightness-range`, `max-families`, `seed-spacing`, `iterations`, `merge-within`, `min-family-weight`, `min-accent-chroma`
 <!-- /gen:extraction-keys -->
 
-#### map-wal (scheme → wallpaper)
+#### wal (scheme → wallpaper)
 
-<!-- gen:flags:map-wal:grading -->
+<!-- gen:flags:wal:grading -->
 | flag | value | what it does |
 | --- | --- | --- |
-| `--territory` | `soft \| hard` | How palette colors pull pixels: `soft` = smooth falloff (default), `hard` = pixels snap to flat palette colors |
-| `--harmonize` | `0..1` | One-dial shortcut, 0..1: sets blend-hue and blend-chroma wherever they aren't set (default 0) |
-| `--blend-hue` | `[REG] 0..1` | How far pixel hue moves toward the palette (0 = untouched, 1 = full snap) |
-| `--blend-chroma` | `[REG] 0..1` | How far pixel chroma moves toward the palette (0 = untouched, 1 = adopt the slot's chroma) |
-| `--blend-light` | `[REG] 0..1` | How far pixel lightness moves toward the palette (default 0, which keeps the image photographic) |
-| `--reach-deg` | `DEG` | How far, in hue degrees, a palette color's pull extends (default 45) |
-| `--gray-chroma-floor` | `C` | Below this chroma a pixel counts as gray (default 0.02) |
+| `--mode` | `blend \| snap` | How pixels find their palette color: `blend` = mix the nearby palette colors, weighted by hue distance (default); `snap` = take the nearest one |
+| `--harmonize` | `0..1` | How strongly to harmonize with the scheme, 0..1: sets match-hue and match-chroma wherever they aren't set (default 0) |
+| `--match-hue` | `[ROLE] 0..1` | How much of the palette's hue each pixel takes on (0 = keep its own, 1 = fully adopt) |
+| `--match-chroma` | `[ROLE] 0..1` | How much of the palette's chroma each pixel takes on (0 = keep its own, 1 = fully adopt) |
+| `--match-lightness` | `[ROLE] 0..1` | How much of the palette's lightness each pixel takes on (default 0, which keeps the image photographic) |
+| `--reach` | `DEG` | How far, in hue degrees, a palette color's pull extends (default 45) |
+| `--max-gray-chroma` | `C` | Below this chroma a pixel counts as gray (default 0.02) |
 | `--dithering` | `0..1` | Dithering strength 0..1 (0 = off) |
 | `--dithering-mode` | `blue-noise \| bayer \| floyd-steinberg \| atkinson \| none` | Dithering pattern (default blue-noise) |
-| `--distribution` | `[REG] VAL` | Which wallpaper hue families recolor the group's slots before mapping: `true` = spread across, `3` = pin to family 3, `[0,1,2,3]` = explicit list |
-| `--rotate` | `[REG] N` | Rotate a group's hues across its slots (`1` = one step right, wraps around) |
-| `--light` | `[REG] L` | Lightness shift (added). Bare: the whole-image grade, applied last; targeted: that group's grade |
-| `--chroma` | `[REG] C` | Chroma scale (multiplied). Bare: the whole-image grade, applied last; targeted: that group's grade |
-<!-- /gen:flags:map-wal:grading -->
+| `--assign` | `[ROLE] VAL` | Before painting, give a role's slots hues taken from the wallpaper's families: `auto` = spread the heaviest across, `3` = all from family 3, `0,2,5` = these families across the slots |
+| `--cycle` | `[ROLE] N` | Move each of a role's hues N slots along, wrapping around (slots, not degrees) |
+| `--lightness` | `[ROLE] L` | Lightness shift (added). Bare: the whole-image grade, applied last; with a role: that role's grade |
+| `--chroma` | `[ROLE] C` | Chroma scale (multiplied). Bare: the whole-image grade, applied last; with a role: that role's grade |
+<!-- /gen:flags:wal:grading -->
 
 #### LUT export
 
-`map-wal --lut hald` (or `--lut cube`) also bakes the grade into a 3D
+`wal --lut hald` (or `--lut cube`) also bakes the grade into a 3D
 lookup table, `lut.png` (Hald CLUT) or `lut.cube`, so other tools can
 apply exactly the same grade to other images or to video:
 
 ```sh
-rehue map-wal --wallpaper wall.webp --scheme mapped/scheme.yaml --out graded \
-  --harmonize 1 --lut hald --lut-level 16
+rehue wal -i wall.webp -s mapped/scheme.yaml -o graded \
+  -H 1 --lut hald --lut-level 16
 
 magick photo.jpg graded/lut.png -hald-clut photo-graded.jpg          # ImageMagick
 ffmpeg -i clip.mp4 -i graded/lut.png -filter_complex '[0][1]haldclut' out.mp4   # ffmpeg
@@ -301,20 +303,30 @@ just its color.
 <!-- gen:commands -->
 | command | what it does |
 | --- | --- |
-| `rehue map-scheme` | Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the scheme's structure |
-| `rehue map-wal` | Wallpaper + scheme → wallpaper: repaint the image with the scheme's palette |
+| `rehue scheme` | Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the scheme's structure |
+| `rehue wal` | Wallpaper + scheme → wallpaper: repaint the image with the scheme's palette |
 | `rehue inspect` | Show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
 | `rehue enhance` | Upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
 | `rehue apply` | Run a pipeline file and apply the result: scheme to tinty, wallpaper to your command |
 <!-- /gen:commands -->
 
 `--help` on any command prints every option with what it does, the
-values it accepts and an example; `-h` shows the short form. `--out`
-defaults to `rehue-out`.
+values it accepts and an example; `-h` shows the short form. `-o`
+(`--out`) defaults to `rehue-out`. The everyday flags have short
+forms:
+
+| flag | means |
+| --- | --- |
+| `-i` | the input: whatever the command names (`wal -i` a wallpaper, `scheme -i` a scheme, `enhance -i` an image) |
+| `-s` / `-w` | the other input: a scheme / a wallpaper |
+| `-o` | output directory |
+| `-c` | config JSON |
+| `-n` | dry run: preview, write nothing |
+| `-H` | `--harmonize` |
 
 ### Choosing a scheme
 
-`--scheme` (on `map-scheme`, `map-wal` and `inspect`) takes either a
+A scheme (`scheme -i`, `wal -s`, `inspect -s`) is either a
 **name** from the bundled collection (all <!-- gen:scheme-count -->375<!-- /gen:scheme-count -->
 [tinted-theming](https://github.com/tinted-theming/schemes) base16
 schemes, the same set Stylix uses) or a **path** to a scheme YAML.
@@ -328,13 +340,13 @@ there first, then in the bundled set.
 
 **Wallpaper mode** lists the image's hue families with their index,
 hue, chroma and weight, above a row of truecolor swatches in the same
-order. The indices are what `distribution` refers to.
+order. The indices are what `assign` refers to.
 
 <!-- gen:run:inspect-butterfly -->
 ```sh
 rehue inspect \
-  --wallpaper assets/kelly-ishmael-butterfly-closeup.webp \
-  --out inspect
+  -w assets/kelly-ishmael-butterfly-closeup.webp \
+  -o inspect
 ```
 <!-- /gen:run:inspect-butterfly -->
 
@@ -346,13 +358,13 @@ The butterfly's four families, indices 0 to 3 left to right:
 line, in canonical order:
 
 ```sh
-rehue inspect --scheme gruvbox-light      # by name
-rehue inspect --scheme my-theme.yaml      # by path
+rehue inspect -s gruvbox-light      # by name
+rehue inspect -s my-theme.yaml      # by path
 ```
 
-With `--out DIR`, wallpaper mode also writes `inspect.png` (the swatch
+With `-o DIR`, wallpaper mode also writes `inspect.png` (the swatch
 row) and scheme mode writes `preview.html` (the same mock page
-`map-scheme` produces).
+`scheme` produces).
 
 ## Install
 
@@ -397,12 +409,12 @@ picture it came from can never drift apart.
 ```nix
 # in a module:
 let
-  mapped = rehue.lib.${system}.mapScheme {
+  mapped = rehue.lib.${system}.scheme {
     wallpaper = ./assets/glitter.webp;
     scheme = "${pkgs.base16-schemes}/share/themes/gruvbox-light.yaml";
-    # registers = { fg = { blend-hue = 0.4; chroma = 0.85; }; };
+    # config = { roles.foreground = { match-hue = 0.4; chroma = 0.85; }; };
   };
-  repainted = rehue.lib.${system}.mapWal {
+  repainted = rehue.lib.${system}.wal {
     wallpaper = ./assets/glitter.webp;
     scheme = "${mapped}/scheme.yaml";
     config = { harmonize = 1.0; };
@@ -435,11 +447,11 @@ wallpaper = "~/Pictures/glitter.webp"
 scheme = "gruvbox-light"        # a bundled name, or a path to yaml
 # out = "~/.local/share/rehue/current"   (the default)
 
-[map-scheme]                    # re-hue the scheme (empty = defaults)
-[map-scheme.registers.accents]
+[rehue.scheme]                  # rehue the scheme (empty = defaults)
+[rehue.scheme.roles.accents]
 chroma = 1.2
 
-[map-wal]                       # repaint the wallpaper with it
+[rehue.wal]                     # repaint the wallpaper with it
 harmonize = 1.0
 
 [apply]
@@ -447,14 +459,14 @@ wallpaper-command = "swww img {wallpaper}"
 ```
 
 ```sh
-rehue apply --pipeline ~/.config/rehue/pipeline.toml --dry-run   # preview
+rehue apply --pipeline ~/.config/rehue/pipeline.toml -n   # preview
 rehue apply --pipeline ~/.config/rehue/pipeline.toml
 ```
 
-- **Steps:** `[map-scheme]` and `[map-wal]` take the same keys as their
+- **Steps:** `[rehue.scheme]` and `[rehue.wal]` take the same keys as their
   JSON `--config` files; a table being present turns that step on.
   With both, the wallpaper is repainted with the scheme it just
-  produced (the round trip). With only `[map-wal]`, the reference
+  produced (the round trip). With only `[rehue.wal]`, the reference
   scheme is applied as-is.
 - **tinty:** the scheme is installed as a tinty custom scheme
   (`<tinty data dir>/custom-schemes/base16/rehue.yaml`) and applied
@@ -491,7 +503,7 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   vectors can be rewritten exactly rather than rasterized and traced;
   PNG icons take the raster path. Icons the toolkit recolors at
   runtime (stylesheet / `currentColor` icons) are left alone. Which
-  color mapping drives it (map-wal's, or one tuned for flat icon
+  color mapping drives it (wal's, or one tuned for flat icon
   palettes) is an open design question. Includes a Nix builder whose
   output plugs into Stylix's `stylix.icons`.
 - **Scheme browser**: pick a scheme by eye from `inspect --schemes`.
@@ -503,15 +515,15 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   pop, duotone) selectable by name, with your own presets as files and
   explicit options still overriding them. Applies to wallpapers, LUTs
   and icons alike.
-- **WCAG contrast mode**: a contrast-ratio option for map-scheme
+- **WCAG contrast mode**: a contrast-ratio option for `rehue scheme`
   (e.g. 4.5:1, the ratio theme designers check against) alongside the
   lightness-gap guard `min-text-contrast`, and possibly covering more
   foreground slots than base05.
 - **Scheme generation**: the big one. Derive the lightness/chroma/
   contrast structure a designer would have built, guided by the
-  wallpaper, so map-scheme works without a reference scheme at all.
+  wallpaper, so `rehue scheme` works without a reference scheme at all.
 - **ADVANCED_EXAMPLES.md**: the complex combinations kept out of the
-  main docs (distribution across groups, reach tuning, colorize
+  main docs (assign across roles, reach tuning, colorize
   recipes), each with the images to prove it.
 - **base24 coverage**: slots base10-17.
 - **Media formats**: more inputs beyond png / jpeg / webp (gif, tiff,
@@ -525,7 +537,7 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   JPEG-artifact restoration models (Real-CUGAN / realesrnet), a
   low-strength img2img restyle (sd.cpp) as a creative pass, and an
   opt-in Nix SR builder (lavapipe for machines without a GPU driver).
-- **Performance**: the per-pixel map-wal pass is single-threaded.
+- **Performance**: the per-pixel wal pass is single-threaded.
   Non-dithered and ordered-dither modes parallelize cleanly (each
   pixel depends only on x, y), which should bring a 33MP remap from
   ~18s to ~2-3s; error-diffusion dithering stays sequential by nature.
@@ -579,15 +591,16 @@ when an example changes without a rebuild:
 
 ```sh
 nix develop .#examples -c cargo run --release --example docs-images
-nix develop .#examples -c cargo run --release --example docs-images -- wal-territory   # just one
+nix develop .#examples -c cargo run --release --example docs-images -- wal-mode   # just one
 ```
 
 ```
 src/color.rs     sRGB/OKLab/OKLCH + circular-hue math (one source of truth)
 src/scheme.rs    base16 YAML parse/render + slot access + name resolution
 src/extract.rs   chroma^2 hue histogram + deterministic circular k-means
-src/register.rs  map-scheme: the register pipeline and its options
-src/map_wal.rs   map-wal: the per-colour remap (ColorMap) + territory + dithering
+src/role.rs      the four roles, their names, and assign (shared by both directions)
+src/grade_scheme.rs  rehue scheme: the per-role pipeline and its options
+src/grade_wal.rs     rehue wal: the per-colour remap (ColorMap) + mode + dithering
 src/lut.rs       Hald CLUT / .cube export of a colour function
 src/terminal.rs  truecolor ANSI strips for inspect (scheme + families modes)
 src/enhance.rs   enhance: Lanczos + vulkan SR (realesrgan-ncnn-vulkan)
@@ -600,7 +613,7 @@ build.rs         embeds vendor/tinted-schemes as the bundled scheme table
 vendor/          tinted-theming/schemes snapshot (scripts/update-schemes.sh)
 docs/            examples.toml (every docs image + command), its lock, manifest.rs
 examples/        docs-images: builds the docs images from docs/examples.toml
-tests/           per-surface suites: extraction, map_scheme, map_wal,
+tests/           per-surface suites: extraction, grade_scheme, grade_wal,
                  scheme, terminal, enhance, preview, cli, apply, lut,
                  docs (generated regions + drift check) (+ common/ helpers)
 ```

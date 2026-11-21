@@ -110,7 +110,7 @@ fn the_heading_flows_match_the_commands() {
             .to_string()
     };
 
-    // map-scheme: wallpaper first, arrow as drawn, the source file linked
+    // scheme: wallpaper first, arrow as drawn, the source file linked
     let page = Preview {
         flow: PreviewFlow::SchemeFromWallpaper,
         wallpaper_label: Some("Bango"),
@@ -118,13 +118,13 @@ fn the_heading_flows_match_the_commands() {
         scheme: "Gruvbox Light",
         hexes: &slot_hexes,
     };
-    let html = render(&page).expect("map-scheme page");
+    let html = render(&page).expect("scheme page");
     assert_eq!(tab_of(&html), "Bango → Gruvbox Light - rehue preview");
     assert!(html.contains("<h1 class=\"\">"));
     assert!(html.contains("src=\"../assets/bango.webp\""));
     assert!(!html.contains("wallbox off"), "the card shows");
 
-    // map-wal: scheme first, the pair flips in the template, the output
+    // wal: scheme first, the pair flips in the template, the output
     // wallpaper.png is a sibling
     let page = Preview {
         flow: PreviewFlow::WallpaperFromScheme,
@@ -133,7 +133,7 @@ fn the_heading_flows_match_the_commands() {
         scheme: "Gruvbox Light",
         hexes: &slot_hexes,
     };
-    let html = render(&page).expect("map-wal page");
+    let html = render(&page).expect("wal page");
     assert_eq!(tab_of(&html), "Gruvbox Light → Bango - rehue preview");
     assert!(html.contains("<h1 class=\"rev\">"));
     assert!(html.contains("h1.rev .par { transform: rotate(180deg); }"));

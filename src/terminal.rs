@@ -30,7 +30,7 @@ pub fn families_strip(clusters: &[Cluster]) -> String {
 }
 
 /// The canonical scheme view: `██ #hex` per slot, four per line, in
-/// canonical order — the registers' tonal structure, readable in any
+/// canonical order — the roles' tonal structure, readable in any
 /// truecolor terminal.
 pub fn scheme_strip(slot_hexes: &[String]) -> String {
     let mut out = String::new();

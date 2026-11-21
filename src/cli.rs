@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 use crate::enhance::SrModel;
-use crate::map_wal;
+use crate::grade_wal;
 
 #[derive(Parser)]
 #[command(
@@ -30,46 +30,45 @@ pub enum Commands {
     /// Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the
     /// scheme's structure.
     ///
-    /// Map a base16 scheme with a wallpaper's hues: hue families are
+    /// Rehue a base16 scheme with a wallpaper's hues: hue families are
     /// extracted from the image and adopted slot by slot, while each
-    /// slot's lightness, chroma and contrast are the reference scheme's.
+    /// slot's lightness, chroma and contrast stay the scheme's own.
     ///
-    /// Example: rehue map-scheme --wallpaper butterfly.webp --scheme rose-pine-dawn.yaml --out mapped
+    /// Example: rehue scheme -i rose-pine-dawn -w butterfly.webp -o mapped
     ///
-    #[command(after_help = MAP_SCHEME_REGISTERS)]
-    MapScheme {
-        /// The image whose hues get adopted.
+    #[command(after_help = SCHEME_ROLES)]
+    Scheme {
+        /// The scheme to rehue: a bundled scheme name or a path to a
+        /// base16 YAML.
         ///
-        /// e.g. --wallpaper ~/pictures/butterfly.webp
-        #[arg(long)]
+        /// e.g. -i rose-pine-dawn   -i ~/schemes/mine.yaml
+        #[arg(short, long, value_name = "SCHEME")]
+        input: String,
+        /// The wallpaper whose hues the scheme takes on.
+        ///
+        /// e.g. -w ~/pictures/butterfly.webp
+        #[arg(short, long)]
         wallpaper: PathBuf,
-        /// A base16 (tinted-scheme) YAML path or a scheme name from the
-        /// embedded collection (pass `.`-free names to use it).
+        /// Output directory: scheme.yaml, preview.png, preview.html, clusters.json (absent: `rehue-out`).
         ///
-        /// e.g. --scheme rose-pine-dawn.yaml
-        #[arg(long)]
-        scheme: String,
-        /// Output directory: scheme.yaml + preview.png + preview.html +
-        /// clusters.json (absent: `rehue-out`).
-        ///
-        /// e.g. --out mapped
-        #[arg(long)]
+        /// e.g. -o mapped
+        #[arg(short, long)]
         out: Option<PathBuf>,
-        /// Run the pipeline and print the ANSI preview but write
-        /// nothing (and not even --out itself).
+        /// Preview only: run everything and print the result, but write
+        /// nothing (not even the --out directory).
         ///
-        /// e.g. --dry-run
-        #[arg(long)]
+        /// e.g. -n
+        #[arg(short = 'n', long)]
         dry_run: bool,
-        /// Directory that scheme NAMES look up before the embedded set.
+        /// Directory that scheme NAMES look up before the bundled set.
         ///
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Map config JSON: extraction options + per-register records.
+        /// Config JSON: extraction options, `min-text-contrast`, `reach` and per-role records.
         ///
-        /// e.g. --config roundtrip.json
-        #[arg(long, value_name = "JSON")]
+        /// e.g. -c scheme.json
+        #[arg(short, long, value_name = "JSON")]
         config: Option<PathBuf>,
         /// How far, in hue degrees, an accent can reach to claim a wallpaper
         /// hue (default 45).
@@ -78,136 +77,137 @@ pub enum Commands {
         /// within this distance of the slot's hue; widening lets more slots
         /// follow more families.
         ///
-        /// e.g. --reach-deg 30
+        /// e.g. --reach 30
         #[arg(long, help_heading = "Grading", value_name = "DEG")]
-        reach_deg: Option<f64>,
-        /// Which wallpaper hue families go to the group's slots: `true` =
-        /// spread across, `3` = pin to family 3, `[0,1,2,3]` = explicit list.
+        reach: Option<f64>,
+        /// Give a role's slots hues taken from the wallpaper's families:
+        /// `auto` = spread the heaviest across, `3` = all from family 3,
+        /// `0,2,5` = these families across the slots.
         ///
-        /// Family numbers come from `rehue inspect --wallpaper`.  Untargeted:
-        /// pin only (bg takes pins only).
+        /// Hue only: the slots keep the scheme's lightness and chroma.  Family
+        /// numbers come from `rehue inspect -w`.  Without a role, only a
+        /// family index works.
         ///
-        /// e.g. --distribution accents '[0,1,2,3]'
-        #[arg(long, help_heading = "Grading", value_name = "[REG] VAL", num_args = 1..=2, allow_negative_numbers = true)]
-        distribution: Vec<String>,
-        /// Rotate a group's hues across its slots (`1` = one step right, wraps
-        /// around).
+        /// e.g. --assign accents 0,1,2,3   --assign sf auto
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] VAL", num_args = 1..=2, allow_negative_numbers = true)]
+        assign: Vec<String>,
+        /// Move each of a role's hues N slots along, wrapping around (slots,
+        /// not degrees).
         ///
-        /// e.g. --rotate accents 1
-        #[arg(long, help_heading = "Grading", value_name = "[REG] N", num_args = 1..=2, allow_negative_numbers = true)]
-        rotate: Vec<String>,
-        /// How far slots adopt the wallpaper's hues, 0..1 (default 1).
+        /// e.g. --cycle accents 1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] N", num_args = 1..=2, allow_negative_numbers = true)]
+        cycle: Vec<String>,
+        /// How much of the wallpaper's hue the slots take on, 0..1 (default 1).
         ///
-        /// e.g. --blend-hue 0.4   --blend-hue accents 1
-        #[arg(long, help_heading = "Grading", value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
-        blend_hue: Vec<String>,
-        /// Shift a group's lightness (added; e.g. -0.1 darker).
+        /// e.g. --match-hue 0.4   --match-hue accents 1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        match_hue: Vec<String>,
+        /// Shift a role's lightness (added; -0.1 is darker).
         ///
-        /// e.g. --light 0.05   --light surfaces -0.02
-        #[arg(long, help_heading = "Grading", value_name = "[REG] L", num_args = 1..=2, allow_negative_numbers = true)]
-        light: Vec<String>,
-        /// Scale a group's chroma (multiplied; 0.8 muted, 1.3 vivid).
+        /// e.g. --lightness 0.05   --lightness sf -0.02
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] L", num_args = 1..=2, allow_negative_numbers = true)]
+        lightness: Vec<String>,
+        /// Scale a role's chroma (multiplied; 0.8 muted, 1.3 vivid).
         ///
         /// e.g. --chroma 1.6   --chroma accents 0.75
-        #[arg(long, help_heading = "Grading", value_name = "[REG] C", num_args = 1..=2, allow_negative_numbers = true)]
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] C", num_args = 1..=2, allow_negative_numbers = true)]
         chroma: Vec<String>,
     },
     /// Wallpaper + scheme → wallpaper: repaint the image with the scheme's
     /// palette.
     ///
     /// Repaint an image with a base16 scheme's palette: every pixel
-    /// moves toward its nearest palette slot — hue and chroma by dial,
-    /// lightness stays photographic by default.  All options are opt-in;
-    /// with all-zero dials the output is a re-encoded passthrough.
+    /// moves toward the palette (hue and chroma by dial; lightness stays
+    /// photographic by default).  All options are opt-in; with every
+    /// dial at zero the output is a re-encoded passthrough.
     ///
-    /// Example: rehue map-wal --wallpaper glitter.webp --scheme gruvbox-light.yaml --out repainted --harmonize 1
+    /// Example: rehue wal -i glitter.webp -s gruvbox-light -o repainted -H 1
     ///
-    #[command(after_help = MAP_WAL_REGISTERS)]
-    MapWal {
-        /// The image to repaint.
+    #[command(visible_alias = "wallpaper", after_help = WAL_ROLES)]
+    Wal {
+        /// The wallpaper to repaint.
         ///
-        /// e.g. --wallpaper ~/pictures/glitter.webp
-        #[arg(long)]
-        wallpaper: PathBuf,
-        /// A base16 (tinted-scheme) YAML path or a scheme name from the
-        /// embedded collection (pass `.`-free names to use it).
+        /// e.g. -i ~/pictures/glitter.webp
+        #[arg(short, long, value_name = "WALLPAPER")]
+        input: PathBuf,
+        /// The scheme whose palette it takes on: a bundled scheme name or
+        /// a path to a base16 YAML.
         ///
-        /// e.g. --scheme gruvbox-light.yaml
-        #[arg(long)]
+        /// e.g. -s gruvbox-light
+        #[arg(short, long)]
         scheme: String,
-        /// Output directory: wallpaper.png, compare.png, preview.html and
-        /// report.json (preview.html whenever an arrangement is
-        /// live).  (absent: `rehue-out`)
+        /// Output directory: wallpaper.png, compare.png, report.json, preview.html (absent: `rehue-out`).
         ///
-        /// e.g. --out repainted
-        #[arg(long)]
+        /// e.g. -o repainted
+        #[arg(short, long)]
         out: Option<PathBuf>,
-        /// Run the pipeline and print the ANSI preview but write
-        /// nothing (and not even --out itself).
+        /// Preview only: run everything and print the result, but write
+        /// nothing (not even the --out directory).
         ///
-        /// e.g. --dry-run
-        #[arg(long)]
+        /// e.g. -n
+        #[arg(short = 'n', long)]
         dry_run: bool,
-        /// Directory that scheme NAMES look up before the embedded set.
+        /// Directory that scheme NAMES look up before the bundled set.
         ///
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Remap config JSON: extraction options + per-register records
-        /// (records beat the bare-flag seeds).
+        /// Config JSON: extraction options and the grading options below, globally and per role.
         ///
-        /// e.g. --config remap.json
-        #[arg(long, value_name = "JSON")]
+        /// e.g. -c wal.json
+        #[arg(short, long, value_name = "JSON")]
         config: Option<PathBuf>,
-        /// How palette colors pull pixels: `soft` = smooth falloff
-        /// (default), `hard` = pixels snap to flat palette colors.
+        /// How pixels find their palette color: `blend` = mix the nearby
+        /// palette colors, weighted by hue distance (default); `snap` = take
+        /// the nearest one.
         ///
-        /// e.g. --territory hard
+        /// e.g. --mode snap
         #[arg(long, help_heading = "Grading", value_enum)]
-        territory: Option<map_wal::Territory>,
-        /// One-dial shortcut, 0..1: sets blend-hue and blend-chroma wherever
-        /// they aren't set (default 0).
+        mode: Option<grade_wal::Mode>,
+        /// How strongly to harmonize with the scheme, 0..1: sets match-hue and
+        /// match-chroma wherever they aren't set (default 0).
         ///
-        /// Explicit dials win; blend-light never follows it.
+        /// Explicit match dials win; match-lightness never follows it.
         ///
-        /// e.g. --harmonize 1
-        #[arg(long, help_heading = "Grading", value_name = "0..1")]
+        /// e.g. -H 1
+        #[arg(short = 'H', long, help_heading = "Grading", value_name = "0..1")]
         harmonize: Option<f64>,
-        /// How far pixel hue moves toward the palette (0 = untouched, 1 =
-        /// full snap).
+        /// How much of the palette's hue each pixel takes on (0 = keep its
+        /// own, 1 = fully adopt).
         ///
-        /// e.g. --blend-hue 0.9   --blend-hue accents 1
-        #[arg(long, help_heading = "Grading", value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
-        blend_hue: Vec<String>,
-        /// How far pixel chroma moves toward the palette (0 = untouched, 1 =
-        /// adopt the slot's chroma).
+        /// e.g. --match-hue 0.9   --match-hue accents 1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        match_hue: Vec<String>,
+        /// How much of the palette's chroma each pixel takes on (0 = keep its
+        /// own, 1 = fully adopt).
         ///
-        /// e.g. --blend-chroma 0.8   --blend-chroma bg 0.5
-        #[arg(long, help_heading = "Grading", value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
-        blend_chroma: Vec<String>,
-        /// How far pixel lightness moves toward the palette (default 0, which
-        /// keeps the image photographic).
+        /// e.g. --match-chroma 0.8   --match-chroma bg 0.5
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        match_chroma: Vec<String>,
+        /// How much of the palette's lightness each pixel takes on (default 0,
+        /// which keeps the image photographic).
         ///
         /// Never set by harmonize: adopting lightness flattens contrast.
         ///
-        /// e.g. --blend-light 0.3   --blend-light surfaces 0.1
-        #[arg(long, help_heading = "Grading", value_name = "[REG] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
-        blend_light: Vec<String>,
+        /// e.g. --match-lightness 0.3   --match-lightness sf 0.1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        match_lightness: Vec<String>,
         /// How far, in hue degrees, a palette color's pull extends (default
         /// 45).
         ///
-        /// The falloff width in soft territory, the cutoff in hard.
+        /// The falloff width in blend mode; in snap mode, the cutoff beyond
+        /// which colors are left alone.
         ///
-        /// e.g. --reach-deg 60
+        /// e.g. --reach 60
         #[arg(long, help_heading = "Grading", value_name = "DEG")]
-        reach_deg: Option<f64>,
+        reach: Option<f64>,
         /// Below this chroma a pixel counts as gray (default 0.02).
         ///
         /// Gray pixels key to the scheme's neutral slots by lightness.
         ///
-        /// e.g. --gray-chroma-floor 0.05
+        /// e.g. --max-gray-chroma 0.05
         #[arg(long, help_heading = "Grading", value_name = "C")]
-        gray_chroma_floor: Option<f64>,
+        max_gray_chroma: Option<f64>,
         /// Dithering strength 0..1 (0 = off).
         ///
         /// Breaks up banding where adoption is partial; inert at zero and at
@@ -220,34 +220,35 @@ pub enum Commands {
         ///
         /// e.g. --dithering-mode floyd-steinberg
         #[arg(long, help_heading = "Grading", value_enum)]
-        dithering_mode: Option<map_wal::DitherMode>,
-        /// Which wallpaper hue families recolor the group's slots before
-        /// mapping: `true` = spread across, `3` = pin to family 3, `[0,1,2,3]`
-        /// = explicit list.
+        dithering_mode: Option<grade_wal::DitherMode>,
+        /// Before painting, give a role's slots hues taken from the wallpaper's families:
+        /// `auto` = spread the heaviest across, `3` = all from family 3,
+        /// `0,2,5` = these families across the slots.
         ///
-        /// Family numbers come from `rehue inspect --wallpaper`.  Untargeted:
-        /// pin only (bg takes pins only).
+        /// Hue only: the slots keep the scheme's lightness and chroma.  Family
+        /// numbers come from `rehue inspect -w`.  Without a role, only a
+        /// family index works.
         ///
-        /// e.g. --distribution accents '[0,1,2,3]'
-        #[arg(long, help_heading = "Grading", value_name = "[REG] VAL", num_args = 1..=2, allow_negative_numbers = true)]
-        distribution: Vec<String>,
-        /// Rotate a group's hues across its slots (`1` = one step right, wraps
-        /// around).
+        /// e.g. --assign accents 0,1,2,3   --assign sf auto
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] VAL", num_args = 1..=2, allow_negative_numbers = true)]
+        assign: Vec<String>,
+        /// Move each of a role's hues N slots along, wrapping around (slots,
+        /// not degrees).
         ///
-        /// e.g. --rotate accents 1
-        #[arg(long, help_heading = "Grading", value_name = "[REG] N", num_args = 1..=2, allow_negative_numbers = true)]
-        rotate: Vec<String>,
+        /// e.g. --cycle accents 1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] N", num_args = 1..=2, allow_negative_numbers = true)]
+        cycle: Vec<String>,
         /// Lightness shift (added).  Bare: the whole-image grade, applied
-        /// last; targeted: that group's grade.
+        /// last; with a role: that role's grade.
         ///
-        /// e.g. --light 0.02   --light bg -0.05
-        #[arg(long, help_heading = "Grading", value_name = "[REG] L", num_args = 1..=2, allow_negative_numbers = true)]
-        light: Vec<String>,
+        /// e.g. --lightness 0.02   --lightness bg -0.05
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] L", num_args = 1..=2, allow_negative_numbers = true)]
+        lightness: Vec<String>,
         /// Chroma scale (multiplied).  Bare: the whole-image grade, applied
-        /// last; targeted: that group's grade.
+        /// last; with a role: that role's grade.
         ///
         /// e.g. --chroma 1.2   --chroma fg 0.9
-        #[arg(long, help_heading = "Grading", value_name = "[REG] C", num_args = 1..=2, allow_negative_numbers = true)]
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] C", num_args = 1..=2, allow_negative_numbers = true)]
         chroma: Vec<String>,
         /// Also bake the grade into a 3D LUT: `lut.png` (Hald CLUT) or
         /// `lut.cube`.
@@ -278,7 +279,7 @@ pub enum Commands {
     /// scheme (`--schemes`) in the terminal.
     ///
     /// Families mode indexes the wallpaper's hue families (the `[i]`
-    /// indices that distribution configs target).  Scheme mode shows a
+    /// indices that assign configs target).  Scheme mode shows a
     /// scheme's 16 slots as truecolor swatches.  --schemes browses the
     /// whole collection: one row per scheme, name and colours.
     ///
@@ -288,14 +289,14 @@ pub enum Commands {
     Inspect {
         /// The image whose hues get extracted (families mode).
         ///
-        /// e.g. --wallpaper ~/pictures/butterfly.webp
-        #[arg(long)]
+        /// e.g. -w ~/pictures/butterfly.webp
+        #[arg(short, long)]
         wallpaper: Option<PathBuf>,
         /// A scheme (NAME or path) whose slots print as truecolor
         /// swatches (scheme mode).
         ///
-        /// e.g. --scheme gruvbox-light
-        #[arg(long)]
+        /// e.g. -s gruvbox-light
+        #[arg(short, long)]
         scheme: Option<String>,
         /// Every available scheme, one row each: name, then its 16 slots
         /// as swatches.  An optional FILTER keeps names containing it
@@ -315,23 +316,23 @@ pub enum Commands {
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Extraction options as JSON.  (families mode)
+        /// Extraction options as JSON (families mode).
         ///
-        /// e.g. --config extract.json
-        #[arg(long, value_name = "JSON")]
+        /// e.g. -c extract.json
+        #[arg(short, long, value_name = "JSON")]
         config: Option<PathBuf>,
         /// Output directory: families mode = inspect.png, scheme mode =
         /// preview.html; absent prints the strips only.
         ///
-        /// e.g. --out inspect
-        #[arg(long)]
+        /// e.g. -o inspect
+        #[arg(short, long)]
         out: Option<PathBuf>,
     },
     /// Upscale a wallpaper: built-in Lanczos, or Vulkan AI
     /// super-resolution.
     ///
     /// enhance works on the SOURCE picture; the palette transform stays
-    /// in map-wal.  Lanczos is deterministic and dependency-free.
+    /// in wal.  Lanczos is deterministic and dependency-free.
     /// --sr shells out to realesrgan-ncnn-vulkan (ncnn + vulkan: no
     /// CUDA, works on intel/amd/nvidia/software drivers); the model
     /// runs at its native 4x and the target factor is reached with the
@@ -340,16 +341,16 @@ pub enum Commands {
     /// Example: rehue enhance --wallpaper pic.webp --out up4 --upscale 4
     ///          rehue enhance --wallpaper pic.webp --out up4 --upscale 4 --sr
     Enhance {
-        /// The picture to scale (input file).
+        /// The picture to scale.
         ///
-        /// e.g. --wallpaper ~/pictures/pic.webp
-        #[arg(long)]
-        wallpaper: PathBuf,
+        /// e.g. -i ~/pictures/pic.webp
+        #[arg(short, long, value_name = "WALLPAPER")]
+        input: PathBuf,
         /// Directory for the scaled PNG, named after the source's stem
         /// (absent: `rehue-out`).
         ///
-        /// e.g. --out up4
-        #[arg(long)]
+        /// e.g. -o up4
+        #[arg(short, long)]
         out: Option<PathBuf>,
         /// Target scale factor vs the source.  Lanczos takes 2..=8;
         /// SR weights are native 4x, so --sr takes 1..=4 (1 = same-size
@@ -377,17 +378,13 @@ pub enum Commands {
         #[arg(long, value_name = "TOOL")]
         sr_tool: Option<PathBuf>,
     },
-    /// Renamed: use `rehue inspect --schemes`.  Kept hidden for one
-    /// release.
-    #[command(hide = true)]
-    Schemes,
     /// Run a pipeline file and apply the result: scheme to tinty,
     /// wallpaper to your command.
     ///
-    /// The pipeline is TOML: `wallpaper`, `scheme`, then a `[map-scheme]`
-    /// and/or `[map-wal]` table (the same keys as their JSON --config
-    /// files; a table's presence turns its step on) and an `[apply]`
-    /// table.  The mapped scheme is installed as a tinty custom scheme
+    /// The pipeline is TOML: `wallpaper`, `scheme`, then a
+    /// `[rehue.scheme]` and/or `[rehue.wal]` table (the same keys as their
+    /// JSON --config files; a table's presence turns its step on) and an
+    /// `[apply]` table.  The mapped scheme is installed as a tinty custom scheme
     /// and applied with `tinty apply base16-<tinty-name>`; the wallpaper
     /// command runs with `{wallpaper}` filled in.
     ///
@@ -399,9 +396,11 @@ pub enum Commands {
         /// e.g. --pipeline ~/.config/rehue/pipeline.toml
         #[arg(long)]
         pipeline: PathBuf,
-        /// Print the previews and what would run; write nothing, run
-        /// nothing.
-        #[arg(long)]
+        /// Preview only: print the previews and what would run; write
+        /// nothing, run nothing.
+        ///
+        /// e.g. -n
+        #[arg(short = 'n', long)]
         dry_run: bool,
     },
 }
@@ -412,11 +411,11 @@ Pipeline example:
   scheme = \"gruvbox-light\"        # a bundled name, or a path to yaml
   # out = \"~/.local/share/rehue/current\"   (the default)
 
-  [map-scheme]                     # re-hue the scheme (empty = defaults)
-  [map-scheme.registers.accents]
+  [rehue.scheme]                   # rehue the scheme (empty = defaults)
+  [rehue.scheme.roles.accents]
   chroma = 1.2
 
-  [map-wal]                        # repaint the wallpaper with it
+  [rehue.wal]                      # repaint the wallpaper with it
   harmonize = 1.0
 
   [apply]
@@ -434,27 +433,36 @@ pub enum LutFormat {
     Cube,
 }
 
-const MAP_SCHEME_REGISTERS: &str = "
-Registers:
-  The palette is grouped into four registers: bg (base00),
-  surfaces (base01-03), fg (base04-07), accents (base08-0F) - the
-  surface groups a desktop theme lives in.
+/// The roles paragraph both grading commands print after `--help`.
+macro_rules! roles_help {
+    ($tail:literal) => {
+        concat!(
+            "
+Roles:
+  The 16 slots fall into four roles: background (bg, base00),
+  surfaces (sf, base01-03), foreground (fg, base04-07) and
+  accents (ac, base08-0F). Full names and short forms both work.
+",
+            $tail
+        )
+    };
+}
 
-  Register-targetable options: distribution, rotate, blend-hue, light,
-  chroma.  Pass `--dial register value`, repeatable per register; a
-  bare `--dial value` seeds `all`, and per-register `--config` records
-  outrank the seeds.
-";
+const SCHEME_ROLES: &str = roles_help!(
+    "
+  Per-role options: assign, cycle, match-hue, lightness, chroma.
+  Pass `--option ROLE value`, repeatable per role; a bare
+  `--option value` sets `all`, and per-role `--config` records
+  outrank it.
+"
+);
 
-const MAP_WAL_REGISTERS: &str = "
-Registers:
-  The palette is grouped into four registers: bg (base00),
-  surfaces (base01-03), fg (base04-07), accents (base08-0F) - the
-  surface groups a desktop theme lives in.
-
-  Register-targetable options: blend-hue, blend-chroma, blend-light,
-  distribution, rotate, light, chroma.  Pass `--dial register value`,
-  repeatable per register; a bare `--dial value` is the global seed —
-  except bare --light/--chroma, which stay the image-wide grade applied
-  last.  Per-register `--config` records outrank the seeds.
-";
+const WAL_ROLES: &str = roles_help!(
+    "
+  Per-role options: match-hue, match-chroma, match-lightness, assign,
+  cycle, lightness, chroma. Pass `--option ROLE value`, repeatable per
+  role; a bare `--option value` is the global setting, except bare
+  --lightness / --chroma, which grade the whole image last. Per-role
+  `--config` records outrank the global setting.
+"
+);

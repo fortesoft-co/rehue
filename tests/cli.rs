@@ -13,28 +13,36 @@ fn dry_run_writes_nothing() {
     gradient_image((32, 32)).save(&wall).expect("wall writes");
     let scheme = fixture("solarized-dark.yaml");
 
+    // the short flags: -i is the command's subject, -s / -w the other
+    // input, -o / -n out and dry run
     let run = |command: &[&str], out: &Path| {
         let _ = std::fs::remove_dir_all(out);
+        let (subject, other) = if command[0] == "wal" {
+            (&wall, scheme.as_os_str())
+        } else {
+            (&scheme, wall.as_os_str())
+        };
+        let other_flag = if command[0] == "wal" { "-s" } else { "-w" };
         let status = std::process::Command::new(bin)
             .args(command)
-            .arg("--wallpaper")
-            .arg(&wall)
-            .args(["--scheme"])
-            .arg(&scheme)
-            .args(["--out"])
+            .arg("-i")
+            .arg(subject)
+            .arg(other_flag)
+            .arg(other)
+            .arg("-o")
             .arg(out)
-            .arg("--dry-run")
+            .arg("-n")
             .status()
             .expect("rehue binary runs");
         assert!(status.success(), "dry run {command:?} failed");
         assert!(!out.exists(), "dry run must not create --out");
     };
     run(
-        &["map-wal"],
+        &["wal"],
         &std::env::temp_dir().join(format!("rehue-dry-wal-{}", std::process::id())),
     );
     run(
-        &["map-scheme"],
+        &["scheme"],
         &std::env::temp_dir().join(format!("rehue-dry-scheme-{}", std::process::id())),
     );
 
@@ -53,7 +61,7 @@ fn dry_run_writes_nothing_even_without_out() {
     let scheme = fixture("solarized-dark.yaml");
 
     let status = std::process::Command::new(bin)
-        .args(["map-wal", "--wallpaper"])
+        .args(["wal", "--input"])
         .arg(&wall)
         .args(["--scheme"])
         .arg(&scheme)
@@ -80,7 +88,7 @@ fn absent_out_defaults_to_rehue_out() {
     let scheme = fixture("solarized-dark.yaml");
 
     let status = std::process::Command::new(bin)
-        .args(["map-wal", "--wallpaper"])
+        .args(["wallpaper", "--input"])
         .arg(&wall)
         .args(["--scheme"])
         .arg(&scheme)
@@ -94,26 +102,31 @@ fn absent_out_defaults_to_rehue_out() {
 }
 
 #[test]
-fn register_dials_accept_negative_values() {
-    // The help text's own examples (`--light surfaces -0.02`,
-    // `--light bg -0.05`) must parse: a negative value is a value, not a flag.
+fn role_dials_accept_negative_values() {
+    // The help text's own examples (`--lightness surfaces -0.02`,
+    // `--lightness bg -0.05`) must parse: a negative value is a value, not a flag.
     let bin = env!("CARGO_BIN_EXE_rehue");
     let wall = std::env::temp_dir().join(format!("rehue-neg-wall-{}.png", std::process::id()));
     gradient_image((32, 32)).save(&wall).expect("wall writes");
     let scheme = fixture("solarized-dark.yaml");
 
-    for command in ["map-scheme", "map-wal"] {
+    for command in ["scheme", "wal"] {
         for dial in [
-            &["--light", "-0.05"][..],
-            &["--light", "surfaces", "-0.02"][..],
-            &["--rotate", "accents", "-1"][..],
+            &["--lightness", "-0.05"][..],
+            &["--lightness", "sf", "-0.02"][..],
+            &["--cycle", "accents", "-1"][..],
         ] {
+            let (subject, other_flag, other) = if command == "wal" {
+                (wall.as_os_str(), "-s", scheme.as_os_str())
+            } else {
+                (scheme.as_os_str(), "-w", wall.as_os_str())
+            };
             let output = std::process::Command::new(bin)
                 .arg(command)
-                .arg("--wallpaper")
-                .arg(&wall)
-                .arg("--scheme")
-                .arg(&scheme)
+                .arg("-i")
+                .arg(subject)
+                .arg(other_flag)
+                .arg(other)
                 .args(dial)
                 .arg("--dry-run")
                 .output()

@@ -120,20 +120,6 @@ fn inspect_schemes_conflicts_with_other_modes() {
 }
 
 #[test]
-fn legacy_schemes_command_still_works_and_points_to_inspect() {
-    let out = rehue(&["schemes"]);
-    assert!(out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("inspect --schemes"));
-    assert!(listed(&out.stdout).contains(&"gruvbox-light".to_string()));
-    let help = rehue(&["--help"]);
-    let help = String::from_utf8_lossy(&help.stdout);
-    assert!(
-        !help.lines().any(|l| l.trim_start().starts_with("schemes")),
-        "hidden from --help\n{help}"
-    );
-}
-
-#[test]
 fn scheme_name_resolution() {
     // Bare name and .yaml-suffixed name resolve identically, and match a
     // file parse of the same text.

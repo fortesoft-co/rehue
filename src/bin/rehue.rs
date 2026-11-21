@@ -8,10 +8,10 @@ use clap::Parser;
 use rehue::cli::{Cli, Commands, LutFormat};
 use rehue::color::{Lch, hex_to_oklch, hex_to_rgb, oklch_to_hex, oklch_to_rgb, self_test};
 use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
-use rehue::register::DistributionState;
+use rehue::role::AssignState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
 use rehue::terminal::{families_strip, scheme_strip};
-use rehue::{apply, extract, map_wal, preview, register};
+use rehue::{apply, extract, grade_scheme, grade_wal, preview, role};
 
 fn read_json<T: serde::de::DeserializeOwned + Default>(path: Option<&Path>) -> Result<T, String> {
     match path {
@@ -32,7 +32,7 @@ fn fill_rect(img: &mut image::RgbImage, x0: u32, y0: u32, x1: u32, y1: u32, rgb:
     }
 }
 
-/// Cluster table with explicit indices - the vocabulary distribution
+/// Cluster table with explicit indices - the vocabulary assign
 /// configs refer to.
 fn print_families(verb: &str, clusters: &[extract::Cluster]) {
     if clusters.is_empty() {
@@ -124,20 +124,20 @@ fn write_json_file(path: &Path, value: &serde_json::Value) -> Result<(), String>
     std::fs::write(path, text + "\n").map_err(|e| format!("can't write {}: {}", path.display(), e))
 }
 
-/// Parse one `[register] value` dial occurrence: one token is the bare
-/// value, two tokens are a register target then the value.
+/// Parse one `[role] value` dial occurrence: one token is the bare
+/// value, two tokens are a role target then the value.
 fn dial_arg(dial: &str, tokens: &[String]) -> Result<(Option<String>, String), String> {
     match tokens.len() {
         1 => Ok((None, tokens[0].clone())),
-        2 => match tokens[0].as_str() {
-            "bg" | "surfaces" | "fg" | "accents" | "all" => {
-                Ok((Some(tokens[0].clone()), tokens[1].clone()))
-            }
-            other => Err(format!(
-                "--{dial}: {other} is not a register (bg, surfaces, fg, accents, all)"
+        2 => match role::canonical_role(&tokens[0]) {
+            Some(name) => Ok((Some(name.to_string()), tokens[1].clone())),
+            None => Err(format!(
+                "--{dial}: {} is not a role ({})",
+                tokens[0],
+                role::role_list()
             )),
         },
-        n => Err(format!("--{dial}: expected [register] value, got {n} args")),
+        n => Err(format!("--{dial}: expected [role] value, got {n} args")),
     }
 }
 
@@ -153,109 +153,108 @@ fn parse_i64(dial: &str, token: &str) -> Result<i64, String> {
         .map_err(|_| format!("--{dial}: expected an integer, got {token}"))
 }
 
-/// Write one dial into the `all` seed record (or the named register).
-fn register_dial(
-    config: &mut register::MapConfig,
+/// Write one dial into the `all` seed record (or the named role).
+fn role_dial(
+    config: &mut grade_scheme::SchemeConfig,
     target: Option<String>,
-    set: impl FnOnce(&mut register::RegisterConfig),
+    set: impl FnOnce(&mut grade_scheme::SchemeRoleConfig),
 ) {
     let name = target.unwrap_or_else(|| "all".to_string());
-    set(config.registers.entry(name).or_default());
+    set(config.roles.entry(name).or_default());
 }
 
-/// Write one dial into the `all` seed record (or the named register).
-fn wal_register(
-    config: &mut map_wal::RemapConfig,
+/// Write one dial into the `all` seed record (or the named role).
+fn wal_role(
+    config: &mut grade_wal::WalConfig,
     target: Option<String>,
-    set: impl FnOnce(&mut map_wal::WalRegisterConfig),
+    set: impl FnOnce(&mut grade_wal::WalRoleConfig),
 ) {
     let name = target.unwrap_or_else(|| "all".to_string());
-    set(config.registers.entry(name).or_default());
+    set(config.roles.entry(name).or_default());
 }
 
-/// The named-flag subset of map-scheme's options.  `reach-deg` is the
-/// config-level gate; the register dials exist only per register, so a
-/// bare flag seeds the `all` record (per-register records in `--config`
-/// still win) and a targeted `[register] value` occurrence writes the
-/// named register directly (CLI beats the file at that key).
+/// The named-flag subset of scheme's options.  `reach` is the
+/// config-level gate; the role dials exist only per role, so a
+/// bare flag seeds the `all` record (per-role records in `--config`
+/// still win) and a targeted `[role] value` occurrence writes the
+/// named role directly (CLI beats the file at that key).
 #[derive(Debug, Default)]
 struct SchemeOverrides {
-    reach_deg: Option<f64>,
-    distribution: Vec<String>,
-    rotate: Vec<String>,
-    blend_hue: Vec<String>,
-    light: Vec<String>,
+    reach: Option<f64>,
+    assign: Vec<String>,
+    cycle: Vec<String>,
+    match_hue: Vec<String>,
+    lightness: Vec<String>,
     chroma: Vec<String>,
 }
 
 impl SchemeOverrides {
-    fn apply(self, config: &mut register::MapConfig) -> Result<(), String> {
-        if let Some(v) = self.reach_deg {
-            config.reach_deg = v;
+    fn apply(self, config: &mut grade_scheme::SchemeConfig) -> Result<(), String> {
+        if let Some(v) = self.reach {
+            config.reach = v;
         }
-        for tokens in self.distribution.chunks(2) {
-            let (target, value) = dial_arg("distribution", tokens)?;
-            let parsed: register::Distribution = serde_json::from_str(&value)
-                .map_err(|e| format!("bad --distribution {value}: {e}"))?;
+        for tokens in self.assign.chunks(2) {
+            let (target, value) = dial_arg("assign", tokens)?;
+            let parsed = role::Assign::parse_cli(&value).map_err(|e| format!("--assign: {e}"))?;
             // `bg` inherits `all` and takes pins only, so a non-pin on
             // the seed path would fail validation downstream.
-            if target.is_none() && !matches!(parsed, register::Distribution::Pin(_)) {
+            if target.is_none() && !matches!(parsed, role::Assign::Pin(_)) {
                 return Err(format!(
-                    "--distribution takes a family index when untargeted (got {value}); ramp/stop sculpting needs a register target or --config"
+                    "--assign takes a family index when untargeted (got {value}); auto and lists need a role (--assign accents {value})"
                 ));
             }
-            register_dial(config, target, move |reg| reg.distribution = Some(parsed));
+            role_dial(config, target, move |reg| reg.assign = Some(parsed));
         }
-        for tokens in self.rotate.chunks(2) {
-            let (target, value) = dial_arg("rotate", tokens)?;
-            let v = parse_i64("rotate", &value)?;
-            register_dial(config, target, move |reg| reg.rotate = Some(v));
+        for tokens in self.cycle.chunks(2) {
+            let (target, value) = dial_arg("cycle", tokens)?;
+            let v = parse_i64("cycle", &value)?;
+            role_dial(config, target, move |reg| reg.cycle = Some(v));
         }
-        for tokens in self.blend_hue.chunks(2) {
-            let (target, value) = dial_arg("blend-hue", tokens)?;
-            let v = parse_f64("blend-hue", &value)?;
-            register_dial(config, target, move |reg| reg.blend_hue = Some(v));
+        for tokens in self.match_hue.chunks(2) {
+            let (target, value) = dial_arg("match-hue", tokens)?;
+            let v = parse_f64("match-hue", &value)?;
+            role_dial(config, target, move |reg| reg.match_hue = Some(v));
         }
-        for tokens in self.light.chunks(2) {
+        for tokens in self.lightness.chunks(2) {
             let (target, value) = dial_arg("light", tokens)?;
             let v = parse_f64("light", &value)?;
-            register_dial(config, target, move |reg| reg.light = Some(v));
+            role_dial(config, target, move |reg| reg.lightness = Some(v));
         }
         for tokens in self.chroma.chunks(2) {
             let (target, value) = dial_arg("chroma", tokens)?;
             let v = parse_f64("chroma", &value)?;
-            register_dial(config, target, move |reg| reg.chroma = Some(v));
+            role_dial(config, target, move |reg| reg.chroma = Some(v));
         }
         Ok(())
     }
 }
 
-/// The named-flag subset of map-wal's options.  Global dials are bare
-/// flags; register dials are targeted `[register] value` (CLI beats the
-/// file at that key), and `--distribution`/`--rotate` seed the `all`
+/// The named-flag subset of wal's options.  Global dials are bare
+/// flags; role dials are targeted `[role] value` (CLI beats the
+/// file at that key), and `--assign`/`--cycle` seed the `all`
 /// record when bare.  A bare `--light`/`--chroma` is the image-wide
-/// grade, deliberately not a register seed.
+/// grade, deliberately not a role seed.
 #[derive(Debug, Default)]
 struct WalOverrides {
-    territory: Option<map_wal::Territory>,
+    mode: Option<grade_wal::Mode>,
     harmonize: Option<f64>,
-    blend_hue: Vec<String>,
-    blend_chroma: Vec<String>,
-    blend_light: Vec<String>,
-    reach_deg: Option<f64>,
-    gray_chroma_floor: Option<f64>,
+    match_hue: Vec<String>,
+    match_chroma: Vec<String>,
+    match_lightness: Vec<String>,
+    reach: Option<f64>,
+    max_gray_chroma: Option<f64>,
     dithering: Option<f64>,
-    dithering_mode: Option<map_wal::DitherMode>,
-    distribution: Vec<String>,
-    rotate: Vec<String>,
-    light: Vec<String>,
+    dithering_mode: Option<grade_wal::DitherMode>,
+    assign: Vec<String>,
+    cycle: Vec<String>,
+    lightness: Vec<String>,
     chroma: Vec<String>,
 }
 
 impl WalOverrides {
-    fn apply(self, config: &mut map_wal::RemapConfig) -> Result<(), String> {
-        if self.territory.is_some() {
-            config.territory = self.territory;
+    fn apply(self, config: &mut grade_wal::WalConfig) -> Result<(), String> {
+        if self.mode.is_some() {
+            config.mode = self.mode;
         }
         if self.dithering_mode.is_some() {
             config.dithering_mode = self.dithering_mode;
@@ -263,67 +262,64 @@ impl WalOverrides {
         if let Some(v) = self.harmonize {
             config.harmonize = v;
         }
-        if let Some(v) = self.reach_deg {
-            config.reach_deg = v;
+        if let Some(v) = self.reach {
+            config.reach = v;
         }
-        if let Some(v) = self.gray_chroma_floor {
-            config.gray_chroma_floor = v;
+        if let Some(v) = self.max_gray_chroma {
+            config.max_gray_chroma = v;
         }
         if let Some(v) = self.dithering {
             config.dithering = v;
         }
-        for tokens in self.blend_hue.chunks(2) {
-            let (target, value) = dial_arg("blend-hue", tokens)?;
-            let v = parse_f64("blend-hue", &value)?;
+        for tokens in self.match_hue.chunks(2) {
+            let (target, value) = dial_arg("match-hue", tokens)?;
+            let v = parse_f64("match-hue", &value)?;
             match target {
-                None => config.blend_hue = Some(v),
-                Some(name) => wal_register(config, Some(name), move |reg| reg.blend_hue = Some(v)),
+                None => config.match_hue = Some(v),
+                Some(name) => wal_role(config, Some(name), move |reg| reg.match_hue = Some(v)),
             }
         }
-        for tokens in self.blend_chroma.chunks(2) {
-            let (target, value) = dial_arg("blend-chroma", tokens)?;
-            let v = parse_f64("blend-chroma", &value)?;
+        for tokens in self.match_chroma.chunks(2) {
+            let (target, value) = dial_arg("match-chroma", tokens)?;
+            let v = parse_f64("match-chroma", &value)?;
             match target {
-                None => config.blend_chroma = Some(v),
+                None => config.match_chroma = Some(v),
+                Some(name) => wal_role(config, Some(name), move |reg| reg.match_chroma = Some(v)),
+            }
+        }
+        for tokens in self.match_lightness.chunks(2) {
+            let (target, value) = dial_arg("match-lightness", tokens)?;
+            let v = parse_f64("match-lightness", &value)?;
+            match target {
+                None => config.match_lightness = v,
                 Some(name) => {
-                    wal_register(config, Some(name), move |reg| reg.blend_chroma = Some(v))
+                    wal_role(config, Some(name), move |reg| reg.match_lightness = Some(v))
                 }
             }
         }
-        for tokens in self.blend_light.chunks(2) {
-            let (target, value) = dial_arg("blend-light", tokens)?;
-            let v = parse_f64("blend-light", &value)?;
-            match target {
-                None => config.blend_light = v,
-                Some(name) => {
-                    wal_register(config, Some(name), move |reg| reg.blend_light = Some(v))
-                }
-            }
-        }
-        for tokens in self.distribution.chunks(2) {
-            let (target, value) = dial_arg("distribution", tokens)?;
-            let parsed: register::Distribution = serde_json::from_str(&value)
-                .map_err(|e| format!("bad --distribution {value}: {e}"))?;
+        for tokens in self.assign.chunks(2) {
+            let (target, value) = dial_arg("assign", tokens)?;
+            let parsed = role::Assign::parse_cli(&value).map_err(|e| format!("--assign: {e}"))?;
             // `bg` inherits `all` and takes pins only, so a non-pin on
             // the seed path would fail validation downstream.
-            if target.is_none() && !matches!(parsed, register::Distribution::Pin(_)) {
+            if target.is_none() && !matches!(parsed, role::Assign::Pin(_)) {
                 return Err(format!(
-                    "--distribution takes a family index when untargeted (got {value}); ramp/stop sculpting needs a register target or --config"
+                    "--assign takes a family index when untargeted (got {value}); auto and lists need a role (--assign accents {value})"
                 ));
             }
-            wal_register(config, target, move |reg| reg.distribution = Some(parsed));
+            wal_role(config, target, move |reg| reg.assign = Some(parsed));
         }
-        for tokens in self.rotate.chunks(2) {
-            let (target, value) = dial_arg("rotate", tokens)?;
-            let v = parse_i64("rotate", &value)?;
-            wal_register(config, target, move |reg| reg.rotate = Some(v));
+        for tokens in self.cycle.chunks(2) {
+            let (target, value) = dial_arg("cycle", tokens)?;
+            let v = parse_i64("cycle", &value)?;
+            wal_role(config, target, move |reg| reg.cycle = Some(v));
         }
-        for tokens in self.light.chunks(2) {
+        for tokens in self.lightness.chunks(2) {
             let (target, value) = dial_arg("light", tokens)?;
             let v = parse_f64("light", &value)?;
             match target {
-                None => config.light = v,
-                Some(name) => wal_register(config, Some(name), move |reg| reg.light = Some(v)),
+                None => config.lightness = v,
+                Some(name) => wal_role(config, Some(name), move |reg| reg.lightness = Some(v)),
             }
         }
         for tokens in self.chroma.chunks(2) {
@@ -331,7 +327,7 @@ impl WalOverrides {
             let v = parse_f64("chroma", &value)?;
             match target {
                 None => config.chroma = v,
-                Some(name) => wal_register(config, Some(name), move |reg| reg.chroma = Some(v)),
+                Some(name) => wal_role(config, Some(name), move |reg| reg.chroma = Some(v)),
             }
         }
         Ok(())
@@ -339,15 +335,15 @@ impl WalOverrides {
 }
 
 /// Returns the mapped scheme's yaml (written to `out` unless dry-run).
-fn run_map_scheme(
+fn run_scheme(
     wallpaper: &Path,
     parsed: &Scheme,
     out: &Path,
-    config: register::MapConfig,
+    config: grade_scheme::SchemeConfig,
     dry_run: bool,
 ) -> Result<String, String> {
     println!(
-        "rehue map-scheme: reference '{}' by {}",
+        "rehue scheme: reference '{}' by {}",
         parsed.meta_name(),
         parsed.meta_author()
     );
@@ -355,24 +351,24 @@ fn run_map_scheme(
     let slot_hexes = parsed.slot_hexes()?;
     let clusters = extract::extract_hues(wallpaper, &config.extraction)?;
     if clusters.is_empty() {
-        println!("rehue map-scheme: no chromatic signal - scheme hues kept");
+        println!("rehue scheme: no chromatic signal - scheme hues kept");
     } else {
-        print_families("map-scheme", &clusters);
-        println!("rehue map-scheme: extracted wallpaper families");
+        print_families("scheme", &clusters);
+        println!("rehue scheme: extracted wallpaper families");
         println!("{}", families_strip(&clusters));
     }
 
-    let mapped = register::retint(&slot_hexes, &clusters, &config)?;
-    let regs = register::resolved_registers(&config)?;
-    for name in register::REGISTER_NAMES {
+    let mapped = grade_scheme::retint(&slot_hexes, &clusters, &config)?;
+    let regs = grade_scheme::resolved_roles(&config)?;
+    for name in role::ROLE_NAMES {
         let settings = &regs[name];
         println!(
-            "  {:<8} distribution {:<12} rotate {}  blend-hue {:.2}  light {:+.3}  chroma {:.2}",
+            "  {:<10} assign {:<12} cycle {}  match-hue {:.2}  lightness {:+.3}  chroma {:.2}",
             name,
-            settings.distribution.describe(),
-            settings.rotate,
-            settings.blend_hue,
-            settings.light,
+            settings.assign.describe(),
+            settings.cycle,
+            settings.match_hue,
+            settings.lightness,
             settings.chroma
         );
     }
@@ -381,14 +377,14 @@ fn run_map_scheme(
         .iter()
         .map(|slot| mapped.get(*slot).expect("mapped slot present").clone())
         .collect();
-    println!("rehue map-scheme: palette - reference");
+    println!("rehue scheme: palette - reference");
     println!("{}", scheme_strip(&slot_hexes));
-    println!("rehue map-scheme: palette - mapped");
+    println!("rehue scheme: palette - mapped");
     println!("{}", scheme_strip(&mapped_hexes));
 
     let rendered = parsed.render(&mapped);
     if dry_run {
-        println!("rehue map-scheme: dry run (nothing written)");
+        println!("rehue scheme: dry run (nothing written)");
         return Ok(rendered);
     }
 
@@ -426,7 +422,7 @@ fn run_map_scheme(
     });
     write_json_file(&out.join("clusters.json"), &report)?;
 
-    println!("rehue map-scheme: wrote scheme.yaml, preview.png, preview.html, clusters.json");
+    println!("rehue scheme: wrote scheme.yaml, preview.png, preview.html, clusters.json");
     Ok(rendered)
 }
 
@@ -459,19 +455,16 @@ where
 }
 
 fn wal_clusters(
-    regs: &BTreeMap<&'static str, map_wal::WalRegisterSettings>,
+    regs: &BTreeMap<&'static str, grade_wal::WalRoleSettings>,
     dynamic: &image::DynamicImage,
-    config: &map_wal::RemapConfig,
+    config: &grade_wal::WalConfig,
 ) -> Vec<extract::Cluster> {
-    if regs
-        .values()
-        .any(|r| !matches!(r.distribution, DistributionState::Off))
-    {
+    if regs.values().any(|r| !matches!(r.assign, AssignState::Off)) {
         let extracted = extract::extract_hues_dynamic(dynamic, &config.extraction);
         if extracted.is_empty() {
-            println!("rehue map-wal: no chromatic signal - distribution inert");
+            println!("rehue wal: no chromatic signal - assign inert");
         } else {
-            print_families("map-wal", &extracted);
+            print_families("wal", &extracted);
         }
         extracted
     } else {
@@ -479,15 +472,15 @@ fn wal_clusters(
     }
 }
 
-fn run_map_wal(
+fn run_wal(
     wallpaper: &Path,
     parsed: &Scheme,
     out: &Path,
-    config: map_wal::RemapConfig,
+    config: grade_wal::WalConfig,
     dry_run: bool,
     lut: Option<(LutFormat, u32)>,
 ) -> Result<(), String> {
-    let regs = map_wal::resolved_registers(&config)?;
+    let regs = grade_wal::resolved_roles(&config)?;
     if let Some((format, level)) = lut {
         if !rehue::lut::LEVELS.contains(&level) {
             return Err(format!("--lut-level takes 2..=16 (got {level})"));
@@ -501,7 +494,7 @@ fn run_map_wal(
             ));
         }
         let dithered =
-            config.dithering > 0.0 && config.dithering_mode != Some(map_wal::DitherMode::None);
+            config.dithering > 0.0 && config.dithering_mode != Some(grade_wal::DitherMode::None);
         if dithered {
             return Err(
                 "--lut needs dithering 0: a dithered pixel depends on its position, not just its colour"
@@ -511,16 +504,16 @@ fn run_map_wal(
     }
     let slot_hexes = parsed.slot_hexes()?;
     println!(
-        "rehue map-wal: painting with '{}' by {}",
+        "rehue wal: painting with '{}' by {}",
         parsed.meta_name(),
         parsed.meta_author()
     );
-    let slots: Vec<map_wal::SlotPalette> = BASE_SLOTS
+    let slots: Vec<grade_wal::SlotPalette> = BASE_SLOTS
         .iter()
         .copied()
         .zip(&slot_hexes)
         .map(|(slot, hex)| {
-            Ok(map_wal::SlotPalette {
+            Ok(grade_wal::SlotPalette {
                 slot,
                 lch: hex_to_oklch(hex)?,
             })
@@ -541,19 +534,19 @@ fn run_map_wal(
 
     if dry_run {
         let clusters = wal_clusters(&regs, &dynamic, &config);
-        let arranged = map_wal::arrange_palette(&slots, &clusters, &regs)?;
+        let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
         let strip: Vec<String> = arranged.iter().map(|s| oklch_to_hex(&s.lch)).collect();
-        println!("rehue map-wal: palette - reference");
+        println!("rehue wal: palette - reference");
         println!("{}", scheme_strip(&slot_hexes));
-        println!("rehue map-wal: palette - arranged (what would paint the wallpaper)");
+        println!("rehue wal: palette - arranged (what would paint the wallpaper)");
         println!("{}", scheme_strip(&strip));
-        println!("rehue map-wal: dry run (nothing written)");
+        println!("rehue wal: dry run (nothing written)");
         return Ok(());
     }
 
     std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {}", out.display(), e))?;
 
-    let passive = map_wal::is_passive(&regs, config.light, config.chroma);
+    let passive = grade_wal::is_passive(&regs, config.lightness, config.chroma);
     let mut arranged_hexes: Option<Vec<String>> = None;
     let (remapped_rgb, coverage) = if passive {
         // Contract: output is always wallpaper.png (here = input, re-encoded).
@@ -561,60 +554,57 @@ fn run_map_wal(
     } else {
         let clusters = wal_clusters(&regs, &dynamic, &config);
 
-        let (seed_hue, seed_light, seed_chroma) = map_wal::facade_defaults(&config);
+        let (seed_hue, seed_light, seed_chroma) = grade_wal::facade_defaults(&config);
         println!(
-            "rehue map-wal: territory {}  harmonize {:.2}  blend-hue {:.2}  blend-light {:.2}  blend-chroma {:.2}  reach {}  dithering {:.2} ({})  light {:+.3}  chroma {:.2}",
-            config
-                .territory
-                .unwrap_or(map_wal::Territory::Soft)
-                .describe(),
+            "rehue wal: mode {}  harmonize {:.2}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  reach {}  dithering {:.2} ({})  lightness {:+.3}  chroma {:.2}",
+            config.mode.unwrap_or(grade_wal::Mode::Blend).describe(),
             config.harmonize,
             seed_hue,
             seed_light,
             seed_chroma,
-            config.reach_deg,
+            config.reach,
             config.dithering,
             config
                 .dithering_mode
-                .unwrap_or(map_wal::DitherMode::BlueNoise)
+                .unwrap_or(grade_wal::DitherMode::BlueNoise)
                 .describe(),
-            config.light,
+            config.lightness,
             config.chroma
         );
-        for name in register::REGISTER_NAMES {
+        for name in role::ROLE_NAMES {
             let s = &regs[name];
-            let non_default = !matches!(s.distribution, DistributionState::Off)
-                || s.rotate != 0
-                || (s.blend_hue - seed_hue).abs() > 1e-9
-                || (s.blend_light - seed_light).abs() > 1e-9
-                || (s.blend_chroma - seed_chroma).abs() > 1e-9
-                || (s.light - config.light).abs() > 1e-9
+            let non_default = !matches!(s.assign, AssignState::Off)
+                || s.cycle != 0
+                || (s.match_hue - seed_hue).abs() > 1e-9
+                || (s.match_lightness - seed_light).abs() > 1e-9
+                || (s.match_chroma - seed_chroma).abs() > 1e-9
+                || (s.lightness - config.lightness).abs() > 1e-9
                 || (s.chroma - config.chroma).abs() > 1e-9;
             if non_default {
                 println!(
-                    "  {:<8} distribution {:<12} rotate {}  blend-hue {:.2}  blend-light {:.2}  blend-chroma {:.2}  light {:+.3}  chroma {:.2}",
+                    "  {:<10} assign {:<12} cycle {}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  lightness {:+.3}  chroma {:.2}",
                     name,
-                    s.distribution.describe(),
-                    s.rotate,
-                    s.blend_hue,
-                    s.blend_light,
-                    s.blend_chroma,
-                    s.light,
+                    s.assign.describe(),
+                    s.cycle,
+                    s.match_hue,
+                    s.match_lightness,
+                    s.match_chroma,
+                    s.lightness,
                     s.chroma
                 );
             }
         }
 
         // Arrangement reshapes the palette before per-pixel work.
-        let arranged = map_wal::arrange_palette(&slots, &clusters, &regs)?;
+        let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
         arranged_hexes = Some(arranged.iter().map(|s| oklch_to_hex(&s.lch)).collect());
-        let result = map_wal::apply(
+        let result = grade_wal::apply(
             source.as_raw(),
             source.width(),
             source.height(),
             &arranged,
             &neutral_slots,
-            &map_wal::slot_options(&regs),
+            &grade_wal::slot_options(&regs),
             &config,
         );
         let pixels = image::RgbImage::from_raw(source.width(), source.height(), result.pixels)
@@ -633,14 +623,14 @@ fn run_map_wal(
             write_lut(out, format, level, &parsed.meta_name(), |rgb| *rgb)?
         } else {
             let clusters = wal_clusters(&regs, &dynamic, &config);
-            let arranged = map_wal::arrange_palette(&slots, &clusters, &regs)?;
-            let options = map_wal::slot_options(&regs);
-            let map = map_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config);
+            let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
+            let options = grade_wal::slot_options(&regs);
+            let map = grade_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config);
             write_lut(out, format, level, &parsed.meta_name(), |rgb| {
                 map.map_rgb(rgb)
             })?
         };
-        println!("rehue map-wal: wrote {lut_file} (hald level {level})");
+        println!("rehue wal: wrote {lut_file} (hald level {level})");
     }
 
     let coverage_map: BTreeMap<String, u64> = BASE_SLOTS
@@ -672,12 +662,12 @@ fn run_map_wal(
     }
 
     if passive {
-        println!("rehue map-wal: passthrough (no options active)");
+        println!("rehue wal: passthrough (no options active)");
     } else {
         let total: u64 = coverage.iter().sum();
-        println!("rehue map-wal: remapped {} px", total);
+        println!("rehue wal: remapped {} px", total);
         if total == 0 {
-            println!("rehue map-wal: no families - nothing remapped");
+            println!("rehue wal: no families - nothing remapped");
         }
         let mut ranked: Vec<(&str, u64)> = BASE_SLOTS
             .iter()
@@ -696,16 +686,16 @@ fn run_map_wal(
             }
         }
     }
-    println!("rehue map-wal: palette - reference");
+    println!("rehue wal: palette - reference");
     println!("{}", scheme_strip(&slot_hexes));
     if let Some(strip_hexes) = &arranged_hexes {
-        println!("rehue map-wal: palette - arranged (what painted the wallpaper)");
+        println!("rehue wal: palette - arranged (what painted the wallpaper)");
         println!("{}", scheme_strip(strip_hexes));
     }
     if passive {
-        println!("rehue map-wal: wrote wallpaper.png, compare.png, report.json");
+        println!("rehue wal: wrote wallpaper.png, compare.png, report.json");
     } else {
-        println!("rehue map-wal: wrote wallpaper.png, compare.png, preview.html, report.json");
+        println!("rehue wal: wrote wallpaper.png, compare.png, preview.html, report.json");
     }
     Ok(())
 }
@@ -753,7 +743,7 @@ fn run_inspect(
     }
     let wallpaper =
         wallpaper.ok_or_else(|| "pass --wallpaper, --scheme or --schemes".to_string())?;
-    let config = read_json::<register::MapConfig>(config_path)?;
+    let config = read_json::<grade_scheme::SchemeConfig>(config_path)?;
     let clusters = extract::extract_hues(wallpaper, &config.extraction)?;
     if clusters.is_empty() {
         println!("rehue inspect: no chromatic signal (greyscale wallpaper)");
@@ -888,18 +878,18 @@ fn run_inspect_schemes(filter: &str, scheme_dir: Option<&Path>) -> Result<(), St
     Ok(())
 }
 
-/// `rehue apply`: map-scheme and/or map-wal per the pipeline, then the
+/// `rehue apply`: scheme and/or wal per the pipeline, then the
 /// scheme to tinty and the wallpaper to the user's command.
 fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
     let pipeline = apply::Pipeline::load(pipeline_path)?;
     let out = pipeline.out_dir();
     let reference = Scheme::resolve(&pipeline.scheme, pipeline.scheme_dir.as_deref())?;
 
-    // The scheme that gets applied: mapped when [map-scheme] runs, else
+    // The scheme that gets applied: mapped when [rehue.scheme] runs, else
     // the reference as-is.
-    let (scheme_yaml, scheme) = match &pipeline.map_scheme {
+    let (scheme_yaml, scheme) = match &pipeline.rehue.scheme {
         Some(config) => {
-            let yaml = run_map_scheme(
+            let yaml = run_scheme(
                 &pipeline.wallpaper,
                 &reference,
                 &out.join("scheme"),
@@ -917,11 +907,11 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
     let scheme_path = out.join("scheme/scheme.yaml");
 
     // The wallpaper that gets set: repainted (with the applied scheme)
-    // when [map-wal] runs, else the source.
-    let wallpaper = match &pipeline.map_wal {
+    // when [rehue.wal] runs, else the source.
+    let wallpaper = match &pipeline.rehue.wal {
         Some(config) => {
             let dir = out.join("wallpaper");
-            run_map_wal(
+            run_wal(
                 &pipeline.wallpaper,
                 &scheme,
                 &dir,
@@ -936,7 +926,7 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
 
     let target = &pipeline.apply;
     if dry_run {
-        if pipeline.map_scheme.is_none() {
+        if pipeline.rehue.scheme.is_none() {
             println!("rehue apply: would write {}", scheme_path.display());
         }
         if target.tinty {
@@ -959,9 +949,9 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
         return Ok(());
     }
 
-    // map-scheme writes its own scheme.yaml; the reference case needs one
+    // scheme writes its own scheme.yaml; the reference case needs one
     // too, so `out` always holds what was applied.
-    if pipeline.map_scheme.is_none() {
+    if pipeline.rehue.scheme.is_none() {
         let dir = out.join("scheme");
         std::fs::create_dir_all(&dir)
             .map_err(|e| format!("can't create {}: {}", dir.display(), e))?;
@@ -992,32 +982,32 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
 fn run(command: Commands) -> Result<(), String> {
     self_test();
     match command {
-        Commands::MapScheme {
+        Commands::Scheme {
+            input,
             wallpaper,
-            scheme,
             scheme_dir,
             out,
             config,
             dry_run,
-            reach_deg,
-            distribution,
-            rotate,
-            blend_hue,
-            light,
+            reach,
+            assign,
+            cycle,
+            match_hue,
+            lightness,
             chroma,
         } => {
-            let mut map_config = read_json::<register::MapConfig>(config.as_deref())?;
+            let mut map_config = read_json::<grade_scheme::SchemeConfig>(config.as_deref())?;
             SchemeOverrides {
-                reach_deg,
-                distribution,
-                rotate,
-                blend_hue,
-                light,
+                reach,
+                assign,
+                cycle,
+                match_hue,
+                lightness,
                 chroma,
             }
             .apply(&mut map_config)?;
-            let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
-            run_map_scheme(
+            let parsed = Scheme::resolve(&input, scheme_dir.as_deref())?;
+            run_scheme(
                 &wallpaper,
                 &parsed,
                 out.as_deref().unwrap_or(Path::new("rehue-out")),
@@ -1026,49 +1016,49 @@ fn run(command: Commands) -> Result<(), String> {
             )
             .map(|_| ())
         }
-        Commands::MapWal {
-            wallpaper,
+        Commands::Wal {
+            input,
             scheme,
             scheme_dir,
             out,
             config,
             dry_run,
-            territory,
+            mode,
             harmonize,
-            blend_hue,
-            blend_chroma,
-            blend_light,
-            reach_deg,
-            gray_chroma_floor,
+            match_hue,
+            match_chroma,
+            match_lightness,
+            reach,
+            max_gray_chroma,
             dithering,
             dithering_mode,
-            distribution,
-            rotate,
-            light,
+            assign,
+            cycle,
+            lightness,
             chroma,
             lut,
             lut_level,
         } => {
-            let mut wal_config = read_json::<map_wal::RemapConfig>(config.as_deref())?;
+            let mut wal_config = read_json::<grade_wal::WalConfig>(config.as_deref())?;
             WalOverrides {
-                territory,
+                mode,
                 harmonize,
-                blend_hue,
-                blend_chroma,
-                blend_light,
-                reach_deg,
-                gray_chroma_floor,
+                match_hue,
+                match_chroma,
+                match_lightness,
+                reach,
+                max_gray_chroma,
                 dithering,
                 dithering_mode,
-                distribution,
-                rotate,
-                light,
+                assign,
+                cycle,
+                lightness,
                 chroma,
             }
             .apply(&mut wal_config)?;
             let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
-            run_map_wal(
-                &wallpaper,
+            run_wal(
+                &input,
                 &parsed,
                 out.as_deref().unwrap_or(Path::new("rehue-out")),
                 wal_config,
@@ -1096,24 +1086,20 @@ fn run(command: Commands) -> Result<(), String> {
             out.as_deref(),
         ),
         Commands::Enhance {
-            wallpaper,
+            input,
             out,
             upscale,
             sr,
             model,
             sr_tool,
         } => run_enhance(
-            &wallpaper,
+            &input,
             out.as_deref().unwrap_or(Path::new("rehue-out")),
             upscale,
             sr,
             model.unwrap_or(SrModel::Photos),
             sr_tool.as_deref(),
         ),
-        Commands::Schemes => {
-            eprintln!("rehue: `schemes` is now `rehue inspect --schemes`");
-            run_inspect_schemes("", None)
-        }
         Commands::Apply { pipeline, dry_run } => run_apply(&pipeline, dry_run),
     }
 }

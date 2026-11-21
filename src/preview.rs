@@ -19,10 +19,10 @@ const TEMPLATE: &str = include_str!("preview-template.html");
 /// Which side leads the heading — and where the hues flowed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewFlow {
-    /// map-scheme: the wallpaper's hues flow into the scheme
+    /// scheme: the wallpaper's hues flow into the scheme
     /// (wallpaper first, arrow as drawn).
     SchemeFromWallpaper,
-    /// map-wal: the scheme's palette paints the wallpaper (scheme
+    /// wal: the scheme's palette paints the wallpaper (scheme
     /// first; the template flips the pair).
     WallpaperFromScheme,
     /// inspect --scheme: no wallpaper side at all.
@@ -31,8 +31,8 @@ pub enum PreviewFlow {
 
 /// Everything the page renders, per flow.  `wallpaper_label` is the
 /// (already label-shaped) wallpaper name; `wallpaper_src` is the img
-/// source, ready to link — map-wal links its own repainted
-/// `wallpaper.png`, map-scheme links the source file relative to out,
+/// source, ready to link — wal links its own repainted
+/// `wallpaper.png`, scheme links the source file relative to out,
 /// and [`PreviewFlow::SchemeAlone`] carries neither.
 pub struct Preview<'a> {
     pub flow: PreviewFlow,

@@ -33,7 +33,7 @@ pub struct Manifest {
     pub ladder: Vec<Ladder>,
 }
 
-/// One rehue invocation.  `args` must contain `--out {out}`; in the docs
+/// One rehue invocation.  `args` must contain `-o {out}`; in the docs
 /// `{out}` shows as `out`, when running it is a scratch directory.
 /// `{out:ID}` names another run's output the same way.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -141,16 +141,16 @@ impl Manifest {
             if !ids.insert(r.id.as_str()) {
                 return Err(format!("run id '{}' twice", r.id));
             }
-            if !r.args.contains("--out {out}") {
-                return Err(format!("run '{}': args need `--out {{out}}`", r.id));
+            if !r.args.contains("{out}") {
+                return Err(format!("run '{}': args need `-o {{out}}`", r.id));
             }
         }
         for l in &self.ladder {
             if !ids.insert(l.id.as_str()) {
                 return Err(format!("ladder id '{}' clashes", l.id));
             }
-            if !l.base.contains("--out {out}") {
-                return Err(format!("ladder '{}': base needs `--out {{out}}`", l.id));
+            if !l.base.contains("{out}") {
+                return Err(format!("ladder '{}': base needs `-o {{out}}`", l.id));
             }
         }
         Ok(())
@@ -287,6 +287,15 @@ pub fn shell_word(token: &str) -> String {
     }
 }
 
+/// `-i`, `--out`: a flag, not a value (`-0.1` is a value).
+pub fn is_flag(token: &str) -> bool {
+    let mut chars = token.chars();
+    chars.next() == Some('-')
+        && chars
+            .next()
+            .is_some_and(|c| c == '-' || c.is_ascii_alphabetic())
+}
+
 /// The docs form of a run: one flag (and its values) per line.
 pub fn display_run(m: &Manifest, run: &Run) -> Result<String, String> {
     let outs = |id: &str| -> Result<String, String> {
@@ -299,7 +308,7 @@ pub fn display_run(m: &Manifest, run: &Run) -> Result<String, String> {
     let mut lines = vec!["rehue".to_string()];
     for token in run.args.split_whitespace() {
         let word = shell_word(&m.expand(token, &outs)?);
-        if token.starts_with("--") || lines.len() == 1 {
+        if is_flag(token) || lines.len() == 1 {
             lines.push(word);
         } else {
             let last = lines.last_mut().unwrap();
