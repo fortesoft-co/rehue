@@ -8,6 +8,7 @@ pub mod bluenoise;
 pub mod color;
 pub mod enhance;
 pub mod extract;
+pub mod lut;
 pub mod map_wal;
 pub mod preview;
 pub mod register;

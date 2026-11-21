@@ -376,7 +376,12 @@ pub fn is_passive(
 /// input (`l_in`/`c_in` = raw + accumulated dither), `jitter` scales the
 /// adopted lightness/chroma share (the ordered-dither threshold; 1.0 in
 /// diffusion mode, where error diffusion plays the dither).
-struct PixelCore<'a> {
+/// The per-colour remap: one palette, one set of dials.  With
+/// dithering off the result depends only on the input colour (`map_rgb`),
+/// which is what lets the same grade be baked into a LUT or applied to
+/// anything else made of colours.  `apply` drives it per pixel, adding
+/// the position-dependent dither on top.
+pub struct ColorMap<'a> {
     slots: &'a [SlotPalette],
     neutral_slots: &'a [usize],
     options: &'a [SlotOptions],
@@ -384,7 +389,33 @@ struct PixelCore<'a> {
     territory: Territory,
 }
 
-impl PixelCore<'_> {
+impl<'a> ColorMap<'a> {
+    /// `slots` is the (arranged) palette, `options` its per-slot settings
+    /// (`slot_options`), `neutral_slots` the low-chroma slots grays key to.
+    pub fn new(
+        slots: &'a [SlotPalette],
+        neutral_slots: &'a [usize],
+        options: &'a [SlotOptions],
+        config: &'a RemapConfig,
+    ) -> Self {
+        debug_assert_eq!(slots.len(), options.len());
+        ColorMap {
+            slots,
+            neutral_slots,
+            options,
+            config,
+            territory: config.territory.unwrap_or(Territory::Soft),
+        }
+    }
+
+    /// One colour through the remap, undithered: exactly what `apply`
+    /// produces for a pixel of this colour at `dithering = 0`.
+    pub fn map_rgb(&self, rgb: &[u8; 3]) -> [u8; 3] {
+        let raw = rgb_to_oklch(rgb);
+        let (l, c, h, _) = self.run(raw, raw.l, raw.c, 1.0);
+        oklch_to_rgb(&Lch { l, c, h })
+    }
+
     /// Returns the final (l, c, h) before the 8-bit render, plus the
     /// anchor slot index.
     fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, usize) {
@@ -563,13 +594,7 @@ pub fn apply(
         width as usize * height as usize * 3,
         "flat buffer must match dimensions"
     );
-    let core = PixelCore {
-        slots,
-        neutral_slots,
-        options,
-        config,
-        territory: config.territory.unwrap_or(Territory::Soft),
-    };
+    let core = ColorMap::new(slots, neutral_slots, options, config);
     let dither = config.dithering.clamp(0.0, 1.0);
     let mode = config.dithering_mode.unwrap_or(DitherMode::BlueNoise);
 

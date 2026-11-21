@@ -230,6 +230,22 @@ enum Commands {
         /// e.g. --chroma 1.2   --chroma fg 0.9
         #[arg(long, value_name = "[REG] C", num_args = 1..=2, allow_negative_numbers = true)]
         chroma: Vec<String>,
+        /// Also bake the grade into a 3D LUT: `lut.png` (Hald CLUT) or
+        /// `lut.cube`.  Apply it elsewhere: `magick in.jpg lut.png
+        /// -hald-clut out.jpg`, ffmpeg's haldclut / lut3d filters, GIMP,
+        /// Darktable, Resolve.  Needs dithering 0 (a dithered pixel
+        /// depends on its position, not just its colour).
+        ///
+        /// e.g. --lut cube
+        #[arg(long, value_enum, value_name = "FORMAT")]
+        lut: Option<LutFormat>,
+        /// LUT resolution as a Hald level: level L samples L² values per
+        /// channel (8 = 64³ entries, 16 = every 8-bit colour, exact).
+        /// `.cube` goes up to 8.
+        ///
+        /// e.g. --lut-level 12
+        #[arg(long, value_name = "2..16", default_value_t = 8)]
+        lut_level: u32,
     },
     /// Print a wallpaper's colour families or a scheme's slots, rendered
     /// in the terminal; the PNG strip is opt-in.
@@ -363,6 +379,15 @@ Pipeline example:
   wallpaper-command = \"swww img {wallpaper}\"
   # tinty-config / tinty-data-dir: point tinty somewhere else (testing)
 ";
+
+/// The `--lut` export formats.
+#[derive(Clone, Copy, Debug, PartialEq, clap::ValueEnum)]
+enum LutFormat {
+    /// Hald CLUT image (`lut.png`).
+    Hald,
+    /// Adobe/Resolve 3D LUT text (`lut.cube`).
+    Cube,
+}
 
 const MAP_SCHEME_REGISTERS: &str = "
 Registers:
@@ -808,6 +833,32 @@ fn run_map_scheme(
 
 /// Extraction, only when an arrangement dial is live (keeps plain blend
 /// runs quiet); shared by the run and its dry-run preview.
+/// Bake `f` into `out/lut.png` or `out/lut.cube`; returns the file name.
+fn write_lut<F>(
+    out: &Path,
+    format: LutFormat,
+    level: u32,
+    title: &str,
+    f: F,
+) -> Result<&'static str, String>
+where
+    F: Fn(&[u8; 3]) -> [u8; 3] + Sync,
+{
+    match format {
+        LutFormat::Hald => {
+            rehue::lut::hald(level, f)
+                .save(out.join("lut.png"))
+                .map_err(|e| format!("can't write lut.png: {e}"))?;
+            Ok("lut.png")
+        }
+        LutFormat::Cube => {
+            std::fs::write(out.join("lut.cube"), rehue::lut::cube(level, title, f))
+                .map_err(|e| format!("can't write lut.cube: {e}"))?;
+            Ok("lut.cube")
+        }
+    }
+}
+
 fn wal_clusters(
     regs: &BTreeMap<&'static str, map_wal::WalRegisterSettings>,
     dynamic: &image::DynamicImage,
@@ -835,8 +886,30 @@ fn run_map_wal(
     out: &Path,
     config: map_wal::RemapConfig,
     dry_run: bool,
+    lut: Option<(LutFormat, u32)>,
 ) -> Result<(), String> {
     let regs = map_wal::resolved_registers(&config)?;
+    if let Some((format, level)) = lut {
+        if !rehue::lut::LEVELS.contains(&level) {
+            return Err(format!("--lut-level takes 2..=16 (got {level})"));
+        }
+        // .cube is text: level 8 (64 points per axis) is already 6.8 MB,
+        // and level 16 would be over 400 MB.
+        if format == LutFormat::Cube && level > rehue::lut::CUBE_MAX_LEVEL {
+            return Err(format!(
+                "--lut cube takes --lut-level up to {} (64 points per axis); use --lut hald for finer or exact LUTs",
+                rehue::lut::CUBE_MAX_LEVEL
+            ));
+        }
+        let dithered =
+            config.dithering > 0.0 && config.dithering_mode != Some(map_wal::DitherMode::None);
+        if dithered {
+            return Err(
+                "--lut needs dithering 0: a dithered pixel depends on its position, not just its colour"
+                    .to_string(),
+            );
+        }
+    }
     let slot_hexes = parsed.slot_hexes()?;
     println!(
         "rehue map-wal: painting with '{}' by {}",
@@ -954,6 +1027,22 @@ fn run_map_wal(
         .save(out.join("wallpaper.png"))
         .map_err(|e| format!("can't write wallpaper.png: {}", e))?;
     write_compare(out, &source, &remapped_rgb)?;
+    if let Some((format, level)) = lut {
+        // The same palette and dials that painted the wallpaper; passive
+        // runs are the identity.
+        let lut_file = if passive {
+            write_lut(out, format, level, &parsed.meta_name(), |rgb| *rgb)?
+        } else {
+            let clusters = wal_clusters(&regs, &dynamic, &config);
+            let arranged = map_wal::arrange_palette(&slots, &clusters, &regs)?;
+            let options = map_wal::slot_options(&regs);
+            let map = map_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config);
+            write_lut(out, format, level, &parsed.meta_name(), |rgb| {
+                map.map_rgb(rgb)
+            })?
+        };
+        println!("rehue map-wal: wrote {lut_file} (hald level {level})");
+    }
 
     let coverage_map: BTreeMap<String, u64> = BASE_SLOTS
         .iter()
@@ -1178,7 +1267,14 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
     let wallpaper = match &pipeline.map_wal {
         Some(config) => {
             let dir = out.join("wallpaper");
-            run_map_wal(&pipeline.wallpaper, &scheme, &dir, config.clone(), dry_run)?;
+            run_map_wal(
+                &pipeline.wallpaper,
+                &scheme,
+                &dir,
+                config.clone(),
+                dry_run,
+                None,
+            )?;
             dir.join("wallpaper.png")
         }
         None => pipeline.wallpaper.clone(),
@@ -1296,6 +1392,8 @@ fn run(command: Commands) -> Result<(), String> {
             rotate,
             light,
             chroma,
+            lut,
+            lut_level,
         } => {
             let mut wal_config = read_json::<map_wal::RemapConfig>(config.as_deref())?;
             WalOverrides {
@@ -1321,6 +1419,7 @@ fn run(command: Commands) -> Result<(), String> {
                 out.as_deref().unwrap_or(Path::new("rehue-out")),
                 wal_config,
                 dry_run,
+                lut.map(|format| (format, lut_level)),
             )
         }
         Commands::Inspect {
