@@ -17,19 +17,119 @@ fn collection_fixture_pins_the_embedded_text() {
     assert_eq!(text, pinned);
 }
 
-#[test]
-fn schemes_subcommand_lists_sorted() {
-    let bin = env!("CARGO_BIN_EXE_rehue");
-    let out = std::process::Command::new(bin)
-        .args(["schemes"])
+fn rehue(args: &[&str]) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_rehue"))
+        .args(args)
         .output()
-        .expect("rehue binary runs");
+        .expect("rehue binary runs")
+}
+
+/// Scheme names in an `inspect --schemes` listing, in printed order.
+fn listed(stdout: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .skip(1)
+        .map(|l| l[2..].split_whitespace().next().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn inspect_schemes_lists_every_scheme_sorted_with_swatches() {
+    let out = rehue(&["inspect", "--schemes"]);
     assert!(out.status.success());
+    let names = listed(&out.stdout);
+    let embedded: Vec<String> = rehue::scheme::collection_names()
+        .map(String::from)
+        .collect();
+    assert_eq!(names, embedded, "every embedded scheme, sorted");
+    assert_eq!(names[0], "0x96f", "the lexicographic first name");
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.contains("gruvbox-light"), "{text}");
+    let row = text.lines().find(|l| l.contains("gruvbox-light ")).unwrap();
+    // gruvbox-light base00 (#fbf1c7) as a truecolor swatch, 16 per row
+    assert!(row.contains("\x1b[38;2;251;241;199m██"), "{row}");
+    assert_eq!(row.matches("██").count(), 16);
+}
+
+#[test]
+fn inspect_schemes_filters_case_insensitively() {
+    let out = rehue(&["inspect", "--schemes", "GRUVBOX-LIGHT"]);
+    assert!(out.status.success());
+    let names = listed(&out.stdout);
+    assert!(names.contains(&"gruvbox-light".to_string()));
     assert!(
-        text.contains("0x96f"),
-        "the lexicographic first name\n{text}"
+        names.iter().all(|n| n.contains("gruvbox-light")),
+        "{names:?}"
+    );
+
+    let none = rehue(&["inspect", "--schemes", "no-such-scheme-anywhere"]);
+    assert!(!none.status.success());
+    assert!(String::from_utf8_lossy(&none.stderr).contains("no scheme name contains"));
+}
+
+#[test]
+fn inspect_schemes_includes_and_marks_scheme_dir() {
+    let dir = std::env::temp_dir().join(format!("rehue-schemes-dir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let text = std::fs::read_to_string(fixture("solarized-dark.yaml")).unwrap();
+    std::fs::write(dir.join("zz-mine.yaml"), &text).unwrap();
+    std::fs::write(dir.join("nord.yaml"), &text).unwrap(); // shadows the embedded nord
+    std::fs::write(dir.join("notes.txt"), "not a scheme").unwrap();
+
+    let out = rehue(&[
+        "inspect",
+        "--schemes",
+        "--scheme-dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout
+            .lines()
+            .next()
+            .unwrap()
+            .contains("2 from --scheme-dir"),
+        "{stdout}"
+    );
+    let marked: Vec<&str> = stdout.lines().filter(|l| l.starts_with('*')).collect();
+    assert_eq!(marked.len(), 2, "{stdout}");
+    assert_eq!(
+        stdout
+            .lines()
+            .filter(|l| l[2..].starts_with("nord "))
+            .count(),
+        1,
+        "the custom nord replaces the embedded one"
+    );
+    assert!(!stdout.contains("notes"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn inspect_schemes_conflicts_with_other_modes() {
+    let out = rehue(&["inspect", "--schemes", "--scheme", "nord"]);
+    assert!(!out.status.success());
+    let none = rehue(&["inspect"]);
+    assert!(!none.status.success());
+    assert!(String::from_utf8_lossy(&none.stderr).contains("--schemes"));
+}
+
+#[test]
+fn legacy_schemes_command_still_works_and_points_to_inspect() {
+    let out = rehue(&["schemes"]);
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("inspect --schemes"));
+    assert!(listed(&out.stdout).contains(&"gruvbox-light".to_string()));
+    let help = rehue(&["--help"]);
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(
+        !help.lines().any(|l| l.trim_start().starts_with("schemes")),
+        "hidden from --help\n{help}"
     );
 }
 

@@ -252,10 +252,12 @@ enum Commands {
     ///
     /// Families mode indexes the wallpaper's hue families (the `[i]`
     /// indices that distribution configs target).  Scheme mode shows a
-    /// scheme's 16 slots as truecolor swatches.
+    /// scheme's 16 slots as truecolor swatches.  --schemes browses the
+    /// whole collection: one row per scheme, name and colours.
     ///
     /// Example: rehue inspect --wallpaper butterfly.webp
     ///          rehue inspect --scheme gruvbox-light
+    ///          rehue inspect --schemes gruvbox
     Inspect {
         /// The image whose hues get extracted (families mode).
         ///
@@ -268,6 +270,19 @@ enum Commands {
         /// e.g. --scheme gruvbox-light
         #[arg(long)]
         scheme: Option<String>,
+        /// Every available scheme, one row each: name, then its 16 slots
+        /// as swatches.  An optional FILTER keeps names containing it
+        /// (case-insensitive).  Schemes in --scheme-dir are included.
+        ///
+        /// e.g. --schemes        --schemes gruvbox
+        #[arg(
+            long,
+            value_name = "FILTER",
+            num_args = 0..=1,
+            default_missing_value = "",
+            conflicts_with_all = ["wallpaper", "scheme", "config", "out"]
+        )]
+        schemes: Option<String>,
         /// Directory that scheme NAMES look up before the embedded set.
         ///
         /// e.g. --scheme-dir ~/schemes
@@ -334,7 +349,9 @@ enum Commands {
         #[arg(long, value_name = "TOOL")]
         sr_tool: Option<PathBuf>,
     },
-    /// List the scheme names embedded in the binary (base16 collection).
+    /// Renamed: use `rehue inspect --schemes`.  Kept hidden for one
+    /// release.
+    #[command(hide = true)]
     Schemes,
     /// Run a pipeline file and apply the result: the scheme to tinty, the
     /// wallpaper through your own command.
@@ -1152,7 +1169,8 @@ fn run_inspect(
         }
         return Ok(());
     }
-    let wallpaper = wallpaper.expect("one of --scheme/--wallpaper");
+    let wallpaper =
+        wallpaper.ok_or_else(|| "pass --wallpaper, --scheme or --schemes".to_string())?;
     let config = read_json::<register::MapConfig>(config_path)?;
     let clusters = extract::extract_hues(wallpaper, &config.extraction)?;
     if clusters.is_empty() {
@@ -1224,12 +1242,66 @@ fn run_enhance(
     Ok(())
 }
 
-/// The embedded scheme collection, printed.
-fn run_schemes() -> Result<(), String> {
-    let names: Vec<&'static str> = rehue::scheme::collection_names().collect();
-    println!("rehue schemes: {} base16 scheme(s) embedded", names.len());
-    for name in names {
-        println!("  {name}");
+/// `inspect --schemes`: every available scheme as a row of swatches.
+/// A file in `scheme_dir` shadows an embedded scheme of the same name,
+/// matching the lookup order of `Scheme::resolve`.
+fn run_inspect_schemes(filter: &str, scheme_dir: Option<&Path>) -> Result<(), String> {
+    let mut entries: Vec<(String, bool)> = Vec::new();
+    if let Some(dir) = scheme_dir {
+        let listing = std::fs::read_dir(dir)
+            .map_err(|e| format!("can't read --scheme-dir {}: {}", dir.display(), e))?;
+        for entry in listing.flatten() {
+            let path = entry.path();
+            let is_yaml = matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("yaml" | "yml")
+            );
+            if is_yaml
+                && path.is_file()
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                entries.push((stem.to_string(), true));
+            }
+        }
+    }
+    let custom: std::collections::BTreeSet<String> =
+        entries.iter().map(|(n, _)| n.clone()).collect();
+    entries.extend(
+        rehue::scheme::collection_names()
+            .filter(|n| !custom.contains(*n))
+            .map(|n| (n.to_string(), false)),
+    );
+    let needle = filter.to_lowercase();
+    entries.retain(|(name, _)| name.to_lowercase().contains(&needle));
+    entries.sort();
+    if entries.is_empty() {
+        return Err(format!("no scheme name contains '{filter}'"));
+    }
+    let width = entries.iter().map(|(n, _)| n.len()).max().unwrap_or(0);
+    let custom_count = entries.iter().filter(|(_, c)| *c).count();
+    let matching = if filter.is_empty() {
+        String::new()
+    } else {
+        format!(" matching '{filter}'")
+    };
+    let custom_note = if custom_count > 0 {
+        format!(", {custom_count} from --scheme-dir (*)")
+    } else {
+        String::new()
+    };
+    println!(
+        "rehue inspect: {} scheme(s){matching}{custom_note}",
+        entries.len()
+    );
+    for (name, is_custom) in &entries {
+        let mark = if *is_custom { '*' } else { ' ' };
+        match Scheme::resolve(name, scheme_dir).and_then(|s| s.slot_hexes()) {
+            Ok(hexes) => println!(
+                "{mark} {name:<width$}  {}",
+                rehue::terminal::scheme_row(&hexes)
+            ),
+            Err(e) => println!("{mark} {name:<width$}  (unreadable: {e})"),
+        }
     }
     Ok(())
 }
@@ -1423,8 +1495,14 @@ fn run(command: Commands) -> Result<(), String> {
             )
         }
         Commands::Inspect {
+            schemes: Some(filter),
+            scheme_dir,
+            ..
+        } => run_inspect_schemes(&filter, scheme_dir.as_deref()),
+        Commands::Inspect {
             wallpaper,
             scheme,
+            schemes: None,
             scheme_dir,
             config,
             out,
@@ -1450,7 +1528,10 @@ fn run(command: Commands) -> Result<(), String> {
             model.unwrap_or(SrModel::Photos),
             sr_tool.as_deref(),
         ),
-        Commands::Schemes => run_schemes(),
+        Commands::Schemes => {
+            eprintln!("rehue: `schemes` is now `rehue inspect --schemes`");
+            run_inspect_schemes("", None)
+        }
         Commands::Apply { pipeline, dry_run } => run_apply(&pipeline, dry_run),
     }
 }

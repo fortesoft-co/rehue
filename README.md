@@ -69,8 +69,8 @@ rehue map-wal --wallpaper my-photo.jpg --scheme mapped/scheme.yaml --out repaint
 
 Both commands print the palettes in your terminal as they finish. Add
 `--dry-run` to preview a change without writing anything, which is
-the fastest way to try out dials. `rehue schemes` lists every bundled
-scheme by name.
+the fastest way to try out dials. `rehue inspect --schemes` shows
+every bundled scheme with its colors (`--schemes gruvbox` filters).
 
 ## Examples
 
@@ -286,8 +286,7 @@ just its color.
 | `rehue map-scheme` | scheme + wallpaper → scheme |
 | `rehue map-wal` | wallpaper + scheme → wallpaper |
 | `rehue enhance` | upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
-| `rehue inspect` | show a wallpaper's hue families or a scheme's colors in the terminal |
-| `rehue schemes` | list the bundled scheme names |
+| `rehue inspect` | show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
 | `rehue apply` | run a pipeline file and apply the result: scheme to tinty, wallpaper to your command |
 
 `--help` on any command prints every option with what it does, the
@@ -472,6 +471,15 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   color mapping drives it (map-wal's, or one tuned for flat icon
   palettes) is an open design question. Includes a Nix builder whose
   output plugs into Stylix's `stylix.icons`.
+- **Scheme browser**: pick a scheme by eye from `inspect --schemes`.
+  First step: page through `$PAGER` (`less -R`) when stdout is a
+  terminal, as git does, with `--no-pager`; pipes stay plain. Later: an
+  interactive browser (ratatui) with a live preview of the selected
+  scheme (its terminal colors, or the wallpaper repainted).
+- **Grading presets**: named, ready-made grades (e.g. tight, snap,
+  pop, duotone) selectable by name, with your own presets as files and
+  explicit options still overriding them. Applies to wallpapers, LUTs
+  and icons alike.
 - **Scheme generation**: the big one. Derive the lightness/chroma/
   contrast structure a designer would have built, guided by the
   wallpaper, so map-scheme works without a reference scheme at all.

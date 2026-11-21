@@ -16,6 +16,14 @@ versions may break).
 - Library: `map_wal::ColorMap`, the per-colour remap (`map_rgb`) that
   `map_wal::apply` runs per pixel, and `rehue::lut` (Hald / .cube
   builders, built across threads).
+- `inspect --schemes [FILTER]`: every scheme as a row of color
+  swatches, filtered by name; schemes in `--scheme-dir` are included
+  and marked.
+
+### Changed
+
+- `rehue schemes` is now `rehue inspect --schemes`. The old command
+  still works (hidden, with a notice) for this release.
 
 ## [0.2.0] - 2026-11-21
 

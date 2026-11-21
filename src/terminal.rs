@@ -45,3 +45,18 @@ pub fn scheme_strip(slot_hexes: &[String]) -> String {
     }
     out
 }
+
+/// One compact row for a scheme listing: the 16 slots as bare swatches
+/// (no hex), the eight neutrals, a gap, then the eight accents.
+pub fn scheme_row(slot_hexes: &[String]) -> String {
+    let mut out = String::new();
+    for (i, hex) in slot_hexes.iter().enumerate() {
+        if i == 8 {
+            out.push(' ');
+        }
+        let [r, g, b] = oklch_to_rgb(&hex_to_oklch(hex).expect("a schema-normalized hex"));
+        out.push_str(&format!("\x1b[38;2;{r};{g};{b}m██"));
+    }
+    out.push_str("\x1b[0m");
+    out
+}
