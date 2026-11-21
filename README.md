@@ -15,10 +15,14 @@ grade the result instead of accepting whatever comes out.
 You probably already have a wallpaper you love, or a color scheme you
 love. Usually not both at once.
 
-Most wallpaper-to-scheme generators hand you one palette at one
-contrast level. They build it from raw image clusters with no contrast
-guarantees, so the results are often muddy, and there is no way to
-grade it, re-order it, or emphasize the colors you actually like.
+Most wallpaper-to-scheme generators give you presets: a palette built
+from image clusters or a fixed design system, with a handful of
+variants to pick from. You choose a preset, but you can't grade it,
+re-order it, or emphasize the colors you actually like, and the scheme
+you already love isn't part of the picture at all.
+
+rehue keeps the scheme you already love and lets you grade it, in both
+directions.
 
 rehue splits the job in two:
 
@@ -365,12 +369,27 @@ can apply it today. A built-in `rehue apply` is on the roadmap.
 
 ## Roadmap
 
-- **Apply outside Nix**: a `rehue apply` step for non-Nix setups.
-  Render the mapped scheme through base16 templates (the
-  tinted-theming template format, so existing templates work as-is),
-  set the repainted wallpaper (swww / swaybg / feh / gsettings), and
-  run per-app reload hooks, all from one config file, so the pipeline
-  you define is the pipeline that runs.
+- **Apply outside Nix**: a `rehue apply` step for non-Nix setups that
+  writes the mapped scheme into each app's config and sets the
+  repainted wallpaper (swww / swaybg / feh / gsettings), all from one
+  config file, so the pipeline you define is the pipeline that runs.
+  - *Templates*: render through the tinted-theming template format
+    (what tinty uses), so existing templates for hundreds of apps work
+    as-is. Investigate whether Stylix's per-app targets can be reused
+    to generate templates, so Nix and non-Nix setups style apps the
+    same way.
+  - *Hooks* (investigation): what per-app reload commands after a
+    render buy in practice, and how much to own versus leave to the
+    user's own scripts.
+  - *Patch* (investigation, opt-in only): rewriting colors in place
+    inside existing CSS/config files, as lutgen's `patch` does. Never
+    the default path: fidelity is uncertain and in-place writes can
+    break files, so at minimum diff-first with explicit confirmation.
+- **LUT export**: with dithering off, map-wal is a pure function of
+  each pixel's color, so the whole mapping can be baked into a Hald
+  CLUT or `.cube` file. Repaints become a table lookup (build once, at
+  roughly the cost of one 4K image), and the same grade can be applied
+  by ImageMagick, ffmpeg (video), GIMP, Darktable or OBS.
 - **Scheme generation**: the big one. Derive the lightness/chroma/
   contrast structure a designer would have built, guided by the
   wallpaper, so map-scheme works without a reference scheme at all.
@@ -383,6 +402,9 @@ can apply it today. A built-in `rehue apply` is on the roadmap.
   main docs (distribution across groups, reach tuning, colorize
   recipes), each with the images to prove it.
 - **base24 coverage**: slots base10-17.
+- **Media formats**: more inputs beyond png / jpeg / webp (gif, tiff,
+  bmp, qoi, avif where a pure-Rust decoder allows), and animated
+  GIF / APNG / WebP once LUT export makes per-frame repaints cheap.
 - **Alternative extraction backends**: optional extraction libraries
   alongside the built-in histogram + circular k-means (the options
   themselves are documented in [EXAMPLES.md](EXAMPLES.md#extraction)).
