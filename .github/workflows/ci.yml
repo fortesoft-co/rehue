@@ -13,7 +13,7 @@ jobs:
     name: fmt, clippy, test, docs (stable)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -33,7 +33,7 @@ jobs:
       # beats rust-toolchain.toml (channel = stable) for this job
       RUSTUP_TOOLCHAIN: "1.88"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.88
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked
@@ -42,7 +42,7 @@ jobs:
     name: nix build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@main
       - run: nix build .#rehue --print-build-logs
       - run: ./result/bin/rehue schemes | head -3
