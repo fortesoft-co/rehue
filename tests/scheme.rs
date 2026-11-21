@@ -85,7 +85,9 @@ fn every_embedded_scheme_parses_with_16_slots() {
     for name in rehue::scheme::collection_names() {
         let text = rehue::scheme::collection_text(name).expect("listed name resolves");
         let scheme = Scheme::parse_text(text).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let hexes = scheme.slot_hexes().unwrap_or_else(|e| panic!("{name}: {e}"));
+        let hexes = scheme
+            .slot_hexes()
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(hexes.len(), 16, "{name}");
         count += 1;
     }

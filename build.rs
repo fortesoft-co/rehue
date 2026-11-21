@@ -14,11 +14,18 @@ fn main() {
     for spec in SPECS {
         let dir = root.join(spec);
         println!("cargo:rerun-if-changed={}", dir.display());
-        let read = fs::read_dir(&dir)
-            .unwrap_or_else(|e| panic!("can't read {} ({e}); run scripts/update-schemes.sh", dir.display()));
+        let read = fs::read_dir(&dir).unwrap_or_else(|e| {
+            panic!(
+                "can't read {} ({e}); run scripts/update-schemes.sh",
+                dir.display()
+            )
+        });
         for entry in read.flatten() {
             let path = entry.path();
-            if !matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml")) {
+            if !matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("yaml" | "yml")
+            ) {
                 continue;
             }
             let name = path.file_stem().unwrap().to_string_lossy().into_owned();
