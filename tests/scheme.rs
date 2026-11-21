@@ -75,3 +75,19 @@ fn scheme_name_resolution() {
         "path and collection name give the same slots"
     );
 }
+
+#[test]
+fn every_embedded_scheme_parses_with_16_slots() {
+    // The snapshot gate: a malformed upstream scheme fails here, at
+    // update time (scripts/update-schemes.sh runs this suite), instead of
+    // in a user's run.
+    let mut count = 0;
+    for name in rehue::scheme::collection_names() {
+        let text = rehue::scheme::collection_text(name).expect("listed name resolves");
+        let scheme = Scheme::parse_text(text).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let hexes = scheme.slot_hexes().unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(hexes.len(), 16, "{name}");
+        count += 1;
+    }
+    assert!(count > 300, "collection looks truncated: {count} schemes");
+}

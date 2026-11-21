@@ -1,0 +1,4 @@
+upstream: https://github.com/tinted-theming/schemes
+commit:   1bd5ad4c2c554c9c8e288b56deab2364ac8dada0
+date:     2026-11-16
+specs:    base16 (375), base24 (249)

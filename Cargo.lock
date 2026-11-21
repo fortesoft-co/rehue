@@ -309,7 +309,6 @@ dependencies = [
  "image",
  "serde",
  "serde_json",
- "tinted-schemes",
 ]
 
 [[package]]
@@ -377,11 +376,6 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
-
-[[package]]
-name = "tinted-schemes"
-version = "0.1.0"
-source = "git+https://github.com/fortesoft-co/schemes.git?branch=cargo#a291c644f87b7f3ef2ecc4d4b381748cdf6dc709"
 
 [[package]]
 name = "unicode-ident"
