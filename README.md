@@ -267,6 +267,7 @@ Extraction settings (via `--config` on `map-scheme` or `inspect`):
 | `rehue enhance` | upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
 | `rehue inspect` | show a wallpaper's hue families or a scheme's colors in the terminal |
 | `rehue schemes` | list the bundled scheme names |
+| `rehue apply` | run a pipeline file and apply the result: scheme to tinty, wallpaper to your command |
 
 `--help` on any command prints every option with what it does, the
 values it accepts and an example; `-h` shows the short form. `--out`
@@ -369,24 +370,67 @@ in {
 }
 ```
 
-Not on Nix? rehue's output is a standard base16 YAML, so any base16
-tool (for example [tinty](https://github.com/tinted-theming/tinty))
-can apply it today. A built-in `rehue apply` is on the roadmap.
+### Apply (without Nix)
+
+`rehue apply` runs a whole pipeline from one TOML file and hands the
+result to your desktop. rehue makes the colors and the wallpaper;
+[tinty](https://github.com/tinted-theming/tinty) renders the scheme
+into every app you've set up in it (terminals, shells, editors, bars),
+using the tinted-theming templates.
+
+```toml
+# ~/.config/rehue/pipeline.toml
+wallpaper = "~/Pictures/glitter.webp"
+scheme = "gruvbox-light"        # a bundled name, or a path to yaml
+# out = "~/.local/share/rehue/current"   (the default)
+
+[map-scheme]                    # re-hue the scheme (empty = defaults)
+[map-scheme.registers.accents]
+chroma = 1.2
+
+[map-wal]                       # repaint the wallpaper with it
+harmonize = 1.0
+
+[apply]
+wallpaper-command = "swww img {wallpaper}"
+```
+
+```sh
+rehue apply --pipeline ~/.config/rehue/pipeline.toml --dry-run   # preview
+rehue apply --pipeline ~/.config/rehue/pipeline.toml
+```
+
+- **Steps:** `[map-scheme]` and `[map-wal]` take the same keys as their
+  JSON `--config` files; a table being present turns that step on.
+  With both, the wallpaper is repainted with the scheme it just
+  produced (the round trip). With only `[map-wal]`, the reference
+  scheme is applied as-is.
+- **tinty:** the scheme is installed as a tinty custom scheme
+  (`<tinty data dir>/custom-schemes/base16/rehue.yaml`) and applied
+  with `tinty apply base16-rehue`; tinty then builds and installs the
+  themes and runs your hooks. Needs **tinty 0.35 or newer** (older
+  versions can't build themes for custom schemes). `tinty-name`
+  changes the name, `tinty = false` skips tinty, and `tinty-config` /
+  `tinty-data-dir` point it at another setup (handy for trying things
+  without touching your real one).
+- **Wallpaper:** `wallpaper-command` runs through `sh` with
+  `{wallpaper}` replaced by the (quoted) image path; `$REHUE_WALLPAPER`
+  and `$REHUE_SCHEME` are set too. Any setter works: swww, swaybg,
+  feh, `gsettings set org.gnome.desktop.background picture-uri ...`.
+- **Paths** in the file resolve against the file's directory (`~/`
+  expands), and commands run from there. Outputs (`scheme/`,
+  `wallpaper/`, previews) land in `out`.
 
 ## Roadmap
 
-- **Apply outside Nix**: a `rehue apply` step for non-Nix setups that
-  writes the mapped scheme into each app's config and sets the
-  repainted wallpaper (swww / swaybg / feh / gsettings), all from one
-  config file, so the pipeline you define is the pipeline that runs.
-  - *Templates*: render through the tinted-theming template format
-    (what tinty uses), so existing templates for hundreds of apps work
-    as-is. Investigate whether Stylix's per-app targets can be reused
-    to generate templates, so Nix and non-Nix setups style apps the
-    same way.
-  - *Hooks* (investigation): what per-app reload commands after a
-    render buy in practice, and how much to own versus leave to the
-    user's own scripts.
+- **Apply, next steps**: `rehue apply` v1 hands off to tinty.
+  - *Native rendering* (evaluation): render tinted-theming templates
+    directly (e.g. with the `tinted-builder` library), so apply works
+    without tinty and templates can render inside a Nix build. Also
+    investigate whether Stylix's per-app targets can be reused, so Nix
+    and non-Nix setups style apps the same way.
+  - *Hooks* (investigation): tinty already runs per-app hooks; decide
+    what, if anything, rehue should own beyond `wallpaper-command`.
   - *Patch* (investigation, opt-in only): rewriting colors in place
     inside existing CSS/config files, as lutgen's `patch` does. Never
     the default path: fidelity is uncertain and in-place writes can
@@ -464,11 +508,13 @@ src/terminal.rs  truecolor ANSI strips for inspect (scheme + families modes)
 src/enhance.rs   enhance: Lanczos + vulkan SR (realesrgan-ncnn-vulkan)
 src/preview.rs   the compiled-in preview.html (css-only views; gtk/qt mocks)
 src/bluenoise.rs embedded 64x64 void-and-cluster mask (CC0)
+src/apply.rs     apply: pipeline files, the tinty handoff, the wallpaper command
 src/bin/rehue.rs the CLI
 build.rs         embeds vendor/tinted-schemes as the bundled scheme table
 vendor/          tinted-theming/schemes snapshot (scripts/update-schemes.sh)
 tests/           per-surface suites: extraction, map_scheme, map_wal,
-                 scheme, terminal, enhance, preview, cli (+ common/ helpers)
+                 scheme, terminal, enhance, preview, cli, apply
+                 (+ common/ helpers)
 ```
 
 ## License
