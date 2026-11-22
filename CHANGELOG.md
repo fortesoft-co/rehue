@@ -5,11 +5,12 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-22
 
 The vocabulary release: commands, flags and config keys are renamed to
 fit the domain. There are no compatibility aliases; old names are
-rejected (pre-1.0, see the table below).
+rejected (pre-1.0, see the table below). It also brings looks, icon
+themes (`rehue icons`), the wal palette, and TOML and YAML configs.
 
 ### Added
 
@@ -145,5 +146,6 @@ First release.
 - 375 bundled base16 schemes (tinted-theming snapshot).
 - Deterministic, byte-identical output; Nix builders for Stylix.
 
+[0.3.0]: https://github.com/fortesoft-co/rehue/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fortesoft-co/rehue/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fortesoft-co/rehue/releases/tag/v0.1.0
