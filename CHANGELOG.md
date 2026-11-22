@@ -30,9 +30,17 @@ rejected (pre-1.0, see the table below).
   favor one). Also `"palette"` in the wal config; left-out slots are
   dimmed in `preview.html`. Library: `grade_wal::palette_weights`,
   `parse_palette`, and `slot_options` now takes the config.
+- Looks: saved grades picked by name, `-l NAME` on `wal` and
+  `scheme` (stack with `-l snap,pop`). Built-ins: soft, tight, pop,
+  muted, snap, vivid; your own go in `~/.config/rehue/looks/NAME.toml`
+  with `[wal]` / `[scheme]` sections (a built-in's name replaces it, a
+  name with `/` is a path). A look is a starting point: the config and
+  the flags win over it, key by key. Configs and pipelines take a
+  `look` key; `look` under `[rehue]` covers both pipeline steps.
+  `inspect --looks [NAME]` lists them or shows one.
 - Short flags: `-i` (the input: whatever the command names), `-s` /
   `-w` (the other input), `-o`, `-c`, `-n` (dry run), `-H`
-  (harmonize), `-p` (palette).
+  (harmonize), `-p` (palette), `-l` (look).
 - Role short forms `bg`, `sf`, `fg`, `ac`, accepted on the command line
   and as config keys.
 - `--assign` takes `auto`, a family index, or a comma list (`0,2,5`).
@@ -64,6 +72,9 @@ rejected (pre-1.0, see the table below).
 | `fg-contrast-floor` (extraction) | `min-text-contrast` (scheme config, top level) |
 | Nix `lib.mapScheme` / `lib.mapWal` | `lib.scheme` / `lib.wal` |
 | Library `map_wal`, `register`, `RemapConfig`, `MapConfig`, `Territory`, `Distribution` | `grade_wal`, `grade_scheme` + `role`, `WalConfig`, `SchemeConfig`, `Mode`, `Assign` |
+
+Unknown keys in `--config` files and pipeline tables are now errors
+(with a "did you mean" hint) instead of being silently ignored.
 
 The underscore spellings of extraction keys (from the old nix wrapper)
 are no longer accepted.

@@ -337,6 +337,20 @@ fn roles_table() -> String {
     t
 }
 
+fn looks_table() -> String {
+    let mut t = String::from("| look | grades | what it does |\n| --- | --- | --- |\n");
+    for (name, text) in rehue::look::BUILTIN {
+        let l = rehue::look::Look::parse(name, text, rehue::look::Source::BuiltIn)
+            .expect("built-in looks parse");
+        t.push_str(&format!(
+            "| `{name}` | {} | {} |\n",
+            l.targets(),
+            escape(&l.description)
+        ));
+    }
+    t
+}
+
 /// A config value as written in the docs (`0.04`, `[0.1, 0.92]`).
 fn json_cell(v: &serde_json::Value) -> String {
     match v {
@@ -405,6 +419,7 @@ fn render_region(name: &str) -> Result<String, String> {
         "ladder-bases" => manifest::display_bases(&examples()),
         "commands" => Ok(commands_table()),
         "roles" => Ok(roles_table()),
+        "looks" => Ok(looks_table()),
         "extraction-table" => Ok(extraction_table()),
         "extraction-keys" => Ok(rehue::extract::ExtractionParams::KEYS
             .iter()

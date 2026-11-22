@@ -1,0 +1,8 @@
+description = "the closest bond: wallpaper hues lock to the palette, scheme accents follow every family"
+
+[wal]
+harmonize = 1
+reach = 15
+
+[scheme]
+reach = 90

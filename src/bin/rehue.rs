@@ -861,6 +861,65 @@ fn run_enhance(
 /// `inspect --schemes`: every available scheme as a row of swatches.
 /// A file in `scheme_dir` shadows an embedded scheme of the same name,
 /// matching the lookup order of `Scheme::resolve`.
+/// `inspect --looks`: every look (name, what it grades, description), or
+/// with a name, that look's file.
+fn run_inspect_looks(name: &str) -> Result<(), String> {
+    use rehue::look::{self, Source};
+    if !name.is_empty() {
+        let found = look::find(name)?;
+        match &found.source {
+            Source::BuiltIn => println!("# look '{}' (built-in)", found.name),
+            Source::File(p) => println!("# look '{}' ({})", found.name, p.display()),
+            Source::Override(p) => println!(
+                "# look '{}' ({}, replaces the built-in)",
+                found.name,
+                p.display()
+            ),
+        }
+        print!("{}", found.text);
+        return Ok(());
+    }
+    let looks = look::all()?;
+    let width = looks.iter().map(|l| l.name.len()).max().unwrap_or(0);
+    let dir = look::user_dir()
+        .map(|d| d.display().to_string())
+        .unwrap_or_else(|| "(no config dir)".into());
+    println!(
+        "rehue inspect: {} look(s); your own go in {dir}",
+        looks.len()
+    );
+    for l in &looks {
+        let mark = match l.source {
+            Source::BuiltIn => ' ',
+            Source::File(_) => '*',
+            Source::Override(_) => '+',
+        };
+        println!(
+            "{mark} {:<width$}  {:<12}  {}",
+            l.name,
+            l.targets(),
+            l.description
+        );
+    }
+    if looks.iter().any(|l| l.source != Source::BuiltIn) {
+        println!("  (* your own, + yours replacing a built-in)");
+    }
+    Ok(())
+}
+
+/// How errors name the config: its path, or "options" with none.
+fn config_label(path: Option<&Path>) -> String {
+    path.map_or_else(|| "options".to_string(), |p| p.display().to_string())
+}
+
+/// The looks a run used, for the summary.
+fn print_looks(command: &str, looks: &[rehue::look::Look]) {
+    if !looks.is_empty() {
+        let names: Vec<&str> = looks.iter().map(|l| l.name.as_str()).collect();
+        println!("rehue {command}: look {}", names.join(", "));
+    }
+}
+
 fn run_inspect_schemes(filter: &str, scheme_dir: Option<&Path>) -> Result<(), String> {
     let mut entries: Vec<(String, bool)> = Vec::new();
     if let Some(dir) = scheme_dir {
@@ -1032,6 +1091,7 @@ fn run(command: Commands) -> Result<(), String> {
             scheme_dir,
             out,
             config,
+            look,
             dry_run,
             reach,
             assign,
@@ -1040,7 +1100,14 @@ fn run(command: Commands) -> Result<(), String> {
             lightness,
             chroma,
         } => {
-            let mut map_config = read_json::<grade_scheme::SchemeConfig>(config.as_deref())?;
+            let (mut map_config, looks) = rehue::look::resolve::<grade_scheme::SchemeConfig>(
+                &config_label(config.as_deref()),
+                rehue::config::read_file(config.as_deref())?,
+                &look,
+                None,
+                rehue::look::Target::Scheme,
+            )?;
+            print_looks("scheme", &looks);
             SchemeOverrides {
                 reach,
                 assign,
@@ -1066,6 +1133,7 @@ fn run(command: Commands) -> Result<(), String> {
             scheme_dir,
             out,
             config,
+            look,
             dry_run,
             mode,
             harmonize,
@@ -1084,7 +1152,14 @@ fn run(command: Commands) -> Result<(), String> {
             lut,
             lut_level,
         } => {
-            let mut wal_config = read_json::<grade_wal::WalConfig>(config.as_deref())?;
+            let (mut wal_config, looks) = rehue::look::resolve::<grade_wal::WalConfig>(
+                &config_label(config.as_deref()),
+                rehue::config::read_file(config.as_deref())?,
+                &look,
+                None,
+                rehue::look::Target::Wal,
+            )?;
+            print_looks("wal", &looks);
             WalOverrides {
                 mode,
                 harmonize,
@@ -1113,6 +1188,9 @@ fn run(command: Commands) -> Result<(), String> {
             )
         }
         Commands::Inspect {
+            looks: Some(name), ..
+        } => run_inspect_looks(&name),
+        Commands::Inspect {
             schemes: Some(filter),
             scheme_dir,
             ..
@@ -1121,6 +1199,7 @@ fn run(command: Commands) -> Result<(), String> {
             wallpaper,
             scheme,
             schemes: None,
+            looks: None,
             scheme_dir,
             config,
             out,

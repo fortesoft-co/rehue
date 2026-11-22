@@ -332,6 +332,38 @@ rungs = [
   { args = "--reach 45", note = "the default" },
   { args = "--reach 180" },
 ]
+# looks: each built-in on its own
+
+[[ladder]]
+id = "looks-wal"
+file = "assets/examples/looks-wal.webp"
+base = "wal -i {bango} -s gruvbox-light -o {out}"
+output = "wallpaper.png"
+original = "{bango}"
+width = 380
+rungs = [
+  { args = "-l soft" },
+  { args = "-l tight" },
+  { args = "-l pop" },
+  { args = "-l muted" },
+  { args = "-l snap" },
+  { args = "-l vivid" },
+]
+
+[[ladder]]
+id = "looks-scheme"
+file = "assets/examples/looks-scheme.png"
+base = "scheme -i rose-pine-dawn -w {butterfly} -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "" },
+  { args = "-l soft" },
+  { args = "-l tight" },
+  { args = "-l pop" },
+  { args = "-l muted" },
+]
+
 # extraction: inspect on the butterfly (config-only options)
 
 [[ladder]]

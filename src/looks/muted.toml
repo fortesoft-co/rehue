@@ -1,0 +1,8 @@
+description = "full harmony, softer color: calm, low-saturation results"
+
+[wal]
+harmonize = 1
+chroma = 0.75
+
+[scheme]
+roles.all.chroma = 0.8

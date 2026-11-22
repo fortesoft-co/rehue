@@ -70,6 +70,13 @@ pub enum Commands {
         /// e.g. -c scheme.json
         #[arg(short, long, value_name = "JSON")]
         config: Option<PathBuf>,
+        /// Start from a look, a saved grade: built-in, or
+        /// ~/.config/rehue/looks/NAME.toml.  --config and flags still win;
+        /// repeat or comma-list to stack (left to right).
+        ///
+        /// e.g. -l pop   -l snap,vivid   (rehue inspect --looks lists them)
+        #[arg(short, long, value_name = "NAME")]
+        look: Vec<String>,
         /// How far, in hue degrees, an accent can reach to claim a wallpaper
         /// hue (default 45).
         ///
@@ -157,6 +164,13 @@ pub enum Commands {
         /// e.g. -c wal.json
         #[arg(short, long, value_name = "JSON")]
         config: Option<PathBuf>,
+        /// Start from a look, a saved grade: built-in, or
+        /// ~/.config/rehue/looks/NAME.toml.  --config and flags still win;
+        /// repeat or comma-list to stack (left to right).
+        ///
+        /// e.g. -l pop   -l snap,vivid   (rehue inspect --looks lists them)
+        #[arg(short, long, value_name = "NAME")]
+        look: Vec<String>,
         /// How pixels find their palette color: `blend` = mix the nearby
         /// palette colors, weighted by hue distance (default); `snap` = take
         /// the nearest one.
@@ -292,11 +306,13 @@ pub enum Commands {
     /// Families mode indexes the wallpaper's hue families (the `[i]`
     /// indices that assign configs target).  Scheme mode shows a
     /// scheme's 16 slots as truecolor swatches.  --schemes browses the
-    /// whole collection: one row per scheme, name and colours.
+    /// whole collection: one row per scheme, name and colours.  --looks
+    /// lists the saved grades -l takes.
     ///
     /// Example: rehue inspect --wallpaper butterfly.webp
     ///          rehue inspect --scheme gruvbox-light
     ///          rehue inspect --schemes gruvbox
+    ///          rehue inspect --looks
     Inspect {
         /// The image whose hues get extracted (families mode).
         ///
@@ -322,6 +338,18 @@ pub enum Commands {
             conflicts_with_all = ["wallpaper", "scheme", "config", "out"]
         )]
         schemes: Option<String>,
+        /// The looks (saved grades for -l): name, what each grades, and
+        /// its description; with a NAME, that look's file.
+        ///
+        /// e.g. --looks        --looks pop
+        #[arg(
+            long,
+            value_name = "NAME",
+            num_args = 0..=1,
+            default_missing_value = "",
+            conflicts_with_all = ["wallpaper", "scheme", "schemes", "config", "out"]
+        )]
+        looks: Option<String>,
         /// Directory that scheme NAMES look up before the embedded set.
         ///
         /// e.g. --scheme-dir ~/schemes
@@ -422,7 +450,10 @@ Pipeline example:
   scheme = \"gruvbox-light\"        # a bundled name, or a path to yaml
   # out = \"~/.local/share/rehue/current\"   (the default)
 
-  [rehue.scheme]                   # rehue the scheme (empty = defaults)
+  [rehue]
+  look = \"pop\"                     # both steps start from a look (optional)
+
+  [rehue.scheme]                   # rehue the scheme (empty = the look / defaults)
   [rehue.scheme.roles.accents]
   chroma = 1.2
 

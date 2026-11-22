@@ -1,0 +1,7 @@
+description = "a gentle nudge: halfway to the other side, still clearly itself"
+
+[wal]
+harmonize = 0.5
+
+[scheme]
+roles.all.match-hue = 0.5

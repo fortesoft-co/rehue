@@ -1,0 +1,5 @@
+description = "harmonize toward the accents only: no gray wash over bright colors"
+
+[wal]
+harmonize = 1
+palette = { accents = 1 }

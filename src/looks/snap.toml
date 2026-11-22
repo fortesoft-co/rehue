@@ -1,0 +1,7 @@
+description = "exact palette hues and chroma, the image's own shading kept"
+
+[wal]
+mode = "snap"
+reach = 180
+match-hue = 1
+match-chroma = 1

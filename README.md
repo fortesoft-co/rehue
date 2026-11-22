@@ -231,6 +231,52 @@ all you get sensible defaults.
 [EXAMPLES.md](EXAMPLES.md) shows every dial turning, with the exact
 command for each image, and covers how settings combine.
 
+### Looks
+
+A **look** is a saved grade you pick by name, so you don't have to
+tune every dial yourself. The same `-l` works on both commands:
+
+```sh
+rehue wal -i wall.png -s gruvbox-light -l pop
+rehue scheme -i rose-pine-dawn -w wall.png -l soft
+rehue wal -i wall.png -s gruvbox-light -l snap,pop     # stacked, left to right
+rehue inspect --looks                                  # list them
+```
+
+<!-- gen:looks -->
+| look | grades | what it does |
+| --- | --- | --- |
+| `soft` | wal, scheme | a gentle nudge: halfway to the other side, still clearly itself |
+| `tight` | wal, scheme | the closest bond: wallpaper hues lock to the palette, scheme accents follow every family |
+| `pop` | wal, scheme | full harmony with the color turned up |
+| `muted` | wal, scheme | full harmony, softer color: calm, low-saturation results |
+| `snap` | wal | exact palette hues and chroma, the image's own shading kept |
+| `vivid` | wal | harmonize toward the accents only: no gray wash over bright colors |
+<!-- /gen:looks -->
+
+A look is a starting point: your `-c` config and your flags still win,
+key by key (`-l pop --chroma 1` keeps pop's harmony but not its extra
+color). Your own looks go in `~/.config/rehue/looks/NAME.toml`, with a
+`[wal]` and/or `[scheme]` section taking the same keys as the configs;
+a file named like a built-in replaces it, and a name with a `/` is a
+path:
+
+```toml
+# ~/.config/rehue/looks/dusk.toml
+description = "evening: quieter, a little darker"
+
+[wal]
+harmonize = 1
+chroma = 0.8
+lightness = -0.04
+
+[scheme]
+roles.all.chroma = 0.85
+```
+
+Configs and pipelines take `look` as a key too (`"look": "pop"`).
+EXAMPLES.md shows [every built-in look](EXAMPLES.md#looks).
+
 ### Both directions
 
 The two commands are the same move pointed opposite ways.
@@ -325,6 +371,7 @@ forms:
 | `-n` | dry run: preview, write nothing |
 | `-H` | `--harmonize` |
 | `-p` | `--palette` (wal) |
+| `-l` | `--look` |
 
 ### Choosing a scheme
 
@@ -449,7 +496,10 @@ wallpaper = "~/Pictures/glitter.webp"
 scheme = "gruvbox-light"        # a bundled name, or a path to yaml
 # out = "~/.local/share/rehue/current"   (the default)
 
-[rehue.scheme]                  # rehue the scheme (empty = defaults)
+[rehue]
+look = "pop"                    # both steps start from a look (optional)
+
+[rehue.scheme]                  # rehue the scheme (empty = the look / defaults)
 [rehue.scheme.roles.accents]
 chroma = 1.2
 
@@ -469,7 +519,9 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   JSON `--config` files; a table being present turns that step on.
   With both, the wallpaper is repainted with the scheme it just
   produced (the round trip). With only `[rehue.wal]`, the reference
-  scheme is applied as-is.
+  scheme is applied as-is. `look` under `[rehue]` starts both steps
+  from a look; a step's own `look` key replaces it, and the table's
+  keys win over either.
 - **tinty:** the scheme is installed as a tinty custom scheme
   (`<tinty data dir>/custom-schemes/base16/rehue.yaml`) and applied
   with `tinty apply base16-rehue`; tinty then builds and installs the
@@ -513,10 +565,6 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   terminal, as git does, with `--no-pager`; pipes stay plain. Later: an
   interactive browser (ratatui) with a live preview of the selected
   scheme (its terminal colors, or the wallpaper repainted).
-- **Grading presets**: named, ready-made grades (e.g. tight, snap,
-  pop, duotone) selectable by name, with your own presets as files and
-  explicit options still overriding them. Applies to wallpapers, LUTs
-  and icons alike.
 - **TOML and YAML configs**: `-c` reads JSON today; accept `.toml`
   and `.yaml` too (picked by file extension), so a config can be
   written in the same format as the `apply` pipeline or a scheme.

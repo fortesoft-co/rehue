@@ -13,10 +13,6 @@ the same for every montage of a command:
 rehue scheme -i rose-pine-dawn -w assets/kelly-ishmael-butterfly-closeup.webp -o out
 # wal recipes run as:
 rehue wal -i assets/bango-renders-3d-abstract.webp -s gruvbox-light -o out
-# wal recipes run as:
-rehue wal -i assets/kelly-ishmael-butterfly-closeup.webp -s gruvbox-light -o out
-# wal recipes run as:
-rehue wal -i assets/vidsplay-rainbow-glitter.webp -s gruvbox-light -o out
 # inspect recipes run as:
 rehue inspect -w assets/kelly-ishmael-butterfly-closeup.webp -o out
 ```
@@ -26,8 +22,10 @@ The montages and recipes are generated from
 [docs/examples.toml](docs/examples.toml), so they always match.
 
 - **wal** repaints [bango-renders-3d-abstract](assets/bango-renders-3d-abstract.webp)
-  with Gruvbox Light. Every wal montage below opens with the original
-  image, then applies only the option named, isolated, unless the
+  with Gruvbox Light (a few montages use another image that shows the
+  option better; their recipe names its inputs). Every wal montage
+  below opens with the original image, then applies only the option
+  named, isolated, unless the
   option is inert on its own; then the recipe carries the companion
   dial it needs (mode, reach, max-gray-chroma, dithering, assign).
 - **scheme** paints Rosé Pine Dawn with the hue families of
@@ -205,6 +203,7 @@ whose pale wings sit right around the threshold.
 
 <!-- gen:ladder:wal-max-gray-chroma -->
 ```sh
+# inputs: rehue wal -i assets/kelly-ishmael-butterfly-closeup.webp -s gruvbox-light -o out
 # the default
 rehue wal --harmonize 1 --max-gray-chroma 0.02
 rehue wal --harmonize 1 --max-gray-chroma 0.1
@@ -264,6 +263,7 @@ families something to differ by.
 
 <!-- gen:ladder:wal-assign -->
 ```sh
+# inputs: rehue wal -i assets/vidsplay-rainbow-glitter.webp -s gruvbox-light -o out
 # no assign
 rehue wal --harmonize 1
 # every accent from the heaviest family
@@ -454,9 +454,52 @@ rehue inspect --config config.json
 
 ---
 
+## Looks
+
+A look is a saved grade (`-l NAME`; `rehue inspect --looks` lists
+them, see the [README](README.md#looks) for writing your own). Each
+cell below is one built-in look and nothing else.
+
+![original, then the wal looks soft, tight, pop, muted, snap and vivid](assets/examples/looks-wal.webp)
+
+<!-- gen:ladder:looks-wal -->
+```sh
+rehue wal -l soft
+rehue wal -l tight
+rehue wal -l pop
+rehue wal -l muted
+rehue wal -l snap
+rehue wal -l vivid
+```
+<!-- /gen:ladder:looks-wal -->
+
+The looks that grade schemes too, on the butterfly and Rosé Pine Dawn:
+
+![rose-pine-dawn strips: defaults, then soft, tight, pop and muted](assets/examples/looks-scheme.png)
+
+<!-- gen:ladder:looks-scheme -->
+```sh
+rehue scheme
+rehue scheme -l soft
+rehue scheme -l tight
+rehue scheme -l pop
+rehue scheme -l muted
+```
+<!-- /gen:ladder:looks-scheme -->
+
+---
+
 ## Merge and precedence
 
-Config records resolve `globals // all // role`: bare flags seed
+Settings layer in this order, each one winning over the ones before
+it, key by key:
+
+1. the defaults,
+2. the looks (`-l`, else the config's `look` key), left to right,
+3. the `--config` file (or the pipeline table),
+4. the flags.
+
+Within each layer, config records resolve `globals // all // role`: bare flags seed
 `all`, flags with a role (`--chroma bg 1.6`) write that role's record,
 and `--config` JSON records do the same job, with one precedence rule
 per key:
@@ -469,6 +512,9 @@ Only wal's bare `--lightness` / `--chroma` differ by design: they are
 the image-wide grade, not a seed. Extraction options are config-JSON
 only. Dithering is global-only: role records do not carry it. Role
 names take their short forms in config keys too (`"bg"`, `"ac"`).
+`palette` is the one key that replaces instead of merging: a palette
+in a later layer replaces the earlier one whole. Unknown keys are
+errors, in configs, looks and pipelines alike.
 
 The workshop example, expressed twice:
 

@@ -1,0 +1,8 @@
+description = "full harmony with the color turned up"
+
+[wal]
+harmonize = 1
+chroma = 1.2
+
+[scheme]
+roles.accents.chroma = 1.3

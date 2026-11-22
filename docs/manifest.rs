@@ -340,6 +340,15 @@ pub const RUNG_CONFIG: &str = "config.json";
 pub fn display_ladder(m: &Manifest, ladder: &Ladder) -> Result<String, String> {
     let none = |_: &str| -> Result<String, String> { Err("ladders can't use {out}".into()) };
     let mut lines = Vec::new();
+    // a ladder on other inputs than its command's usual ones says so
+    let default = m
+        .ladder
+        .iter()
+        .find(|l| ladder_command(l) == ladder_command(ladder))
+        .map(|l| l.base.as_str());
+    if default != Some(ladder.base.as_str()) {
+        lines.push(format!("# inputs: {}", base_line(m, ladder)?));
+    }
     for rung in &ladder.rungs {
         if !rung.note.is_empty() {
             lines.push(format!("# {}", rung.note));
@@ -379,21 +388,27 @@ pub fn rung_label(rung: &Rung) -> String {
     }
 }
 
-/// The docs block listing each ladder command's inputs once.
-pub fn display_bases(m: &Manifest) -> Result<String, String> {
+/// A ladder's inputs as a command line (`{out}` shown as `out`).
+fn base_line(m: &Manifest, l: &Ladder) -> Result<String, String> {
     let none = |_: &str| -> Result<String, String> { Ok("out".into()) };
-    let mut seen: Vec<String> = Vec::new();
+    let mut words = vec!["rehue".to_string()];
+    for t in l.base.split_whitespace() {
+        words.push(shell_word(&m.expand(t, &none)?));
+    }
+    Ok(words.join(" "))
+}
+
+/// The docs block listing each ladder command's usual inputs once (the
+/// first ladder's); ladders on other inputs name theirs.
+pub fn display_bases(m: &Manifest) -> Result<String, String> {
+    let mut seen: Vec<&str> = Vec::new();
     let mut lines = Vec::new();
     for l in &m.ladder {
-        let mut words = vec!["rehue".to_string()];
-        for t in l.base.split_whitespace() {
-            words.push(shell_word(&m.expand(t, &none)?));
-        }
-        let line = words.join(" ");
-        if !seen.contains(&line) {
-            lines.push(format!("# {} recipes run as:", ladder_command(l)));
-            lines.push(line.clone());
-            seen.push(line);
+        let command = ladder_command(l);
+        if !seen.contains(&command) {
+            lines.push(format!("# {command} recipes run as:"));
+            lines.push(base_line(m, l)?);
+            seen.push(command);
         }
     }
     Ok(format!("```sh\n{}\n```", lines.join("\n")))

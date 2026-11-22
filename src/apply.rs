@@ -3,7 +3,9 @@
 //! The pipeline is a TOML file.  `[rehue.scheme]` and `[rehue.wal]` are the
 //! same records the JSON `--config` files take (same keys, same merge
 //! rules), so a dial means the same thing everywhere; a table's presence
-//! is what turns its step on.  `[apply]` says where the result goes:
+//! is what turns its step on.  `look = "pop"` under `[rehue]` starts
+//! both steps from a look; a step's own `look` key replaces it.  `[apply]`
+//! says where the result goes:
 //! tinty (templates for every app it knows) and a wallpaper command.
 //!
 //! rehue owns the colours and the wallpaper; tinty owns the per-app
@@ -36,18 +38,47 @@ pub struct Pipeline {
     /// and commands run in it.
     #[serde(skip)]
     pub base_dir: PathBuf,
-    /// The grading steps, `[rehue.scheme]` and `[rehue.wal]`.
-    #[serde(default)]
+    /// The `[rehue]` table as written: looks and the two step tables.
+    #[serde(default, rename = "rehue")]
+    raw_steps: RawSteps,
+    /// The grading steps, `[rehue.scheme]` and `[rehue.wal]`, resolved
+    /// (looks layered under each table).
+    #[serde(skip)]
     pub rehue: Steps,
     /// Where the result goes.
     #[serde(default)]
     pub apply: ApplyTarget,
 }
 
-/// The `[rehue]` tables: a table's presence turns its step on (an empty
-/// table runs at defaults).
+/// The `[rehue]` table as written.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct RawSteps {
+    look: Option<LookNames>,
+    scheme: Option<toml::Table>,
+    wal: Option<toml::Table>,
+}
+
+/// `look = "pop"`, `look = "snap,pop"` or `look = ["snap", "pop"]`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum LookNames {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl LookNames {
+    fn names(&self) -> Vec<String> {
+        match self {
+            Self::One(s) => crate::look::names(std::slice::from_ref(s)),
+            Self::Many(v) => crate::look::names(v),
+        }
+    }
+}
+
+/// The grading steps: a table's presence turns its step on (an empty
+/// table runs at defaults).
+#[derive(Debug, Default)]
 pub struct Steps {
     /// Rehue the scheme with the wallpaper; the result is what gets
     /// applied.
@@ -94,7 +125,7 @@ impl Pipeline {
             .map_err(|e| format!("can't read pipeline {}: {}", path.display(), e))?;
         let mut pipeline: Pipeline =
             toml::from_str(&text).map_err(|e| format!("bad pipeline {}: {}", path.display(), e))?;
-        if pipeline.rehue.scheme.is_none() && pipeline.rehue.wal.is_none() {
+        if pipeline.raw_steps.scheme.is_none() && pipeline.raw_steps.wal.is_none() {
             return Err(format!(
                 "pipeline {} has no steps: add [rehue.scheme] and/or [rehue.wal]",
                 path.display()
@@ -116,6 +147,7 @@ impl Pipeline {
         };
         let base = base.as_path();
         pipeline.base_dir = base.to_path_buf();
+        pipeline.rehue = resolve_steps(&pipeline.raw_steps, base, path)?;
         pipeline.wallpaper = resolve(base, &pipeline.wallpaper);
         pipeline.scheme_dir = pipeline.scheme_dir.map(|p| resolve(base, &p));
         pipeline.out = Some(match pipeline.out {
@@ -134,7 +166,64 @@ impl Pipeline {
         target.tinty_data_dir = target.tinty_data_dir.take().map(|p| resolve(base, &p));
         Ok(pipeline)
     }
+}
 
+/// The step tables with their looks layered under them.  Look paths
+/// (names with a '/') resolve against the pipeline's directory.
+fn resolve_steps(raw: &RawSteps, base: &Path, path: &Path) -> Result<Steps, String> {
+    use crate::look::{Target, resolve as resolve_look};
+    let rebase = |names: Vec<String>| -> Vec<String> {
+        names
+            .into_iter()
+            .map(|n| {
+                if n.contains('/') {
+                    resolve(base, Path::new(&n)).to_string_lossy().into_owned()
+                } else {
+                    n
+                }
+            })
+            .collect()
+    };
+    let shared = raw.look.as_ref().map(|l| rebase(l.names()));
+    let step = |table: &toml::Table| -> Result<serde_json::Value, String> {
+        let mut value = crate::config::from_toml(table.clone());
+        if let Some(own) = crate::look::take_look(&mut value)? {
+            value["look"] = serde_json::json!(rebase(own));
+        }
+        Ok(value)
+    };
+    let what = |target: Target| format!("{} [rehue.{}]", path.display(), target.name());
+    Ok(Steps {
+        scheme: match &raw.scheme {
+            Some(t) => Some(
+                resolve_look(
+                    &what(Target::Scheme),
+                    step(t)?,
+                    &[],
+                    shared.clone(),
+                    Target::Scheme,
+                )?
+                .0,
+            ),
+            None => None,
+        },
+        wal: match &raw.wal {
+            Some(t) => Some(
+                resolve_look(
+                    &what(Target::Wal),
+                    step(t)?,
+                    &[],
+                    shared.clone(),
+                    Target::Wal,
+                )?
+                .0,
+            ),
+            None => None,
+        },
+    })
+}
+
+impl Pipeline {
     /// The resolved output directory.
     pub fn out_dir(&self) -> &Path {
         self.out.as_deref().expect("resolved by load")
