@@ -324,6 +324,7 @@ forms:
 | `-c` | config JSON |
 | `-n` | dry run: preview, write nothing |
 | `-H` | `--harmonize` |
+| `-p` | `--palette` (wal) |
 
 ### Choosing a scheme
 
@@ -516,6 +517,9 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   pop, duotone) selectable by name, with your own presets as files and
   explicit options still overriding them. Applies to wallpapers, LUTs
   and icons alike.
+- **TOML and YAML configs**: `-c` reads JSON today; accept `.toml`
+  and `.yaml` too (picked by file extension), so a config can be
+  written in the same format as the `apply` pipeline or a scheme.
 - **WCAG contrast mode**: a contrast-ratio option for `rehue scheme`
   (e.g. 4.5:1, the ratio theme designers check against) alongside the
   lightness-gap guard `min-text-contrast`, and possibly covering more

@@ -209,8 +209,8 @@ pub enum Commands {
         /// slot is in.  A heavier slot pulls harder (blend) and claims a
         /// wider arc (snap).
         ///
-        /// e.g. --palette ac   --palette base0D,base0E   --palette all,base0D=6
-        #[arg(long, help_heading = "Grading", value_name = "KEY[=W],...")]
+        /// e.g. -p ac   --palette base0D,base0E   --palette all,base0D=6
+        #[arg(short, long, help_heading = "Grading", value_name = "KEY[=W],...")]
         palette: Option<String>,
         /// Below this chroma a pixel counts as gray (default 0.02).
         ///

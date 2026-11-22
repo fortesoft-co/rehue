@@ -23,7 +23,7 @@ rejected (pre-1.0, see the table below).
 - `inspect --schemes [FILTER]`: every scheme as a row of color
   swatches, filtered by name; schemes in `--scheme-dir` are included
   and marked.
-- `wal --palette`: which scheme colors pixels may be pulled toward,
+- `wal --palette` / `-p`: which scheme colors pixels may be pulled toward,
   and how hard. Keys are slots, roles or `all`, bare (weight 1) or
   `key=weight`; unlisted slots are left out (`--palette ac` for
   accents only, `base0D,base0E` for a duotone, `all,base0D=6` to
@@ -32,7 +32,7 @@ rejected (pre-1.0, see the table below).
   `parse_palette`, and `slot_options` now takes the config.
 - Short flags: `-i` (the input: whatever the command names), `-s` /
   `-w` (the other input), `-o`, `-c`, `-n` (dry run), `-H`
-  (harmonize).
+  (harmonize), `-p` (palette).
 - Role short forms `bg`, `sf`, `fg`, `ac`, accepted on the command line
   and as config keys.
 - `--assign` takes `auto`, a family index, or a comma list (`0,2,5`).
