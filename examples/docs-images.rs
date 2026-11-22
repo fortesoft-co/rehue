@@ -20,6 +20,11 @@ use std::process::Command;
 use manifest::{Cell, Image, Kind, LOCK, Ladder, Manifest, RUNG_CONFIG, rung_label};
 
 const BG: &str = "#232327";
+
+/// A rung that changes the picture less than this (mean OKLab
+/// difference x100 from the cell before it; ~2 is just noticeable) is
+/// flagged: the example would not show what the option does.
+const MIN_CHANGE: f64 = 2.0;
 const FG: &str = "#e8e8ef";
 
 type Result<T> = std::result::Result<T, String>;
@@ -262,9 +267,99 @@ impl Builder {
             self.rehue(&args)?;
             cells.push((rung_label(rung), dir.join(&ladder.output)));
         }
+        if let Some(geometry) = &ladder.crop {
+            let dir = self.work.join("ladders").join(&ladder.id);
+            for (i, (_, path)) in cells.iter_mut().enumerate() {
+                let cropped = dir.join(format!("crop-{i}.png"));
+                sh(Command::new("magick")
+                    .arg(&*path)
+                    .args(["-crop", geometry, "+repage", "-filter", "point", "-resize"])
+                    .arg(format!("{}x", ladder.width))
+                    .arg(&cropped))?;
+                *path = cropped;
+            }
+        }
+        self.check_change(ladder, &cells)?;
         let tile = format!("1x{}", cells.len());
         let geometry = format!("{}x+3+10", ladder.width);
         self.montage(&cells, &tile, &geometry, &self.root.join(&ladder.file))
+    }
+}
+
+impl Builder {
+    /// Print how much each rung changes from the cell before it, and
+    /// flag the ones too subtle to see.  Scheme ladders compare the
+    /// 16 slots of each run's scheme.yaml; the rest compare pixels.
+    fn check_change(&self, ladder: &Ladder, cells: &[(String, PathBuf)]) -> Result<()> {
+        let colors = |path: &Path| -> Result<Vec<[f64; 3]>> {
+            let scheme = path.with_file_name("scheme.yaml");
+            let rgbs: Vec<[u8; 3]> = if ladder.output == "preview.png" && scheme.exists() {
+                rehue::scheme::Scheme::parse_file(&scheme)?
+                    .slot_hexes()?
+                    .iter()
+                    .map(|h| {
+                        let v = u32::from_str_radix(h.trim_start_matches('#'), 16).unwrap();
+                        [(v >> 16) as u8, (v >> 8) as u8, v as u8]
+                    })
+                    .collect()
+            } else {
+                let img = image::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+                img.resize_exact(256, 256, image::imageops::FilterType::Triangle)
+                    .to_rgb8()
+                    .pixels()
+                    .map(|p| p.0)
+                    .collect()
+            };
+            Ok(rgbs
+                .iter()
+                .map(|rgb| {
+                    let c = rehue::color::rgb_to_oklch(rgb);
+                    let h = c.h.to_radians();
+                    [c.l, c.c * h.cos(), c.c * h.sin()]
+                })
+                .collect())
+        };
+        // Scheme ladders score the four most-changed slots: an option
+        // that targets one role leaves the other slots alone by design.
+        let schemes = ladder.output == "preview.png";
+        let change = |a: &[[f64; 3]], b: &[[f64; 3]]| {
+            let mut d: Vec<f64> = a
+                .iter()
+                .zip(b)
+                .map(|(a, b)| {
+                    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+                })
+                .collect();
+            if schemes {
+                d.sort_by(|x, y| y.total_cmp(x));
+                d.truncate(4);
+            }
+            d.iter().sum::<f64>() / d.len() as f64 * 100.0
+        };
+        // Each rung against the cell before it (steps) and against the
+        // first rung (alternatives to a baseline); both must show.
+        let skip = usize::from(ladder.original.is_some());
+        let all: Vec<Vec<[f64; 3]>> = cells
+            .iter()
+            .map(|(_, p)| colors(p))
+            .collect::<Result<_>>()?;
+        for (i, (label, _)) in cells.iter().enumerate().skip(1) {
+            let prev = change(&all[i - 1], &all[i]);
+            let mut line = format!("    change {prev:5.1}");
+            let mut least = prev;
+            if i > skip + 1 {
+                let first = change(&all[skip], &all[i]);
+                line += &format!(" (vs first rung {first:5.1})");
+                least = least.min(first);
+            }
+            let flag = if least < MIN_CHANGE {
+                "  <- barely visible"
+            } else {
+                ""
+            };
+            println!("{line}  {label}{flag}");
+        }
+        Ok(())
     }
 }
 

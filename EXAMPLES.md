@@ -13,6 +13,10 @@ the same for every montage of a command:
 rehue scheme -i rose-pine-dawn -w assets/kelly-ishmael-butterfly-closeup.webp -o out
 # wal recipes run as:
 rehue wal -i assets/bango-renders-3d-abstract.webp -s gruvbox-light -o out
+# wal recipes run as:
+rehue wal -i assets/kelly-ishmael-butterfly-closeup.webp -s gruvbox-light -o out
+# wal recipes run as:
+rehue wal -i assets/vidsplay-rainbow-glitter.webp -s gruvbox-light -o out
 # inspect recipes run as:
 rehue inspect -w assets/kelly-ishmael-butterfly-closeup.webp -o out
 ```
@@ -90,12 +94,18 @@ rehue wal --harmonize 1
 How much of the target hue colorful pixels take on: 0 = their own hue,
 1 = full adoption.
 
-![original / match-hue 0.6 / 1 on bango](assets/examples/options/wal-match-hue.webp)
+On its own it is subtle: a scheme's sixteen colors cover most of the
+hue wheel, so the nearest one is usually only a few degrees away, and
+most of what harmonize visibly does comes from match-chroma. Against a
+narrow palette the pull is plain to see, so the ladder runs it with a
+two-color `--palette` (see [palette](#palette--slots-roles-or-all-with-weights)).
+
+![original / match-hue 0.5 / 1 against a blue and purple palette](assets/examples/options/wal-match-hue.webp)
 
 <!-- gen:ladder:wal-match-hue -->
 ```sh
-rehue wal --match-hue 0.6
-rehue wal --match-hue 1
+rehue wal --palette base0D,base0E --match-hue 0.5
+rehue wal --palette base0D,base0E --match-hue 1
 ```
 <!-- /gen:ladder:wal-match-hue -->
 
@@ -104,11 +114,11 @@ rehue wal --match-hue 1
 How much of the target chroma pixels take on. This is the dial that
 carries the "repaint" feel; harmonize sets it along with match-hue.
 
-![original / match-chroma 0.6 / 1 on bango](assets/examples/options/wal-match-chroma.webp)
+![original / match-chroma 0.5 / 1 on bango](assets/examples/options/wal-match-chroma.webp)
 
 <!-- gen:ladder:wal-match-chroma -->
 ```sh
-rehue wal --match-chroma 0.6
+rehue wal --match-chroma 0.5
 rehue wal --match-chroma 1
 ```
 <!-- /gen:ladder:wal-match-chroma -->
@@ -155,17 +165,19 @@ are slots (`base0D`), roles (`accents`, `ac`) or `all`; a bare key is
 weight 1, `key=weight` sets it. Once a palette is given, **unlisted
 slots are left out**, so `ac` means accents only (grays stay gray,
 because no neutral slot is in), `base0D,base0E` is a duotone, and
-`all,base0D=6` keeps everything but lets blue pull harder. The most
-specific key wins: a slot beats its role, a role beats `all`.
+`all,base0B=6` keeps everything but lets green reach farther. The
+most specific key wins: a slot beats its role, a role beats `all`.
 
-In `blend` a weight multiplies the slot's pull; in `snap` it divides
-the slot's hue distance, so a weight-2 slot claims an arc twice as
-wide (`reach` still measures the real distance). Weights belong to
+A weight divides the slot's hue distance, in both modes: a weight-2
+slot pulls from twice as far in `blend` and claims an arc twice as
+wide in `snap` (snap's `reach` cutoff still measures the real
+distance). Weighting favors a color without taking the others away,
+so it is gentler than leaving slots out. Weights belong to
 slots, not hues: they apply after `assign` and `cycle`. In config:
 `"palette": {"all": 1, "base0D": 6}`. A `--palette` flag replaces the
 config's palette rather than merging with it.
 
-![original / harmonize 1 alone, then palette ac, base0D,base0E and all,base0D=6](assets/examples/options/wal-palette.webp)
+![original / harmonize 1 alone, then palette ac, base0D,base0E and all,base0B=6](assets/examples/options/wal-palette.webp)
 
 <!-- gen:ladder:wal-palette -->
 ```sh
@@ -175,8 +187,8 @@ rehue wal --harmonize 1
 rehue wal --harmonize 1 --palette ac
 # duotone
 rehue wal --harmonize 1 --palette base0D,base0E
-# blue pulls harder
-rehue wal --harmonize 1 --palette all,base0D=6
+# green reaches farther
+rehue wal --harmonize 1 --palette all,base0B=6
 ```
 <!-- /gen:ladder:wal-palette -->
 
@@ -186,16 +198,16 @@ Chroma below which pixels count as gray: they key to the scheme's
 low-chroma slots by lightness and **keep their own hue
 unconditionally** (match-hue never touches them). Raising it pulls
 pale pixels into the repainting earlier. Same companion as reach: the
-effect only exists at nonzero match dials.
+effect only exists at nonzero match dials. Shown on the butterfly,
+whose pale wings sit right around the threshold.
 
-![original / max-gray-chroma 0, 0.02, 0.12 with harmonize 1](assets/examples/options/wal-max-gray-chroma.webp)
+![original / max-gray-chroma 0.02, 0.1 with harmonize 1, on the butterfly](assets/examples/options/wal-max-gray-chroma.webp)
 
 <!-- gen:ladder:wal-max-gray-chroma -->
 ```sh
-rehue wal --harmonize 1 --max-gray-chroma 0
 # the default
 rehue wal --harmonize 1 --max-gray-chroma 0.02
-rehue wal --harmonize 1 --max-gray-chroma 0.12
+rehue wal --harmonize 1 --max-gray-chroma 0.1
 ```
 <!-- /gen:ladder:wal-max-gray-chroma -->
 
@@ -205,8 +217,9 @@ Strength of the dither. Inert at zero adoption (no residual to spread)
 and at full adoption (the target swallows the residual) — it exists
 for the partial-adopt and snap looks. Companion declared: snap mode
 with full match-hue and partial match-lightness / match-chroma.
+Dithering is texture, so the cells show a 3× crop.
 
-![original / dithering 0, 0.5, 1 (snap + partial match)](assets/examples/options/wal-dithering.webp)
+![original / dithering 0, 0.5, 1 (snap + partial match), 3× crop](assets/examples/options/wal-dithering.webp)
 
 <!-- gen:ladder:wal-dithering -->
 ```sh
@@ -221,9 +234,10 @@ rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --d
 The kernel the strength applies to: two ordered masks (void-and-cluster
 blue noise, classic 8×8 Bayer) and two error-diffusion kernels
 (serpentine scan, fixed order — no RNG). Floyd-Steinberg propagates
-everything; Atkinson drops 2/8, which reads gentler.
+everything; Atkinson drops 2/8, which reads gentler (the two are close
+cousins and look alike at a glance).
 
-![original + four dithering kernels side by side](assets/examples/options/wal-dithering-mode.webp)
+![original + four dithering kernels, 3× crop](assets/examples/options/wal-dithering-mode.webp)
 
 <!-- gen:ladder:wal-dithering-mode -->
 ```sh
@@ -243,17 +257,19 @@ slots, `3` = every slot from family 3, `0,1,2,3` = explicit stops
 (duplicates give flat runs; in JSON, `"auto"`, `3` or `[0, 1, 2, 3]`).
 Family indices come from `rehue inspect`. Without a role only a family
 index works: the single-slot background inherits `all`, so `auto` and
-lists need a role.
+lists need a role. Shown on the glitter, whose many hues give the
+families something to differ by.
 
-![original / harmonize 1 / accents assign 0,1,2,3 / + cycle 1](assets/examples/options/wal-assign.webp)
+![original / harmonize 1 / accents assign 0 / accents assign 0,1,2,3, on the glitter](assets/examples/options/wal-assign.webp)
 
 <!-- gen:ladder:wal-assign -->
 ```sh
 # no assign
 rehue wal --harmonize 1
+# every accent from the heaviest family
+rehue wal --harmonize 1 --assign accents 0
+# the four heaviest across the accents
 rehue wal --harmonize 1 --assign accents 0,1,2,3
-# ...and cycle
-rehue wal --harmonize 1 --assign accents 0,1,2,3 --cycle accents 1
 ```
 <!-- /gen:ladder:wal-assign -->
 
@@ -261,7 +277,11 @@ rehue wal --harmonize 1 --assign accents 0,1,2,3 --cycle accents 1
 
 Moves each of the role's hues N slots along, wrapping around (slots,
 not degrees); no-op for the single-slot background. Applies after
-assign. Shown as the fourth cell of the demo above.
+assign. In wal it barely shows: pixels find their slot by hue, so
+after a cycle the same hues still land on the same colors, and only
+which lightness and chroma go with each hue changes (visible with
+match-lightness). It matters on the scheme side, where it decides
+which slot gets which color (see [scheme cycle](#cycle--per-role-integer-1)).
 
 ### lightness / chroma — two depths
 
@@ -287,12 +307,14 @@ rehue wal --chroma 1.4
 ```
 <!-- /gen:ladder:wal-chroma -->
 
-![original / accents chroma 1.6 / foreground chroma 0.5](assets/examples/options/wal-role-grades.webp)
+![original / harmonize 1 / + accents chroma 2 / + foreground lightness 0.15](assets/examples/options/wal-role-grades.webp)
 
 <!-- gen:ladder:wal-role-grades -->
 ```sh
-rehue wal --chroma accents 1.6
-rehue wal --chroma foreground 0.5
+# harmonize alone
+rehue wal --harmonize 1
+rehue wal --harmonize 1 --chroma accents 2
+rehue wal --harmonize 1 --lightness foreground 0.15
 ```
 <!-- /gen:ladder:wal-role-grades -->
 
@@ -378,14 +400,14 @@ The accent claim gate: how far a family hue may sit from an accent
 slot's hue and still claim it. Widening lets more slots follow more
 families; narrowing forces them back to the heaviest ones.
 
-![reach 20 / 45 / 90 on the butterfly](assets/examples/options/scheme-reach.png)
+![reach 5 / 45 / 180 on the butterfly](assets/examples/options/scheme-reach.png)
 
 <!-- gen:ladder:scheme-reach -->
 ```sh
-rehue scheme --reach 20
+rehue scheme --reach 5
 # the default
 rehue scheme --reach 45
-rehue scheme --reach 90
+rehue scheme --reach 180
 ```
 <!-- /gen:ladder:scheme-reach -->
 
@@ -414,15 +436,15 @@ swatch strip whose positions are the indices).
 | `min-accent-chroma` | 0.06 | a family must be at least this chromatic to claim an accent slot |
 <!-- /gen:extraction-table -->
 
-`max-families` narrowing what survives, on the butterfly (2 / 4 / 6):
+`max-families` narrowing what survives, on the butterfly (2 / 3 / 6):
 
-![extraction at max-families 2 / 4 / 6](assets/examples/options/extract-max-families.png)
+![extraction at max-families 2 / 3 / 6](assets/examples/options/extract-max-families.png)
 
 <!-- gen:ladder:extract-max-families -->
 ```sh
 # config.json: {"max-families":2}
 rehue inspect --config config.json
-# config.json: {"max-families":4}
+# config.json: {"max-families":3}
 rehue inspect --config config.json
 # the default
 # config.json: {"max-families":6}

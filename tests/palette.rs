@@ -213,3 +213,24 @@ fn the_flag_replaces_the_config_palette_and_the_preview_dims_left_out_slots() {
     assert!(String::from_utf8_lossy(&bad.stderr).contains("not a slot"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn in_blend_mode_a_heavier_slot_pulls_from_farther() {
+    let (_, slots) = solarized();
+    let (cyan, blue) = (slots[12].lch.h, slots[13].lch.h);
+    let px = oklch_to_rgb(&Lch {
+        l: 0.6,
+        c: 0.08,
+        h: circ_lerp(cyan, blue, 0.33),
+    });
+    let hue = |blue_weight: f64| {
+        let config = WalConfig {
+            match_hue: Some(1.0),
+            palette: palette(&[("base0C", 1.0), ("base0D", blue_weight)]),
+            ..Default::default()
+        };
+        rgb_to_oklch(&paint(&config, &px, 1, 1).0.try_into().unwrap()).h
+    };
+    let to_blue = |h: f64| rehue::color::circ_dist(h, blue);
+    assert!(to_blue(hue(4.0)) + 1.0 < to_blue(hue(1.0)));
+}

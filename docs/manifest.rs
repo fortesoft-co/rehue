@@ -105,6 +105,11 @@ pub struct Ladder {
     pub original: Option<String>,
     #[serde(default = "default_width")]
     pub width: u32,
+    /// optional region of every cell (`WxH+X+Y` in output pixels),
+    /// enlarged without smoothing: for options whose effect is texture
+    /// (dithering) and vanishes at montage size
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crop: Option<String>,
     pub rungs: Vec<Rung>,
 }
 

@@ -206,8 +206,8 @@ pub enum Commands {
         /// (weight 1) or KEY=WEIGHT.
         ///
         /// Unlisted slots are left out, and grays stay gray when no neutral
-        /// slot is in.  A heavier slot pulls harder (blend) and claims a
-        /// wider arc (snap).
+        /// slot is in.  A weight divides the slot's hue distance: weight 2
+        /// pulls from twice as far.
         ///
         /// e.g. -p ac   --palette base0D,base0E   --palette all,base0D=6
         #[arg(short, long, help_heading = "Grading", value_name = "KEY[=W],...")]

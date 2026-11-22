@@ -118,7 +118,8 @@ rungs = [
 ]
 
 # ---------------------------------------------------------- EXAMPLES
-# wal ladders: bango + gruvbox-light, each opening with the original.
+# wal ladders: gruvbox-light, each opening with the original; bango
+# unless another image shows the option better.
 
 [[ladder]]
 id = "wal-mode"
@@ -145,16 +146,15 @@ file = "assets/examples/options/wal-match-hue.webp"
 base = "wal -i {bango} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
 original = "{bango}"
-rungs = [{ args = "--match-hue 0.6" }, { args = "--match-hue 1" }]
-
+common = "--palette base0D,base0E"
+rungs = [{ args = "--match-hue 0.5" }, { args = "--match-hue 1" }]
 [[ladder]]
 id = "wal-match-chroma"
 file = "assets/examples/options/wal-match-chroma.webp"
 base = "wal -i {bango} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
 original = "{bango}"
-rungs = [{ args = "--match-chroma 0.6" }, { args = "--match-chroma 1" }]
-
+rungs = [{ args = "--match-chroma 0.5" }, { args = "--match-chroma 1" }]
 [[ladder]]
 id = "wal-match-lightness"
 file = "assets/examples/options/wal-match-lightness.webp"
@@ -188,29 +188,29 @@ rungs = [
   { args = "", note = "every slot" },
   { args = "--palette ac", note = "accents only" },
   { args = "--palette base0D,base0E", note = "duotone" },
-  { args = "--palette all,base0D=6", note = "blue pulls harder" },
+  { args = "--palette all,base0B=6", note = "green reaches farther" },
 ]
 
 [[ladder]]
 id = "wal-max-gray-chroma"
 file = "assets/examples/options/wal-max-gray-chroma.webp"
-base = "wal -i {bango} -s gruvbox-light -o {out}"
+base = "wal -i {butterfly} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
-original = "{bango}"
+original = "{butterfly}"
 common = "--harmonize 1"
 rungs = [
-  { args = "--max-gray-chroma 0" },
   { args = "--max-gray-chroma 0.02", note = "the default" },
-  { args = "--max-gray-chroma 0.12" },
+  { args = "--max-gray-chroma 0.1" },
 ]
-
 [[ladder]]
 id = "wal-dithering"
 file = "assets/examples/options/wal-dithering.webp"
 base = "wal -i {bango} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
 original = "{bango}"
+width = 384
 common = "--mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9"
+crop = "128x72+40+760"
 rungs = [
   { args = "--dithering 0" },
   { args = "--dithering 0.5" },
@@ -223,8 +223,9 @@ file = "assets/examples/options/wal-dithering-mode.webp"
 base = "wal -i {bango} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
 original = "{bango}"
-width = 380
+width = 384
 common = "--mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1"
+crop = "128x72+40+760"
 rungs = [
   { args = "--dithering-mode blue-noise" },
   { args = "--dithering-mode bayer" },
@@ -235,16 +236,15 @@ rungs = [
 [[ladder]]
 id = "wal-assign"
 file = "assets/examples/options/wal-assign.webp"
-base = "wal -i {bango} -s gruvbox-light -o {out}"
+base = "wal -i {glitter} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
-original = "{bango}"
+original = "{glitter}"
 common = "--harmonize 1"
 rungs = [
   { args = "", note = "no assign" },
-  { args = "--assign accents 0,1,2,3" },
-  { args = "--assign accents 0,1,2,3 --cycle accents 1", note = "...and cycle" },
+  { args = "--assign accents 0", note = "every accent from the heaviest family" },
+  { args = "--assign accents 0,1,2,3", note = "the four heaviest across the accents" },
 ]
-
 [[ladder]]
 id = "wal-lightness"
 file = "assets/examples/options/wal-lightness.webp"
@@ -267,8 +267,12 @@ file = "assets/examples/options/wal-role-grades.webp"
 base = "wal -i {bango} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
 original = "{bango}"
-rungs = [{ args = "--chroma accents 1.6" }, { args = "--chroma foreground 0.5" }]
-
+common = "--harmonize 1"
+rungs = [
+  { args = "", note = "harmonize alone" },
+  { args = "--chroma accents 2" },
+  { args = "--lightness foreground 0.15" },
+]
 # scheme ladders: the butterfly onto rose-pine-dawn; each strip shows
 # the reference on top and the result below.
 
@@ -324,11 +328,10 @@ base = "scheme -i rose-pine-dawn -w {butterfly} -o {out}"
 output = "preview.png"
 width = 384
 rungs = [
-  { args = "--reach 20" },
+  { args = "--reach 5" },
   { args = "--reach 45", note = "the default" },
-  { args = "--reach 90" },
+  { args = "--reach 180" },
 ]
-
 # extraction: inspect on the butterfly (config-only options)
 
 [[ladder]]
@@ -339,6 +342,6 @@ output = "inspect.png"
 width = 384
 rungs = [
   { config = { max-families = 2 } },
-  { config = { max-families = 4 } },
+  { config = { max-families = 3 } },
   { config = { max-families = 6 }, note = "the default" },
 ]

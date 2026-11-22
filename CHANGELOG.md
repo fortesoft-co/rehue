@@ -26,7 +26,7 @@ rejected (pre-1.0, see the table below).
 - `wal --palette` / `-p`: which scheme colors pixels may be pulled toward,
   and how hard. Keys are slots, roles or `all`, bare (weight 1) or
   `key=weight`; unlisted slots are left out (`--palette ac` for
-  accents only, `base0D,base0E` for a duotone, `all,base0D=6` to
+  accents only, `base0D,base0E` for a duotone, `all,base0B=6` to
   favor one). Also `"palette"` in the wal config; left-out slots are
   dimmed in `preview.html`. Library: `grade_wal::palette_weights`,
   `parse_palette`, and `slot_options` now takes the config.

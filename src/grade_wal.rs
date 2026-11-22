@@ -529,9 +529,9 @@ impl<'a> ColorMap<'a> {
     /// anchor slot index (`None` for a gray pixel when the palette
     /// leaves every neutral slot out: it passes through ungraded).
     ///
-    /// Palette weights: a slot's weight multiplies its pull in blend
-    /// mode, and divides its distance when picking the nearest slot (a
-    /// weight-2 slot claims an arc twice as wide).  The snap-mode reach
+    /// Palette weights divide a slot's distance, in both modes: a
+    /// weight-2 slot pulls from twice as far in blend and claims an arc
+    /// twice as wide when picking the nearest slot.  The snap-mode reach
     /// gate still measures the real distance.  Weight 0 slots take no
     /// part at all.
     fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, Option<usize>) {
@@ -577,8 +577,8 @@ impl<'a> ColorMap<'a> {
                 let mut total = 0.0f64;
                 for &idx in &neutrals {
                     let s = self.slots[idx].lch;
-                    let d = (s.l - raw.l).abs();
-                    let v = (-(d * d) / (t * t)).exp() * weight(idx);
+                    let d = (s.l - raw.l).abs() / weight(idx);
+                    let v = (-(d * d) / (t * t)).exp();
                     ls.push(s.l);
                     cs.push(s.c);
                     ws.push(v);
@@ -641,7 +641,8 @@ impl<'a> ColorMap<'a> {
                         continue;
                     }
                     let d = circ_dist(raw.h, s.lch.h);
-                    let v = (-(d * d) / (t * t)).exp() * w;
+                    let d = d / w;
+                    let v = (-(d * d) / (t * t)).exp();
                     hues.push(s.lch.h);
                     ls.push(s.lch.l);
                     cs.push(s.lch.c);
