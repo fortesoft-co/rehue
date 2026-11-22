@@ -153,6 +153,11 @@ pub struct WalConfig {
     pub max_gray_chroma: f64,
     pub lightness: f64,
     pub chroma: f64,
+    /// Which scheme colors pixels may be pulled toward, and how hard:
+    /// keys are slots (`base0D`), roles (`accents`, `ac`) or `all`,
+    /// values weights.  Unset = every slot at weight 1; once set,
+    /// unlisted slots are left out (see [`palette_weights`]).
+    pub palette: Option<HashMap<String, f64>>,
     pub roles: HashMap<String, WalRoleConfig>,
 }
 
@@ -171,6 +176,7 @@ impl Default for WalConfig {
             max_gray_chroma: 0.02,
             lightness: 0.0,
             chroma: 1.0,
+            palette: None,
             roles: HashMap::new(),
         }
     }
@@ -199,6 +205,102 @@ pub fn facade_defaults(config: &WalConfig) -> (f64, f64, f64) {
     )
 }
 
+/// The canonical slot for a typed slot name (`base0D`, any case).
+fn canonical_slot(name: &str) -> Option<&'static str> {
+    let lower = name.to_ascii_lowercase();
+    BASE_SLOTS.iter().copied().find(|s| *s == lower)
+}
+
+/// The per-slot weights of the `palette` option, in canonical slot order.
+///
+/// No palette: every slot at 1.  Otherwise unlisted slots are 0 (left
+/// out) and the most specific key wins: `all`, then a role, then a slot.
+/// Weights are finite and >= 0, and at least one slot must stay in.
+pub fn palette_weights(config: &WalConfig) -> Result<[f64; 16], String> {
+    let Some(palette) = &config.palette else {
+        return Ok([1.0; 16]);
+    };
+    let mut all = None;
+    let mut roles: HashMap<&'static str, f64> = HashMap::new();
+    let mut slots: HashMap<&'static str, f64> = HashMap::new();
+    let mut keys: Vec<&String> = palette.keys().collect();
+    keys.sort();
+    for key in keys {
+        let w = palette[key];
+        if !w.is_finite() || w < 0.0 {
+            return Err(format!(
+                "palette: '{key}' needs a weight of 0 or more (got {w})"
+            ));
+        }
+        let twice = || format!("palette: '{key}' is given twice");
+        if let Some(slot) = canonical_slot(key) {
+            if slots.insert(slot, w).is_some() {
+                return Err(twice());
+            }
+        } else {
+            match crate::role::canonical_role(key) {
+                Some("all") => {
+                    if all.replace(w).is_some() {
+                        return Err(twice());
+                    }
+                }
+                Some(role) => {
+                    if roles.insert(role, w).is_some() {
+                        return Err(twice());
+                    }
+                }
+                None => {
+                    return Err(format!(
+                        "palette: '{key}' is not a slot (base00..base0F) or a role ({})",
+                        crate::role::role_list()
+                    ));
+                }
+            }
+        }
+    }
+    let mut weights = [0.0; 16];
+    for (i, slot) in BASE_SLOTS.iter().enumerate() {
+        weights[i] = slots
+            .get(slot)
+            .or_else(|| roles.get(role_of_slot(slot)))
+            .copied()
+            .or(all)
+            .unwrap_or(0.0);
+    }
+    if weights.iter().all(|w| *w == 0.0) {
+        return Err(
+            "palette: every slot is left out; give at least one a weight above 0".to_string(),
+        );
+    }
+    Ok(weights)
+}
+
+/// The `palette` option's command-line form: comma-separated keys, each
+/// bare (weight 1) or `key=weight`: `ac`, `base0D,base0E`,
+/// `all,base0D=6`.
+pub fn parse_palette(text: &str) -> Result<HashMap<String, f64>, String> {
+    let mut out = HashMap::new();
+    for part in text.split(',').map(str::trim) {
+        if part.is_empty() {
+            return Err(format!("expected keys like ac or base0D=6, got '{text}'"));
+        }
+        let (key, weight) = match part.split_once('=') {
+            Some((k, w)) => {
+                let w: f64 = w
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("'{part}': the weight is not a number"))?;
+                (k.trim(), w)
+            }
+            None => (part, 1.0),
+        };
+        if out.insert(key.to_string(), weight).is_some() {
+            return Err(format!("'{key}' is given twice"));
+        }
+    }
+    Ok(out)
+}
+
 /// The `globals // all // role` resolution, with validation.
 pub fn resolved_roles(
     config: &WalConfig,
@@ -210,6 +312,7 @@ pub fn resolved_roles(
     if mode == Mode::Blend && config.reach <= 0.0 {
         return Err("mode 'blend' needs a positive reach".to_string());
     }
+    palette_weights(config)?;
     let roles = crate::role::canonical_roles(&config.roles)?;
     let all = roles.get("all").cloned().unwrap_or_default();
     let (seed_hue, seed_light, seed_chroma) = facade_defaults(config);
@@ -278,13 +381,21 @@ pub struct SlotOptions {
     pub match_chroma: f64,
     pub lightness: f64,
     pub chroma: f64,
+    /// The slot's `palette` weight: its pull in the match (0 = left out).
+    pub weight: f64,
 }
 
-/// Per-slot options for the 16 canonical slots.
-pub fn slot_options(regs: &BTreeMap<&'static str, WalRoleSettings>) -> Vec<SlotOptions> {
-    BASE_SLOTS
+/// Per-slot options for the 16 canonical slots: the slot's role's
+/// settings and its `palette` weight.
+pub fn slot_options(
+    regs: &BTreeMap<&'static str, WalRoleSettings>,
+    config: &WalConfig,
+) -> Result<Vec<SlotOptions>, String> {
+    let weights = palette_weights(config)?;
+    Ok(BASE_SLOTS
         .iter()
-        .map(|slot| {
+        .zip(weights)
+        .map(|(slot, weight)| {
             let s = &regs[role_of_slot(slot)];
             SlotOptions {
                 match_hue: s.match_hue,
@@ -292,9 +403,10 @@ pub fn slot_options(regs: &BTreeMap<&'static str, WalRoleSettings>) -> Vec<SlotO
                 match_chroma: s.match_chroma,
                 lightness: s.lightness,
                 chroma: s.chroma,
+                weight,
             }
         })
-        .collect()
+        .collect())
 }
 
 /// The arrangement stage - shared semantics with the scheme side: each
@@ -414,19 +526,38 @@ impl<'a> ColorMap<'a> {
     }
 
     /// Returns the final (l, c, h) before the 8-bit render, plus the
-    /// anchor slot index.
-    fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, usize) {
+    /// anchor slot index (`None` for a gray pixel when the palette
+    /// leaves every neutral slot out: it passes through ungraded).
+    ///
+    /// Palette weights: a slot's weight multiplies its pull in blend
+    /// mode, and divides its distance when picking the nearest slot (a
+    /// weight-2 slot claims an arc twice as wide).  The snap-mode reach
+    /// gate still measures the real distance.  Weight 0 slots take no
+    /// part at all.
+    fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, Option<usize>) {
         let reach = self.config.reach;
         let gray_floor = self.config.max_gray_chroma;
+        let weight = |idx: usize| self.options[idx].weight;
         let (mut l2, mut c2, h2);
         let best_index;
         if raw.c < gray_floor {
             // Achromatic: keyed to the scheme's low-chroma slots by raw
             // lightness (first minimum wins).
-            let mut best = 0usize;
+            let neutrals: Vec<usize> = self
+                .neutral_slots
+                .iter()
+                .copied()
+                .filter(|&idx| weight(idx) > 0.0)
+                .collect();
+            if neutrals.is_empty() {
+                // The palette left the neutrals out: grays stay gray.
+                let (l, c) = image_grade(self.config, l_in, c_in);
+                return (l, c, raw.h, None);
+            }
+            let mut best = neutrals[0];
             let mut best_d = f64::INFINITY;
-            for &idx in self.neutral_slots {
-                let d = (self.slots[idx].lch.l - raw.l).abs();
+            for &idx in &neutrals {
+                let d = (self.slots[idx].lch.l - raw.l).abs() / weight(idx);
                 if d < best_d {
                     best_d = d;
                     best = idx;
@@ -444,10 +575,10 @@ impl<'a> ColorMap<'a> {
                 let mut cs = Vec::new();
                 let mut ws = Vec::new();
                 let mut total = 0.0f64;
-                for &idx in self.neutral_slots {
+                for &idx in &neutrals {
                     let s = self.slots[idx].lch;
                     let d = (s.l - raw.l).abs();
-                    let v = (-(d * d) / (t * t)).exp();
+                    let v = (-(d * d) / (t * t)).exp() * weight(idx);
                     ls.push(s.l);
                     cs.push(s.c);
                     ws.push(v);
@@ -476,10 +607,16 @@ impl<'a> ColorMap<'a> {
             // Chromatic: nearest slot by raw hue (first minimum), then
             // the opt-in blend moves, reach-gated in snap mode.
             let mut best = 0usize;
+            let mut best_score = f64::INFINITY;
             let mut best_d = f64::INFINITY;
             for (idx, slots_target) in self.slots.iter().enumerate() {
+                let w = weight(idx);
+                if w <= 0.0 {
+                    continue;
+                }
                 let d = circ_dist(raw.h, slots_target.lch.h);
-                if d < best_d {
+                if d / w < best_score {
+                    best_score = d / w;
                     best_d = d;
                     best = idx;
                 }
@@ -498,9 +635,13 @@ impl<'a> ColorMap<'a> {
                 let mut cs = Vec::new();
                 let mut ws = Vec::new();
                 let mut total = 0.0f64;
-                for s in self.slots.iter() {
+                for (idx, s) in self.slots.iter().enumerate() {
+                    let w = weight(idx);
+                    if w <= 0.0 {
+                        continue;
+                    }
                     let d = circ_dist(raw.h, s.lch.h);
-                    let v = (-(d * d) / (t * t)).exp();
+                    let v = (-(d * d) / (t * t)).exp() * w;
                     hues.push(s.lch.h);
                     ls.push(s.lch.l);
                     cs.push(s.lch.c);
@@ -537,13 +678,19 @@ impl<'a> ColorMap<'a> {
         let n = self.options[best_index];
         l2 = (l2 + n.lightness).clamp(0.0, 1.0);
         c2 = (c2 * n.chroma).max(0.0);
-        l2 = (l2 + self.config.lightness).clamp(0.0, 1.0);
-        c2 = (c2 * self.config.chroma).max(0.0);
-        (l2, c2, h2, best_index)
+        let (l, c) = image_grade(self.config, l2, c2);
+        (l, c, h2, Some(best_index))
     }
 }
 
-/// Ordered-dither threshold scalar for one pixel.
+/// The image-wide grade, applied last to every pixel.
+fn image_grade(config: &WalConfig, l: f64, c: f64) -> (f64, f64) {
+    (
+        (l + config.lightness).clamp(0.0, 1.0),
+        (c * config.chroma).max(0.0),
+    )
+}
+
 fn ordered_jitter(mode: DitherMode, x: usize, y: usize, dither: f64) -> f64 {
     let mask = match mode {
         DitherMode::BlueNoise => (f64::from(BLUE_NOISE64[y % 64][x % 64]) + 0.5) / 256.0,
@@ -618,7 +765,9 @@ pub fn apply(
                     out[i] = back[0];
                     out[i + 1] = back[1];
                     out[i + 2] = back[2];
-                    counts[slot] += 1;
+                    if let Some(slot) = slot {
+                        counts[slot] += 1;
+                    }
                 }
             }
         }
@@ -673,7 +822,9 @@ pub fn apply(
                     out[i] = back[0];
                     out[i + 1] = back[1];
                     out[i + 2] = back[2];
-                    counts[slot] += 1;
+                    if let Some(slot) = slot {
+                        counts[slot] += 1;
+                    }
                     x_it += dir;
                 }
                 std::mem::swap(&mut row_err_l, &mut next_err_l);

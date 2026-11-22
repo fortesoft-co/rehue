@@ -177,6 +177,21 @@ rungs = [
 ]
 
 [[ladder]]
+id = "wal-palette"
+file = "assets/examples/options/wal-palette.webp"
+base = "wal -i {bango} -s gruvbox-light -o {out}"
+output = "wallpaper.png"
+original = "{bango}"
+width = 380
+common = "--harmonize 1"
+rungs = [
+  { args = "", note = "every slot" },
+  { args = "--palette ac", note = "accents only" },
+  { args = "--palette base0D,base0E", note = "duotone" },
+  { args = "--palette all,base0D=6", note = "blue pulls harder" },
+]
+
+[[ladder]]
 id = "wal-max-gray-chroma"
 file = "assets/examples/options/wal-max-gray-chroma.webp"
 base = "wal -i {bango} -s gruvbox-light -o {out}"

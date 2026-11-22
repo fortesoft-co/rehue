@@ -70,6 +70,9 @@ nav [for] { padding: 5px 14px; border-radius: 6px; cursor: pointer;
 .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; max-width: 900px; }
 .sw { width: 44px; text-align: center; font-size: 10px; color: var(--base04); }
 .sw i { display: block; height: 26px; border-radius: 5px; border: 1px solid var(--border); }
+/* slots the wal palette left out */
+.sw.out { text-decoration: line-through; }
+.sw.out i { opacity: .25; }
 .hint { color: var(--base04); font-size: 12.5px; margin: 14px 2px; max-width: 720px; }
 
 .window { background: var(--base00); border: 1px solid var(--border);
@@ -239,22 +242,22 @@ main section { max-width: 780px; margin: 0 2px; }
     <label for="v-qt">Qt</label>
   </nav>
   <div class="swatches">
-    <span class="sw"><i style="background:var(--base00)"></i>00</span>
-    <span class="sw"><i style="background:var(--base01)"></i>01</span>
-    <span class="sw"><i style="background:var(--base02)"></i>02</span>
-    <span class="sw"><i style="background:var(--base03)"></i>03</span>
-    <span class="sw"><i style="background:var(--base04)"></i>04</span>
-    <span class="sw"><i style="background:var(--base05)"></i>05</span>
-    <span class="sw"><i style="background:var(--base06)"></i>06</span>
-    <span class="sw"><i style="background:var(--base07)"></i>07</span>
-    <span class="sw"><i style="background:var(--base08)"></i>08</span>
-    <span class="sw"><i style="background:var(--base09)"></i>09</span>
-    <span class="sw"><i style="background:var(--base0a)"></i>0A</span>
-    <span class="sw"><i style="background:var(--base0b)"></i>0B</span>
-    <span class="sw"><i style="background:var(--base0c)"></i>0C</span>
-    <span class="sw"><i style="background:var(--base0d)"></i>0D</span>
-    <span class="sw"><i style="background:var(--base0e)"></i>0E</span>
-    <span class="sw"><i style="background:var(--base0f)"></i>0F</span>
+    <span class="sw{{off00}}"><i style="background:var(--base00)"></i>00</span>
+    <span class="sw{{off01}}"><i style="background:var(--base01)"></i>01</span>
+    <span class="sw{{off02}}"><i style="background:var(--base02)"></i>02</span>
+    <span class="sw{{off03}}"><i style="background:var(--base03)"></i>03</span>
+    <span class="sw{{off04}}"><i style="background:var(--base04)"></i>04</span>
+    <span class="sw{{off05}}"><i style="background:var(--base05)"></i>05</span>
+    <span class="sw{{off06}}"><i style="background:var(--base06)"></i>06</span>
+    <span class="sw{{off07}}"><i style="background:var(--base07)"></i>07</span>
+    <span class="sw{{off08}}"><i style="background:var(--base08)"></i>08</span>
+    <span class="sw{{off09}}"><i style="background:var(--base09)"></i>09</span>
+    <span class="sw{{off0a}}"><i style="background:var(--base0a)"></i>0A</span>
+    <span class="sw{{off0b}}"><i style="background:var(--base0b)"></i>0B</span>
+    <span class="sw{{off0c}}"><i style="background:var(--base0c)"></i>0C</span>
+    <span class="sw{{off0d}}"><i style="background:var(--base0d)"></i>0D</span>
+    <span class="sw{{off0e}}"><i style="background:var(--base0e)"></i>0E</span>
+    <span class="sw{{off0f}}"><i style="background:var(--base0f)"></i>0F</span>
   </div>
 </header>
 

@@ -242,6 +242,7 @@ struct WalOverrides {
     match_chroma: Vec<String>,
     match_lightness: Vec<String>,
     reach: Option<f64>,
+    palette: Option<String>,
     max_gray_chroma: Option<f64>,
     dithering: Option<f64>,
     dithering_mode: Option<grade_wal::DitherMode>,
@@ -264,6 +265,12 @@ impl WalOverrides {
         }
         if let Some(v) = self.reach {
             config.reach = v;
+        }
+        if let Some(text) = self.palette {
+            // replaces the config's palette: merging subsets would blur
+            // which slots are in
+            config.palette =
+                Some(grade_wal::parse_palette(&text).map_err(|e| format!("--palette: {e}"))?);
         }
         if let Some(v) = self.max_gray_chroma {
             config.max_gray_chroma = v;
@@ -410,6 +417,7 @@ fn run_scheme(
         wallpaper_src: Some(&wall_src),
         scheme: &scheme_name,
         hexes: &mapped_hexes,
+        left_out: &[],
     };
     std::fs::write(out.join("preview.html"), preview::render(&input)?)
         .map_err(|e| format!("can't write preview.html: {}", e))?;
@@ -472,6 +480,35 @@ fn wal_clusters(
     }
 }
 
+/// `palette    base0d 6, base0e 1  (14 left out)`: the slots in, with
+/// weights unless they are all equal.
+fn palette_summary(weights: &[f64; 16]) -> String {
+    let kept: Vec<(&str, f64)> = BASE_SLOTS
+        .iter()
+        .copied()
+        .zip(weights.iter().copied())
+        .filter(|(_, w)| *w > 0.0)
+        .collect();
+    let uniform = kept.iter().all(|(_, w)| (*w - kept[0].1).abs() < 1e-9);
+    let list = kept
+        .iter()
+        .map(|(slot, w)| {
+            if uniform {
+                slot.to_string()
+            } else {
+                format!("{slot} {w}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let out = 16 - kept.len();
+    if out == 0 {
+        format!("palette    {list}")
+    } else {
+        format!("palette    {list}  ({out} left out)")
+    }
+}
+
 fn run_wal(
     wallpaper: &Path,
     parsed: &Scheme,
@@ -481,6 +518,8 @@ fn run_wal(
     lut: Option<(LutFormat, u32)>,
 ) -> Result<(), String> {
     let regs = grade_wal::resolved_roles(&config)?;
+    let weights = grade_wal::palette_weights(&config)?;
+    let left_out: Vec<usize> = (0..16).filter(|i| weights[*i] == 0.0).collect();
     if let Some((format, level)) = lut {
         if !rehue::lut::LEVELS.contains(&level) {
             return Err(format!("--lut-level takes 2..=16 (got {level})"));
@@ -571,6 +610,9 @@ fn run_wal(
             config.lightness,
             config.chroma
         );
+        if config.palette.is_some() {
+            println!("  {}", palette_summary(&weights));
+        }
         for name in role::ROLE_NAMES {
             let s = &regs[name];
             let non_default = !matches!(s.assign, AssignState::Off)
@@ -604,7 +646,7 @@ fn run_wal(
             source.height(),
             &arranged,
             &neutral_slots,
-            &grade_wal::slot_options(&regs),
+            &grade_wal::slot_options(&regs, &config)?,
             &config,
         );
         let pixels = image::RgbImage::from_raw(source.width(), source.height(), result.pixels)
@@ -624,7 +666,7 @@ fn run_wal(
         } else {
             let clusters = wal_clusters(&regs, &dynamic, &config);
             let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
-            let options = grade_wal::slot_options(&regs);
+            let options = grade_wal::slot_options(&regs, &config)?;
             let map = grade_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config);
             write_lut(out, format, level, &parsed.meta_name(), |rgb| {
                 map.map_rgb(rgb)
@@ -656,6 +698,7 @@ fn run_wal(
             wallpaper_src: Some("wallpaper.png"),
             scheme: &scheme_name,
             hexes: strip_hexes,
+            left_out: &left_out,
         };
         std::fs::write(out.join("preview.html"), preview::render(&input)?)
             .map_err(|e| format!("can't write preview.html: {}", e))?;
@@ -734,6 +777,7 @@ fn run_inspect(
                     wallpaper_src: None,
                     scheme: &scheme_name,
                     hexes: &hexes,
+                    left_out: &[],
                 })?,
             )
             .map_err(|e| format!("can't write preview.html: {}", e))?;
@@ -1029,6 +1073,7 @@ fn run(command: Commands) -> Result<(), String> {
             match_chroma,
             match_lightness,
             reach,
+            palette,
             max_gray_chroma,
             dithering,
             dithering_mode,
@@ -1047,6 +1092,7 @@ fn run(command: Commands) -> Result<(), String> {
                 match_chroma,
                 match_lightness,
                 reach,
+                palette,
                 max_gray_chroma,
                 dithering,
                 dithering_mode,

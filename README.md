@@ -268,6 +268,7 @@ Extraction settings go in the `--config` JSON (on `scheme`, `wal` or
 | `--match-chroma` | `[ROLE] 0..1` | How much of the palette's chroma each pixel takes on (0 = keep its own, 1 = fully adopt) |
 | `--match-lightness` | `[ROLE] 0..1` | How much of the palette's lightness each pixel takes on (default 0, which keeps the image photographic) |
 | `--reach` | `DEG` | How far, in hue degrees, a palette color's pull extends (default 45) |
+| `--palette` | `KEY[=W],...` | Which scheme colors pixels may be pulled toward, and how hard: slots (base0D), roles (ac) or all, comma-separated, each bare (weight 1) or KEY=WEIGHT |
 | `--max-gray-chroma` | `C` | Below this chroma a pixel counts as gray (default 0.02) |
 | `--dithering` | `0..1` | Dithering strength 0..1 (0 = off) |
 | `--dithering-mode` | `blue-noise \| bayer \| floyd-steinberg \| atkinson \| none` | Dithering pattern (default blue-noise) |

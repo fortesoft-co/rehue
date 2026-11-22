@@ -26,7 +26,7 @@ fn wal_is_deterministic() {
         ..Default::default()
     };
     let regs = rehue::grade_wal::resolved_roles(&config).expect("valid config");
-    let options = rehue::grade_wal::slot_options(&regs);
+    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
     let first = rehue::grade_wal::apply(pixels, 64, 64, &slots, &neutral, &options, &config);
     let second = rehue::grade_wal::apply(pixels, 64, 64, &slots, &neutral, &options, &config);
     assert_eq!(first.pixels, second.pixels);
@@ -103,7 +103,7 @@ fn wal_arrangement_and_per_register_options_are_deterministic() {
     let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
     let image = gradient_image((64, 64));
     let rgb = image.to_rgb8();
-    let options = rehue::grade_wal::slot_options(&regs);
+    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
     let first =
         rehue::grade_wal::apply(rgb.as_raw(), 64, 64, &arranged, &neutral, &options, &config);
     let second =
@@ -127,7 +127,7 @@ fn blend_dial_resolution() {
         },
     );
     let regs = rehue::grade_wal::resolved_roles(&config).expect("valid config");
-    let options = rehue::grade_wal::slot_options(&regs);
+    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
     // accents: the role's explicit chroma dial wins over the facade;
     // hue follows the facade and light is decoupled from it.
     let accents = options[8];
@@ -144,7 +144,9 @@ fn blend_dial_resolution() {
     config.match_hue = Some(1.0);
     let options_strict = rehue::grade_wal::slot_options(
         &rehue::grade_wal::resolved_roles(&config).expect("valid config"),
-    );
+        &config,
+    )
+    .unwrap();
     assert!((options_strict[1].match_hue - 1.0).abs() < 1e-9);
     assert!((options_strict[8].match_hue - 1.0).abs() < 1e-9);
 }
@@ -160,7 +162,7 @@ fn dithering_varies_full_blend_and_is_deterministic() {
         ..Default::default()
     };
     let regs = rehue::grade_wal::resolved_roles(&config).expect("valid config");
-    let options = rehue::grade_wal::slot_options(&regs);
+    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
 
     config.dithering = 0.0;
     let plain = rehue::grade_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
@@ -195,7 +197,7 @@ fn dither_modes_differ_and_each_is_deterministic() {
         ..Default::default()
     };
     let regs = rehue::grade_wal::resolved_roles(&config).expect("valid config");
-    let options = rehue::grade_wal::slot_options(&regs);
+    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
     let mut run = |mode: DitherMode| {
         config.dithering_mode = Some(mode);
         let first =
@@ -257,7 +259,7 @@ fn soft_territory_blends_between_slots() {
         let mut cfg = base.clone();
         cfg.mode = mode;
         let regs = rehue::grade_wal::resolved_roles(&cfg).expect("valid config");
-        let options = rehue::grade_wal::slot_options(&regs);
+        let options = rehue::grade_wal::slot_options(&regs, &cfg).unwrap();
         rehue::grade_wal::apply(&pixels, 1, 1, &slots, &neutral, &options, &cfg)
     };
     let snap = run(Some(Mode::Snap));

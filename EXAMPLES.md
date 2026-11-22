@@ -148,6 +148,38 @@ rehue wal --harmonize 1 --reach 140
 ```
 <!-- /gen:ladder:wal-reach -->
 
+### palette — slots, roles or `all`, with weights
+
+Which scheme colors pixels may be pulled toward, and how hard. Keys
+are slots (`base0D`), roles (`accents`, `ac`) or `all`; a bare key is
+weight 1, `key=weight` sets it. Once a palette is given, **unlisted
+slots are left out**, so `ac` means accents only (grays stay gray,
+because no neutral slot is in), `base0D,base0E` is a duotone, and
+`all,base0D=6` keeps everything but lets blue pull harder. The most
+specific key wins: a slot beats its role, a role beats `all`.
+
+In `blend` a weight multiplies the slot's pull; in `snap` it divides
+the slot's hue distance, so a weight-2 slot claims an arc twice as
+wide (`reach` still measures the real distance). Weights belong to
+slots, not hues: they apply after `assign` and `cycle`. In config:
+`"palette": {"all": 1, "base0D": 6}`. A `--palette` flag replaces the
+config's palette rather than merging with it.
+
+![original / harmonize 1 alone, then palette ac, base0D,base0E and all,base0D=6](assets/examples/options/wal-palette.webp)
+
+<!-- gen:ladder:wal-palette -->
+```sh
+# every slot
+rehue wal --harmonize 1
+# accents only
+rehue wal --harmonize 1 --palette ac
+# duotone
+rehue wal --harmonize 1 --palette base0D,base0E
+# blue pulls harder
+rehue wal --harmonize 1 --palette all,base0D=6
+```
+<!-- /gen:ladder:wal-palette -->
+
 ### max-gray-chroma — default `0.02`
 
 Chroma below which pixels count as gray: they key to the scheme's

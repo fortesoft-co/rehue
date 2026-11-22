@@ -201,6 +201,17 @@ pub enum Commands {
         /// e.g. --reach 60
         #[arg(long, help_heading = "Grading", value_name = "DEG")]
         reach: Option<f64>,
+        /// Which scheme colors pixels may be pulled toward, and how hard:
+        /// slots (base0D), roles (ac) or all, comma-separated, each bare
+        /// (weight 1) or KEY=WEIGHT.
+        ///
+        /// Unlisted slots are left out, and grays stay gray when no neutral
+        /// slot is in.  A heavier slot pulls harder (blend) and claims a
+        /// wider arc (snap).
+        ///
+        /// e.g. --palette ac   --palette base0D,base0E   --palette all,base0D=6
+        #[arg(long, help_heading = "Grading", value_name = "KEY[=W],...")]
+        palette: Option<String>,
         /// Below this chroma a pixel counts as gray (default 0.02).
         ///
         /// Gray pixels key to the scheme's neutral slots by lightness.

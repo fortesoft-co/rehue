@@ -40,6 +40,9 @@ pub struct Preview<'a> {
     pub wallpaper_src: Option<&'a str>,
     pub scheme: &'a str,
     pub hexes: &'a [String],
+    /// Slot indices the wal `palette` left out (dimmed swatches); empty
+    /// when every slot took part.
+    pub left_out: &'a [usize],
 }
 
 /// A link from the artifact directory to a file: component walk with
@@ -106,6 +109,7 @@ pub fn render(input: &Preview) -> Result<String, String> {
         wallpaper_src,
         scheme,
         hexes,
+        left_out,
     } = input;
     if hexes.len() != 16 {
         return Err(format!(
@@ -136,6 +140,12 @@ pub fn render(input: &Preview) -> Result<String, String> {
     html = html.replace("{{wall-src}}", &wall_src);
     for (index, hex) in hexes.iter().enumerate() {
         html = html.replace(&format!("{{{{base{:02x}}}}}", index), hex);
+        let off = if left_out.contains(&index) {
+            " out"
+        } else {
+            ""
+        };
+        html = html.replace(&format!("{{{{off{:02x}}}}}", index), off);
     }
     if html.contains("{{") {
         return Err("preview template has unfilled placeholders".to_string());

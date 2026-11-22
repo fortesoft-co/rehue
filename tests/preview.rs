@@ -16,6 +16,7 @@ fn alone(scheme: &str) -> Preview<'_> {
         scheme,
         // filled by the caller per test
         hexes: &[],
+        left_out: &[],
     }
 }
 
@@ -117,6 +118,7 @@ fn the_heading_flows_match_the_commands() {
         wallpaper_src: Some("../assets/bango.webp"),
         scheme: "Gruvbox Light",
         hexes: &slot_hexes,
+        left_out: &[],
     };
     let html = render(&page).expect("scheme page");
     assert_eq!(tab_of(&html), "Bango → Gruvbox Light - rehue preview");
@@ -132,6 +134,7 @@ fn the_heading_flows_match_the_commands() {
         wallpaper_src: Some("wallpaper.png"),
         scheme: "Gruvbox Light",
         hexes: &slot_hexes,
+        left_out: &[],
     };
     let html = render(&page).expect("wal page");
     assert_eq!(tab_of(&html), "Gruvbox Light → Bango - rehue preview");
@@ -153,6 +156,7 @@ fn the_heading_flows_match_the_commands() {
         wallpaper_src: Some("assets/x.webp"),
         scheme: "s",
         hexes: &slot_hexes,
+        left_out: &[],
     };
     let err = render(&bad).expect_err("paired flows need a wallpaper name");
     assert!(err.contains("wallpaper name"), "{err}");

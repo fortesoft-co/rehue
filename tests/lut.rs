@@ -29,7 +29,7 @@ fn color_map_matches_apply_pixel_for_pixel() {
             ..Default::default()
         };
         let regs = rehue::grade_wal::resolved_roles(&config).unwrap();
-        let options = rehue::grade_wal::slot_options(&regs);
+        let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
         let out = rehue::grade_wal::apply(
             rgb.as_raw(),
             rgb.width(),
