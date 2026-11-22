@@ -254,6 +254,32 @@ struct WalOverrides {
 }
 
 impl WalOverrides {
+    /// The shared grading flags, plus wal's own (absent for icons).
+    fn from_grade(
+        g: rehue::cli::GradeArgs,
+        dithering: Option<f64>,
+        dithering_mode: Option<grade_wal::DitherMode>,
+        assign: Vec<String>,
+    ) -> Self {
+        WalOverrides {
+            mode: g.mode,
+            neutrals: g.neutrals,
+            harmonize: g.harmonize,
+            match_hue: g.match_hue,
+            match_chroma: g.match_chroma,
+            match_lightness: g.match_lightness,
+            reach: g.reach,
+            palette: g.palette,
+            max_gray_chroma: g.max_gray_chroma,
+            dithering,
+            dithering_mode,
+            assign,
+            cycle: g.cycle,
+            lightness: g.lightness,
+            chroma: g.chroma,
+        }
+    }
+
     fn apply(self, config: &mut grade_wal::WalConfig) -> Result<(), String> {
         if self.mode.is_some() {
             config.mode = self.mode;
@@ -871,6 +897,219 @@ fn run_enhance(
 /// `inspect --schemes`: every available scheme as a row of swatches.
 /// A file in `scheme_dir` shadows an embedded scheme of the same name,
 /// matching the lookup order of `Scheme::resolve`.
+/// `rehue icons`: a theme (or one icon) recoloured with the wal grade.
+fn run_icons(
+    input: &str,
+    parsed: &Scheme,
+    out: &Path,
+    name: Option<&str>,
+    config: rehue::icons::IconsConfig,
+    dry_run: bool,
+) -> Result<(), String> {
+    use rehue::icons::{self, Input};
+    let source = icons::find_input(input)?;
+    let mut folder_grade = config.grade.clone();
+    if config.folders.is_some() {
+        folder_grade.palette = config.folders.clone();
+    }
+    let regs = grade_wal::resolved_roles(&config.grade)?;
+    let folder_regs = grade_wal::resolved_roles(&folder_grade)?;
+    if regs.values().any(|r| !matches!(r.assign, AssignState::Off)) {
+        println!("rehue icons: assign needs a wallpaper's families; ignored here");
+    }
+    let slot_hexes = parsed.slot_hexes()?;
+    let slots: Vec<grade_wal::SlotPalette> = BASE_SLOTS
+        .iter()
+        .copied()
+        .zip(&slot_hexes)
+        .map(|(slot, hex)| {
+            Ok(grade_wal::SlotPalette {
+                slot,
+                lch: hex_to_oklch(hex)?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let arranged = grade_wal::arrange_palette(&slots, &[], &regs)?;
+    let mut neutral_slots: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
+    if neutral_slots.is_empty() {
+        neutral_slots = (0..16).collect();
+    }
+    let options = grade_wal::slot_options(&regs, &config.grade)?;
+    let folder_options = grade_wal::slot_options(&folder_regs, &folder_grade)?;
+
+    // what "fully vivid" means: the theme's own colours
+    let colours = match &source {
+        Input::Theme(root) => icons::theme_colours(root)?,
+        Input::File(path) => match std::fs::read_to_string(path) {
+            Ok(text) => icons::svg_colours(&text).into_iter().flatten().collect(),
+            Err(_) => Vec::new(),
+        },
+    };
+    let vivid = if colours.is_empty() {
+        grade_wal::DEFAULT_VIVID
+    } else {
+        grade_wal::vivid_chroma(&colours)
+    };
+    let painter = icons::Painter {
+        icons: grade_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config.grade)
+            .with_vivid(vivid),
+        folders: grade_wal::ColorMap::new(
+            &arranged,
+            &neutral_slots,
+            &folder_options,
+            &folder_grade,
+        )
+        .with_vivid(vivid),
+    };
+    println!(
+        "rehue icons: painting with '{}' by {}",
+        parsed.meta_name(),
+        parsed.meta_author()
+    );
+    if config.grade.palette.is_some() {
+        println!(
+            "  {}",
+            palette_summary(&grade_wal::palette_weights(&config.grade)?)
+        );
+    }
+    if config.folders.is_some() {
+        println!(
+            "  folders:   {}",
+            palette_summary(&grade_wal::palette_weights(&folder_grade)?)
+                .trim_start_matches("palette")
+                .trim()
+        );
+    }
+
+    let background = oklch_to_rgb(&slots[0].lch);
+    let accents: Vec<[u8; 3]> = slots[8..].iter().map(|s| oklch_to_rgb(&s.lch)).collect();
+    match source {
+        Input::File(path) => {
+            let file = path
+                .file_name()
+                .ok_or_else(|| format!("{} has no file name", path.display()))?;
+            let dest = out.join(file);
+            let bytes =
+                std::fs::read(&path).map_err(|e| format!("can't read {}: {e}", path.display()))?;
+            let mut f = |rgb: [u8; 3]| painter.icons.map_rgb(&rgb);
+            let body = if path.extension().is_some_and(|x| x == "png") {
+                icons::recolor_png(&bytes, &mut f)?
+            } else {
+                let text = String::from_utf8(bytes)
+                    .map_err(|_| format!("{} is not a text SVG", path.display()))?;
+                icons::recolor_svg(&text, &mut f).into_bytes()
+            };
+            if dry_run {
+                println!("rehue icons: dry run (nothing written)");
+                return Ok(());
+            }
+            std::fs::create_dir_all(out)
+                .map_err(|e| format!("can't create {}: {e}", out.display()))?;
+            std::fs::write(&dest, body)
+                .map_err(|e| format!("can't write {}: {e}", dest.display()))?;
+            let sheet = icons::preview_sheet(
+                &[icons::render_icon(&path, 48)],
+                &[icons::render_icon(&dest, 48)],
+                background,
+                &accents,
+            );
+            sheet
+                .save(out.join("preview.png"))
+                .map_err(|e| format!("can't write preview.png: {e}"))?;
+            println!("rehue icons: wrote {}, preview.png", file.to_string_lossy());
+        }
+        Input::Theme(root) => {
+            let index = icons::read_index(&root)?;
+            let original = index.name.clone().unwrap_or_else(|| {
+                root.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "icons".into())
+            });
+            let theme_name = name.map_or_else(|| format!("{original}-rehue"), String::from);
+            let dir_name: String = theme_name
+                .chars()
+                .map(|c| {
+                    if c == '/' || c.is_whitespace() {
+                        '-'
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            let dest = out.join(&dir_name);
+            println!("rehue icons: theme '{original}' -> '{theme_name}'");
+            if !dry_run && dest.exists() {
+                std::fs::remove_dir_all(&dest)
+                    .map_err(|e| format!("can't replace {}: {e}", dest.display()))?;
+            }
+            let stats = icons::recolor_theme(
+                &root,
+                (!dry_run).then_some(dest.as_path()),
+                &theme_name,
+                &painter,
+            )?;
+            println!(
+                "rehue icons: {} svg, {} png recolored ({} colors, {} folder icons); {} copied; {} links kept",
+                stats.svg, stats.png, stats.colours, stats.folders, stats.copied, stats.links
+            );
+            if stats.brought_in > 0 {
+                println!(
+                    "  {} files came from links leaving the theme and were copied in",
+                    stats.brought_in
+                );
+            }
+            if config.folders.is_some() && stats.folders == 0 {
+                let from = index
+                    .inherits
+                    .iter()
+                    .filter(|t| *t != "hicolor")
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if from.is_empty() {
+                    println!("  no folder icons in this theme");
+                } else {
+                    println!(
+                        "  no folder icons in this theme: it takes them from {} (recolor that theme for the folders)",
+                        from.join(", ")
+                    );
+                }
+            }
+            if dry_run {
+                println!("rehue icons: dry run (nothing written)");
+                return Ok(());
+            }
+            let files = icons::preview_files(&root)?;
+            let before: Vec<_> = files
+                .iter()
+                .map(|rel| icons::render_icon(&root.join(rel), 48))
+                .collect();
+            let after: Vec<_> = files
+                .iter()
+                .map(|rel| icons::render_icon(&dest.join(rel), 48))
+                .collect();
+            icons::preview_sheet(&before, &after, background, &accents)
+                .save(out.join("preview.png"))
+                .map_err(|e| format!("can't write preview.png: {e}"))?;
+            let cache = std::process::Command::new("gtk-update-icon-cache")
+                .args(["--force", "--quiet"])
+                .arg(&dest)
+                .status();
+            match cache {
+                Ok(s) if s.success() => println!("rehue icons: icon cache built"),
+                _ => println!(
+                    "rehue icons: no gtk-update-icon-cache; the theme works without one (GTK just looks icons up slower)"
+                ),
+            }
+            println!(
+                "rehue icons: wrote {}/, preview.png; install with: cp -r {} ~/.local/share/icons/",
+                dest.display(),
+                dest.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 /// `inspect --looks`: every look (name, what it grades, description), or
 /// with a name, that look's file.
 fn run_inspect_looks(name: &str) -> Result<(), String> {
@@ -1145,21 +1384,10 @@ fn run(command: Commands) -> Result<(), String> {
             config,
             look,
             dry_run,
-            mode,
-            neutrals,
-            harmonize,
-            match_hue,
-            match_chroma,
-            match_lightness,
-            reach,
-            palette,
-            max_gray_chroma,
+            grade,
             dithering,
             dithering_mode,
             assign,
-            cycle,
-            lightness,
-            chroma,
             lut,
             lut_level,
         } => {
@@ -1171,24 +1399,8 @@ fn run(command: Commands) -> Result<(), String> {
                 rehue::look::Target::Wal,
             )?;
             print_looks("wal", &looks);
-            WalOverrides {
-                mode,
-                neutrals,
-                harmonize,
-                match_hue,
-                match_chroma,
-                match_lightness,
-                reach,
-                palette,
-                max_gray_chroma,
-                dithering,
-                dithering_mode,
-                assign,
-                cycle,
-                lightness,
-                chroma,
-            }
-            .apply(&mut wal_config)?;
+            WalOverrides::from_grade(grade, dithering, dithering_mode, assign)
+                .apply(&mut wal_config)?;
             let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
             run_wal(
                 &input,
@@ -1197,6 +1409,42 @@ fn run(command: Commands) -> Result<(), String> {
                 wal_config,
                 dry_run,
                 lut.map(|format| (format, lut_level)),
+            )
+        }
+        Commands::Icons {
+            input,
+            scheme,
+            out,
+            name,
+            dry_run,
+            scheme_dir,
+            config,
+            look,
+            folders,
+            grade,
+        } => {
+            let (mut icons_config, looks) = rehue::look::resolve::<rehue::icons::IconsConfig>(
+                &config_label(config.as_deref()),
+                rehue::config::read_file(config.as_deref())?,
+                &look,
+                None,
+                rehue::look::Target::Icons,
+            )?;
+            print_looks("icons", &looks);
+            WalOverrides::from_grade(grade, None, None, Vec::new())
+                .apply(&mut icons_config.grade)?;
+            if let Some(text) = folders {
+                icons_config.folders =
+                    Some(grade_wal::parse_palette(&text).map_err(|e| format!("--folders: {e}"))?);
+            }
+            let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
+            run_icons(
+                &input,
+                &parsed,
+                out.as_deref().unwrap_or(Path::new("rehue-out")),
+                name.as_deref(),
+                icons_config,
+                dry_run,
             )
         }
         Commands::Inspect {

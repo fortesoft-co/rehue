@@ -30,9 +30,21 @@ rejected (pre-1.0, see the table below).
   favor one). Also `"palette"` in the wal config; left-out slots are
   dimmed in `preview.html`. Library: `grade_wal::palette_weights`,
   `parse_palette`, and `slot_options` now takes the config.
+- `rehue icons`: recolor an icon theme (or one SVG / PNG icon) with a
+  scheme, through the same grade as `wal` (flags, looks, configs;
+  harmonize 1 by default). Rewrites every color in SVGs (hex,
+  `rgb()`, stylesheets, embedded PNGs) and PNGs, keeps the theme's
+  links, copies in what links outside it, renames it, rebuilds the
+  icon cache when it can, and writes a before/after `preview.png`.
+  `--folders` sets the folder color (Places icons named `folder*`,
+  `user-home`, `user-desktop`, and `inode-directory`); `-p` makes a
+  one-color pack. Themes are found by name in the usual icon
+  directories. Nix: `lib.icons` builds a package for `stylix.icons`.
+  Looks take an `[icons]` section (else their `[wal]` one).
 - Looks: saved grades picked by name, `-l NAME` on `wal` and
   `scheme` (stack with `-l snap,pop`). Built-ins: soft, tight, pop,
-  muted, wash, snap, vivid (soft uses `neutrals mix`); your own go in `~/.config/rehue/looks/NAME.toml`
+  muted, wash, snap, vivid (soft uses `neutrals mix`, snap paints with
+  the accents only); your own go in `~/.config/rehue/looks/NAME.toml`
   with `[wal]` / `[scheme]` sections (a built-in's name replaces it, a
   name with `/` is a path). A look is a starting point: the config and
   the flags win over it, key by key. Configs and pipelines take a

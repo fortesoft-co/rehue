@@ -1,8 +1,9 @@
 //! Looks: saved grades, selectable by name (`-l pop`).
 //!
-//! A look is a TOML file with a `description` and a `[wal]` and/or
-//! `[scheme]` section; the sections take the same keys as the
-//! commands' configs.  A look is a starting point: it lays under the
+//! A look is a TOML file with a `description` and `[wal]`, `[scheme]`
+//! and/or `[icons]` sections; the sections take the same keys as the
+//! commands' configs, and `icons` falls back to a look's `[wal]` section
+//! when it has no `[icons]` one.  A look is a starting point: it lays under the
 //! `--config` file and the flags, key by key, so anything stated
 //! explicitly wins.  Looks stack left to right (`-l snap,pop`).
 //!
@@ -38,6 +39,7 @@ pub const BUILTIN: [(&str, &str); 7] = [
 pub enum Target {
     Wal,
     Scheme,
+    Icons,
 }
 
 impl Target {
@@ -45,6 +47,16 @@ impl Target {
         match self {
             Self::Wal => "wal",
             Self::Scheme => "scheme",
+            Self::Icons => "icons",
+        }
+    }
+
+    /// The layer under every look: what the command defaults to beyond
+    /// its config type's defaults (icons are harmonized out of the box).
+    pub fn base(self) -> Value {
+        match self {
+            Self::Icons => serde_json::json!({ "harmonize": 1 }),
+            _ => Value::Object(Map::new()),
         }
     }
 }
@@ -69,6 +81,7 @@ pub struct Look {
     pub text: String,
     wal: Option<Value>,
     scheme: Option<Value>,
+    icons: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -78,6 +91,7 @@ struct LookFile {
     description: String,
     wal: Option<toml::Table>,
     scheme: Option<toml::Table>,
+    icons: Option<toml::Table>,
 }
 
 impl Look {
@@ -85,13 +99,18 @@ impl Look {
     /// for its command.
     pub fn parse(name: &str, text: &str, source: Source) -> Result<Look, String> {
         let file: LookFile = toml::from_str(text).map_err(|e| format!("look '{name}': {e}"))?;
-        if file.wal.is_none() && file.scheme.is_none() {
+        if file.wal.is_none() && file.scheme.is_none() && file.icons.is_none() {
             return Err(format!(
-                "look '{name}' has neither a [wal] nor a [scheme] section"
+                "look '{name}' has none of the [wal], [scheme] and [icons] sections"
             ));
         }
         let wal = file.wal.map(from_toml);
         let scheme = file.scheme.map(from_toml);
+        let icons = file.icons.map(from_toml);
+        if let Some(v) = &icons {
+            from_value::<crate::icons::IconsConfig>(v.clone())
+                .map_err(|e| format!("look '{name}' [icons]: {e}"))?;
+        }
         if let Some(v) = &wal {
             from_value::<WalConfig>(v.clone()).map_err(|e| format!("look '{name}' [wal]: {e}"))?;
         }
@@ -106,6 +125,7 @@ impl Look {
             text: text.to_string(),
             wal,
             scheme,
+            icons,
         })
     }
 
@@ -114,12 +134,15 @@ impl Look {
         match target {
             Target::Wal => self.wal.as_ref(),
             Target::Scheme => self.scheme.as_ref(),
+            // icons are graded by the wal engine: a look without an
+            // [icons] section lends its [wal] one
+            Target::Icons => self.icons.as_ref().or(self.wal.as_ref()),
         }
     }
 
     /// The commands this look grades for: "wal, scheme", "wal", ...
     pub fn targets(&self) -> String {
-        [Target::Wal, Target::Scheme]
+        [Target::Wal, Target::Scheme, Target::Icons]
             .into_iter()
             .filter(|t| self.section(*t).is_some())
             .map(Target::name)
@@ -255,7 +278,7 @@ pub fn take_look(config: &mut Value) -> Result<Option<Vec<String>>, String> {
 /// The looks named, layered for `target` (left to right, later wins).
 /// A look without a section for `target` is an error.
 pub fn layer(looks: &[Look], target: Target) -> Result<Value, String> {
-    let mut out = Value::Object(Map::new());
+    let mut out = target.base();
     for look in looks {
         let section = look.section(target).ok_or_else(|| {
             format!(

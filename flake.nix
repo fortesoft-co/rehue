@@ -123,6 +123,40 @@
                 --config "$configArg" \
                 --out "$out"
             '';
+
+          # recolor an icon theme with a scheme (`rehue icons`); the result
+          # is a package with share/icons/<name>, for stylix.icons.package
+          icons =
+            {
+              icons,
+              theme,
+              scheme,
+              name ? "${theme}-rehue",
+              config ? { },
+            }:
+            let
+              configFile = pkgs.writeText "rehue-icons-config.json" (builtins.toJSON config);
+            in
+            pkgs.runCommand "rehue-icons" {
+              nativeBuildInputs = [
+                rehue
+                pkgs.gtk3 # gtk-update-icon-cache
+              ];
+              themeArg = "${icons}/share/icons/${theme}";
+              schemeArg = "${scheme}";
+              nameArg = name;
+              configArg = configFile;
+            } ''
+              rehue icons \
+                --input "$themeArg" \
+                --scheme "$schemeArg" \
+                --name "$nameArg" \
+                --config "$configArg" \
+                --out build
+              mkdir -p "$out/share/icons" "$out/share/rehue"
+              mv build/*/ "$out/share/icons/"
+              mv build/preview.png "$out/share/rehue/"
+            '';
         }
       );
     };

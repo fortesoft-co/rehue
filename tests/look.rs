@@ -117,7 +117,7 @@ fn bad_looks_and_bad_keys_are_errors() {
         (
             vec![empty.as_str()],
             json!({}),
-            "neither a [wal] nor a [scheme]",
+            "none of the [wal], [scheme] and [icons]",
         ),
         (vec![stray.as_str()], json!({}), "colour"),
         (

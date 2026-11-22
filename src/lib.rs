@@ -12,6 +12,7 @@ pub mod enhance;
 pub mod extract;
 pub mod grade_scheme;
 pub mod grade_wal;
+pub mod icons;
 pub mod look;
 pub mod lut;
 pub mod preview;

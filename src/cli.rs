@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use crate::enhance::SrModel;
 use crate::grade_wal;
@@ -171,76 +171,19 @@ pub enum Commands {
         /// e.g. -l pop   -l snap,vivid   (rehue inspect --looks lists them)
         #[arg(short, long, value_name = "NAME")]
         look: Vec<String>,
-        /// How pixels find their palette color: `blend` = mix the nearby
-        /// palette colors, weighted by hue distance (default); `snap` = take
-        /// the nearest one.
+        #[command(flatten)]
+        grade: GradeArgs,
+        /// Before painting, give a role's slots hues taken from the wallpaper's families:
+        /// `auto` = spread the heaviest across, `3` = all from family 3,
+        /// `0,2,5` = these families across the slots.
         ///
-        /// e.g. --mode snap
-        #[arg(long, help_heading = "Grading", value_enum)]
-        mode: Option<grade_wal::Mode>,
-        /// What the scheme's grays (base00-07) do in blend mode: `floor` = only
-        /// set the lowest chroma, so the image keeps its color structure
-        /// (default); `mix` = join the mix, a calmer cast faded toward the
-        /// scheme's grays.
+        /// Hue only: the slots keep the scheme's lightness and chroma.  Family
+        /// numbers come from `rehue inspect -w`.  Without a role, only a
+        /// family index works.
         ///
-        /// e.g. --neutrals mix
-        #[arg(long, help_heading = "Grading", value_enum)]
-        neutrals: Option<grade_wal::Neutrals>,
-        /// How strongly to harmonize with the scheme, 0..1: sets match-hue and
-        /// match-chroma wherever they aren't set (default 0).
-        ///
-        /// Explicit match dials win; match-lightness never follows it.
-        ///
-        /// e.g. -H 1
-        #[arg(short = 'H', long, help_heading = "Grading", value_name = "0..1")]
-        harmonize: Option<f64>,
-        /// How much of the palette's hue each pixel takes on (0 = keep its
-        /// own, 1 = fully adopt).
-        ///
-        /// e.g. --match-hue 0.9   --match-hue accents 1
-        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
-        match_hue: Vec<String>,
-        /// How much of the palette's chroma each pixel takes on (0 = keep its
-        /// own, 1 = fully adopt).
-        ///
-        /// e.g. --match-chroma 0.8   --match-chroma bg 0.5
-        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
-        match_chroma: Vec<String>,
-        /// How much of the palette's lightness each pixel takes on (default 0,
-        /// which keeps the image photographic).
-        ///
-        /// Never set by harmonize: adopting lightness flattens contrast.
-        ///
-        /// e.g. --match-lightness 0.3   --match-lightness sf 0.1
-        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
-        match_lightness: Vec<String>,
-        /// How far, in hue degrees, a palette color's pull extends (default
-        /// 45).
-        ///
-        /// The falloff width in blend mode; in snap mode, the cutoff beyond
-        /// which colors are left alone.
-        ///
-        /// e.g. --reach 60
-        #[arg(long, help_heading = "Grading", value_name = "DEG")]
-        reach: Option<f64>,
-        /// Which scheme colors pixels may be pulled toward, and how hard:
-        /// slots (base0D), roles (ac) or all, comma-separated, each bare
-        /// (weight 1) or KEY=WEIGHT.
-        ///
-        /// Unlisted slots are left out, and grays stay gray when no neutral
-        /// slot is in.  A weight divides the slot's hue distance: weight 2
-        /// pulls from twice as far.
-        ///
-        /// e.g. -p ac   --palette base0D,base0E   --palette all,base0D=6
-        #[arg(short, long, help_heading = "Grading", value_name = "KEY[=W],...")]
-        palette: Option<String>,
-        /// Below this chroma a pixel counts as gray (default 0.02).
-        ///
-        /// Gray pixels key to the scheme's neutral slots by lightness.
-        ///
-        /// e.g. --max-gray-chroma 0.05
-        #[arg(long, help_heading = "Grading", value_name = "C")]
-        max_gray_chroma: Option<f64>,
+        /// e.g. --assign accents 0,1,2,3   --assign sf auto
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] VAL", num_args = 1..=2, allow_negative_numbers = true)]
+        assign: Vec<String>,
         /// Dithering strength 0..1 (0 = off).
         ///
         /// Breaks up banding where adoption is partial; inert at zero and at
@@ -254,35 +197,6 @@ pub enum Commands {
         /// e.g. --dithering-mode floyd-steinberg
         #[arg(long, help_heading = "Grading", value_enum)]
         dithering_mode: Option<grade_wal::DitherMode>,
-        /// Before painting, give a role's slots hues taken from the wallpaper's families:
-        /// `auto` = spread the heaviest across, `3` = all from family 3,
-        /// `0,2,5` = these families across the slots.
-        ///
-        /// Hue only: the slots keep the scheme's lightness and chroma.  Family
-        /// numbers come from `rehue inspect -w`.  Without a role, only a
-        /// family index works.
-        ///
-        /// e.g. --assign accents 0,1,2,3   --assign sf auto
-        #[arg(long, help_heading = "Grading", value_name = "[ROLE] VAL", num_args = 1..=2, allow_negative_numbers = true)]
-        assign: Vec<String>,
-        /// Move each of a role's hues N slots along, wrapping around (slots,
-        /// not degrees).
-        ///
-        /// e.g. --cycle accents 1
-        #[arg(long, help_heading = "Grading", value_name = "[ROLE] N", num_args = 1..=2, allow_negative_numbers = true)]
-        cycle: Vec<String>,
-        /// Lightness shift (added).  Bare: the whole-image grade, applied
-        /// last; with a role: that role's grade.
-        ///
-        /// e.g. --lightness 0.02   --lightness bg -0.05
-        #[arg(long, help_heading = "Grading", value_name = "[ROLE] L", num_args = 1..=2, allow_negative_numbers = true)]
-        lightness: Vec<String>,
-        /// Chroma scale (multiplied).  Bare: the whole-image grade, applied
-        /// last; with a role: that role's grade.
-        ///
-        /// e.g. --chroma 1.2   --chroma fg 0.9
-        #[arg(long, help_heading = "Grading", value_name = "[ROLE] C", num_args = 1..=2, allow_negative_numbers = true)]
-        chroma: Vec<String>,
         /// Also bake the grade into a 3D LUT: `lut.png` (Hald CLUT) or
         /// `lut.cube`.
         ///
@@ -307,6 +221,76 @@ pub enum Commands {
             default_value_t = 8
         )]
         lut_level: u32,
+    },
+    /// Recolor an icon theme (or one SVG / PNG icon) with a scheme.
+    ///
+    /// Every color in the theme goes through the same grade as `wal` (its
+    /// flags, looks and configs), with harmonize 1 as the default.  The
+    /// recolored theme lands in OUT/NAME, ready to copy to
+    /// ~/.local/share/icons; preview.png beside it shows familiar icons
+    /// before and after.
+    ///
+    /// Example: rehue icons -i Papirus-Dark -s gruvbox-light
+    ///          rehue icons -i Papirus-Dark -s gruvbox-light --folders base0E
+    Icons {
+        /// The icon theme: a name found in the usual icon directories
+        /// (~/.local/share/icons, /usr/share/icons, ...), a theme directory,
+        /// or a single .svg / .png icon.  A '/' makes it a path.
+        ///
+        /// e.g. -i Papirus-Dark   -i ~/.icons/Tela   -i firefox.svg
+        #[arg(short, long, value_name = "THEME")]
+        input: String,
+        /// The scheme to paint with: a bundled NAME or a path to a .yaml.
+        ///
+        /// e.g. -s gruvbox-light
+        #[arg(short, long)]
+        scheme: String,
+        /// Output directory (default rehue-out): the theme lands in OUT/NAME.
+        ///
+        /// e.g. -o icons
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// The new theme's name (index.theme Name=; default THEME-rehue).
+        ///
+        /// e.g. --name Papirus-Gruvbox
+        #[arg(long)]
+        name: Option<String>,
+        /// Preview only: recolor everything and print the summary, but write
+        /// nothing.
+        ///
+        /// e.g. -n
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+        /// Directory that scheme NAMES look up before the bundled set.
+        ///
+        /// e.g. --scheme-dir ~/schemes
+        #[arg(long, value_name = "DIR")]
+        scheme_dir: Option<PathBuf>,
+        /// Config JSON: the grading options below, globally and per role,
+        /// and `folders`.
+        ///
+        /// e.g. -c icons.json
+        #[arg(short, long, value_name = "JSON")]
+        config: Option<PathBuf>,
+        /// Start from a look, a saved grade: built-in, or
+        /// ~/.config/rehue/looks/NAME.toml (its [icons] section, else its
+        /// [wal] one).  --config and flags still win; repeat or comma-list to
+        /// stack (left to right).
+        ///
+        /// e.g. -l vivid   -l snap
+        #[arg(short, long, value_name = "NAME")]
+        look: Vec<String>,
+        /// The folder color: which scheme colors folder icons are painted
+        /// with, in the --palette form (a slot, a role, weights).  Folders
+        /// are the theme's Places icons named folder*, plus user-home,
+        /// user-desktop and inode-directory; the rest of the theme is graded
+        /// as usual.
+        ///
+        /// e.g. --folders base0E   --folders base0D,base0C
+        #[arg(long, help_heading = "Grading", value_name = "KEY[=W],...")]
+        folders: Option<String>,
+        #[command(flatten)]
+        grade: GradeArgs,
     },
     /// Show a wallpaper's hue families, a scheme's colors, or every
     /// scheme (`--schemes`) in the terminal.
@@ -516,3 +500,96 @@ const WAL_ROLES: &str = roles_help!(
   `--config` records outrank the global setting.
 "
 );
+
+/// The grading flags `wal` and `icons` share.
+#[derive(Debug, Clone, Args)]
+pub struct GradeArgs {
+    /// How pixels find their palette color: `blend` = mix the nearby
+    /// palette colors, weighted by hue distance (default); `snap` = take
+    /// the nearest one.
+    ///
+    /// e.g. --mode snap
+    #[arg(long, help_heading = "Grading", value_enum)]
+    pub mode: Option<grade_wal::Mode>,
+    /// What the scheme's grays (base00-07) do in blend mode: `floor` = only
+    /// set the lowest chroma, so the image keeps its color structure
+    /// (default); `mix` = join the mix, a calmer cast faded toward the
+    /// scheme's grays.
+    ///
+    /// e.g. --neutrals mix
+    #[arg(long, help_heading = "Grading", value_enum)]
+    pub neutrals: Option<grade_wal::Neutrals>,
+    /// How strongly to harmonize with the scheme, 0..1: sets match-hue and
+    /// match-chroma wherever they aren't set (default 0).
+    ///
+    /// Explicit match dials win; match-lightness never follows it.
+    ///
+    /// e.g. -H 1
+    #[arg(short = 'H', long, help_heading = "Grading", value_name = "0..1")]
+    pub harmonize: Option<f64>,
+    /// How much of the palette's hue each pixel takes on (0 = keep its
+    /// own, 1 = fully adopt).
+    ///
+    /// e.g. --match-hue 0.9   --match-hue accents 1
+    #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+    pub match_hue: Vec<String>,
+    /// How much of the palette's chroma each pixel takes on (0 = keep its
+    /// own, 1 = fully adopt).
+    ///
+    /// e.g. --match-chroma 0.8   --match-chroma bg 0.5
+    #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+    pub match_chroma: Vec<String>,
+    /// How much of the palette's lightness each pixel takes on (default 0,
+    /// which keeps the image photographic).
+    ///
+    /// Never set by harmonize: adopting lightness flattens contrast.
+    ///
+    /// e.g. --match-lightness 0.3   --match-lightness sf 0.1
+    #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+    pub match_lightness: Vec<String>,
+    /// How far, in hue degrees, a palette color's pull extends (default
+    /// 45).
+    ///
+    /// The falloff width in blend mode; in snap mode, the cutoff beyond
+    /// which colors are left alone.
+    ///
+    /// e.g. --reach 60
+    #[arg(long, help_heading = "Grading", value_name = "DEG")]
+    pub reach: Option<f64>,
+    /// Which scheme colors pixels may be pulled toward, and how hard:
+    /// slots (base0D), roles (ac) or all, comma-separated, each bare
+    /// (weight 1) or KEY=WEIGHT.
+    ///
+    /// Unlisted slots are left out, and grays stay gray when no neutral
+    /// slot is in.  A weight divides the slot's hue distance: weight 2
+    /// pulls from twice as far.
+    ///
+    /// e.g. -p ac   --palette base0D,base0E   --palette all,base0D=6
+    #[arg(short, long, help_heading = "Grading", value_name = "KEY[=W],...")]
+    pub palette: Option<String>,
+    /// Below this chroma a pixel counts as gray (default 0.02).
+    ///
+    /// Gray pixels key to the scheme's neutral slots by lightness.
+    ///
+    /// e.g. --max-gray-chroma 0.05
+    #[arg(long, help_heading = "Grading", value_name = "C")]
+    pub max_gray_chroma: Option<f64>,
+    /// Move each of a role's hues N slots along, wrapping around (slots,
+    /// not degrees).
+    ///
+    /// e.g. --cycle accents 1
+    #[arg(long, help_heading = "Grading", value_name = "[ROLE] N", num_args = 1..=2, allow_negative_numbers = true)]
+    pub cycle: Vec<String>,
+    /// Lightness shift (added).  Bare: the whole-image grade, applied
+    /// last; with a role: that role's grade.
+    ///
+    /// e.g. --lightness 0.02   --lightness bg -0.05
+    #[arg(long, help_heading = "Grading", value_name = "[ROLE] L", num_args = 1..=2, allow_negative_numbers = true)]
+    pub lightness: Vec<String>,
+    /// Chroma scale (multiplied).  Bare: the whole-image grade, applied
+    /// last; with a role: that role's grade.
+    ///
+    /// e.g. --chroma 1.2   --chroma fg 0.9
+    #[arg(long, help_heading = "Grading", value_name = "[ROLE] C", num_args = 1..=2, allow_negative_numbers = true)]
+    pub chroma: Vec<String>,
+}

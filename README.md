@@ -248,13 +248,13 @@ rehue inspect --looks                                  # list them
 <!-- gen:looks -->
 | look | grades | what it does |
 | --- | --- | --- |
-| `soft` | wal, scheme | calm: a gentle harmony with a soft cast toward the scheme's grays |
-| `tight` | wal, scheme | the closest bond: palette hue, chroma and some of its lightness; scheme accents follow every family |
-| `pop` | wal, scheme | full harmony with the color turned up |
-| `muted` | wal, scheme | full harmony, softer color: calm, low-saturation results |
-| `wash` | wal | the palette washed over the image: everything leans toward the scheme's main accent colors |
-| `snap` | wal | exact palette hues and chroma, the image's own shading kept |
-| `vivid` | wal | accents only, at full strength: bold color, grays left alone |
+| `soft` | wal, scheme, icons | calm: a gentle harmony with a soft cast toward the scheme's grays |
+| `tight` | wal, scheme, icons | the closest bond: palette hue, chroma and some of its lightness; scheme accents follow every family |
+| `pop` | wal, scheme, icons | full harmony with the color turned up |
+| `muted` | wal, scheme, icons | full harmony, softer color: calm, low-saturation results |
+| `wash` | wal, icons | the palette washed over the image: everything leans toward the scheme's main accent colors |
+| `snap` | wal, icons | exact accent hues and chroma, the image's own shading kept |
+| `vivid` | wal, icons | accents only, at full strength: bold color, grays left alone |
 <!-- /gen:looks -->
 
 A look is a starting point: your `-c` config and your flags still win,
@@ -320,12 +320,12 @@ Extraction settings go in the `--config` JSON (on `scheme`, `wal` or
 | `--reach` | `DEG` | How far, in hue degrees, a palette color's pull extends (default 45) |
 | `--palette` | `KEY[=W],...` | Which scheme colors pixels may be pulled toward, and how hard: slots (base0D), roles (ac) or all, comma-separated, each bare (weight 1) or KEY=WEIGHT |
 | `--max-gray-chroma` | `C` | Below this chroma a pixel counts as gray (default 0.02) |
-| `--dithering` | `0..1` | Dithering strength 0..1 (0 = off) |
-| `--dithering-mode` | `blue-noise \| bayer \| floyd-steinberg \| atkinson \| none` | Dithering pattern (default blue-noise) |
-| `--assign` | `[ROLE] VAL` | Before painting, give a role's slots hues taken from the wallpaper's families: `auto` = spread the heaviest across, `3` = all from family 3, `0,2,5` = these families across the slots |
 | `--cycle` | `[ROLE] N` | Move each of a role's hues N slots along, wrapping around (slots, not degrees) |
 | `--lightness` | `[ROLE] L` | Lightness shift (added). Bare: the whole-image grade, applied last; with a role: that role's grade |
 | `--chroma` | `[ROLE] C` | Chroma scale (multiplied). Bare: the whole-image grade, applied last; with a role: that role's grade |
+| `--assign` | `[ROLE] VAL` | Before painting, give a role's slots hues taken from the wallpaper's families: `auto` = spread the heaviest across, `3` = all from family 3, `0,2,5` = these families across the slots |
+| `--dithering` | `0..1` | Dithering strength 0..1 (0 = off) |
+| `--dithering-mode` | `blue-noise \| bayer \| floyd-steinberg \| atkinson \| none` | Dithering pattern (default blue-noise) |
 <!-- /gen:flags:wal:grading -->
 
 #### LUT export
@@ -356,6 +356,7 @@ just its color.
 | --- | --- |
 | `rehue scheme` | Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the scheme's structure |
 | `rehue wal` | Wallpaper + scheme → wallpaper: repaint the image with the scheme's palette |
+| `rehue icons` | Recolor an icon theme (or one SVG / PNG icon) with a scheme |
 | `rehue inspect` | Show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
 | `rehue enhance` | Upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
 | `rehue apply` | Run a pipeline file and apply the result: scheme to tinty, wallpaper to your command |
@@ -419,6 +420,75 @@ With `-o DIR`, wallpaper mode also writes `inspect.png` (the swatch
 row) and scheme mode writes `preview.html` (the same mock page
 `scheme` produces).
 
+### icons
+
+Recolor a whole icon theme with your scheme. Every color in the theme
+gets the same grade a wallpaper gets from `wal`, so the icons, the
+wallpaper and the apps all land in one palette:
+
+```sh
+rehue icons -i Papirus-Dark -s gruvbox-light
+cp -r rehue-out/Papirus-Dark-rehue ~/.local/share/icons/
+```
+
+Then pick `Papirus-Dark-rehue` in your desktop's icon settings (on
+GNOME: `gsettings set org.gnome.desktop.interface icon-theme
+Papirus-Dark-rehue`). `rehue-out/preview.png` shows familiar icons
+before and after, so you can judge the grade first. `-i` takes a theme
+name from your icon directories, a theme directory, or a single `.svg`
+/ `.png` icon; `--name` sets the new theme's name.
+
+**Set the folder color** with `--folders`, which takes a scheme color
+(or several, like `-p`) and paints only the folder icons; everything
+else is graded as usual:
+
+```sh
+rehue icons -i Papirus-Dark -s gruvbox-light --folders base0E
+```
+
+**Make a one-color icon pack** with `-p`: every icon is painted in the
+scheme colors you name, keeping its own shading.
+
+```sh
+rehue icons -i Papirus-Dark -s gruvbox-light -p base0D           # one color
+rehue icons -i Papirus-Dark -s gruvbox-light -p base0D,base0E    # two
+```
+
+**Pick a look** for the overall feel: `-l snap` puts every color
+exactly on an accent and keeps whites white, `-l wash` leans every
+icon toward the scheme's main accent colors, `-l pop` / `-l muted`
+turn the color up or down. All the `wal` grading flags work too:
+
+<!-- gen:flags:icons:grading -->
+| flag | value | what it does |
+| --- | --- | --- |
+| `--folders` | `KEY[=W],...` | The folder color: which scheme colors folder icons are painted with, in the --palette form (a slot, a role, weights). Folders are the theme's Places icons named folder*, plus user-home, user-desktop and inode-directory; the rest of the theme is graded as usual |
+| `--mode` | `blend \| snap` | How pixels find their palette color: `blend` = mix the nearby palette colors, weighted by hue distance (default); `snap` = take the nearest one |
+| `--neutrals` | `floor \| mix` | What the scheme's grays (base00-07) do in blend mode: `floor` = only set the lowest chroma, so the image keeps its color structure (default); `mix` = join the mix, a calmer cast faded toward the scheme's grays |
+| `--harmonize` | `0..1` | How strongly to harmonize with the scheme, 0..1: sets match-hue and match-chroma wherever they aren't set (default 0) |
+| `--match-hue` | `[ROLE] 0..1` | How much of the palette's hue each pixel takes on (0 = keep its own, 1 = fully adopt) |
+| `--match-chroma` | `[ROLE] 0..1` | How much of the palette's chroma each pixel takes on (0 = keep its own, 1 = fully adopt) |
+| `--match-lightness` | `[ROLE] 0..1` | How much of the palette's lightness each pixel takes on (default 0, which keeps the image photographic) |
+| `--reach` | `DEG` | How far, in hue degrees, a palette color's pull extends (default 45) |
+| `--palette` | `KEY[=W],...` | Which scheme colors pixels may be pulled toward, and how hard: slots (base0D), roles (ac) or all, comma-separated, each bare (weight 1) or KEY=WEIGHT |
+| `--max-gray-chroma` | `C` | Below this chroma a pixel counts as gray (default 0.02) |
+| `--cycle` | `[ROLE] N` | Move each of a role's hues N slots along, wrapping around (slots, not degrees) |
+| `--lightness` | `[ROLE] L` | Lightness shift (added). Bare: the whole-image grade, applied last; with a role: that role's grade |
+| `--chroma` | `[ROLE] C` | Chroma scale (multiplied). Bare: the whole-image grade, applied last; with a role: that role's grade |
+<!-- /gen:flags:icons:grading -->
+
+Notes:
+
+- Only the theme you name is recolored. A theme that takes some icons
+  from another one (Numix-Circle takes its folders from Numix) needs
+  that one recolored too; rehue says so when it happens.
+- SVG and PNG icons are recolored, including PNGs embedded in SVGs.
+  Icons KDE colors at runtime keep following KDE there and take the
+  scheme everywhere else.
+- Links inside the theme stay links, so the result is about the size of
+  the original. If GTK's gtk-update-icon-cache is installed, the icon
+  cache is rebuilt.
+
 ## Install
 
 ### With cargo
@@ -477,6 +547,33 @@ in {
   stylix.image = "${repainted}/wallpaper.png";
 }
 ```
+
+Icon themes work the same way. `lib.icons` recolors a theme from any
+icon package and gives back a package for `stylix.icons`:
+
+```nix
+let
+  icons = rehue.lib.${system}.icons {
+    icons = pkgs.papirus-icon-theme;
+    theme = "Papirus-Dark";
+    scheme = "${mapped}/scheme.yaml";
+    name = "Papirus-Rehue";
+    # config = { folders = { base0E = 1; }; };   # the folder color
+  };
+in {
+  stylix.icons = {
+    enable = true;
+    package = icons;
+    dark = "Papirus-Rehue";
+    light = "Papirus-Rehue";
+  };
+}
+```
+
+Set both `dark` and `light`: Stylix's GTK and Qt targets each pick one.
+The preview sheet is in `${icons}/share/rehue/preview.png`. Inside a
+Nix build only built-in looks are available; a look of your own works
+by path (`config.look = "${./dusk.toml}";`).
 
 ### Apply (without Nix)
 
@@ -556,14 +653,6 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
     inside existing CSS/config files, as lutgen's `patch` does. Never
     the default path: fidelity is uncertain and in-place writes can
     break files, so at minimum diff-first with explicit confirmation.
-- **Icon themes**: recolor whole icon themes (Papirus, Breeze, …) to a
-  scheme. Icon themes are mostly SVG, where colors are text, so the
-  vectors can be rewritten exactly rather than rasterized and traced;
-  PNG icons take the raster path. Icons the toolkit recolors at
-  runtime (stylesheet / `currentColor` icons) are left alone. Which
-  color mapping drives it (wal's, or one tuned for flat icon
-  palettes) is an open design question. Includes a Nix builder whose
-  output plugs into Stylix's `stylix.icons`.
 - **Scheme browser**: pick a scheme by eye from `inspect --schemes`.
   First step: page through `$PAGER` (`less -R`) when stdout is a
   terminal, as git does, with `--no-pager`; pipes stay plain. Later: an
