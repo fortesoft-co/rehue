@@ -1,3 +1,5 @@
+//! `rehue enhance`: Lanczos upscaling and Vulkan super-resolution.
+//!
 //! Wallpaper enhancement: resolution scaling on the source image, with
 //! the palette work left to wal.  Two methods: built-in Lanczos
 //! resampling (deterministic, pure) and opt-in AI super-resolution via

@@ -1,3 +1,5 @@
+//! `rehue scheme`: the per-role pipeline and its options.
+//!
 //! The role pipeline: assign (legacy policy or assign) -> cycle
 //! -> match-hue -> grade -> legibility guard.  Every stage is
 //! deterministic and the wallpaper supplies hues only, so every slot's

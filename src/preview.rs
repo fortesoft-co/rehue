@@ -1,3 +1,5 @@
+//! The compiled-in `preview.html`: CSS-only views, GTK and Qt mocks.
+//!
 //! The HTML preview (`preview.html`): a compiled-in, script-free page
 //! that renders a palette as terminal / code / control mocks plus two
 //! widget suites mirroring real theme wiring.  GTK view = the

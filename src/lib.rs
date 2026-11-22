@@ -1,5 +1,6 @@
-//! rehue - paint base16 colour schemes and wallpapers with each other's
-//! colours, deterministically and sandbox-pure.
+//! rehue: paint base16 color schemes and wallpapers with each other's colors.
+//!
+//! Deterministic and sandbox-pure.
 //!
 //! Licensed AGPL-3.0-or-later.
 

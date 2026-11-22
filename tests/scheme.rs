@@ -1,3 +1,5 @@
+//! Schemes: parsing and rendering, the bundled collection, name resolution.
+//!
 //! The base16 scheme surface: parse/render, the embedded collection,
 //! and name resolution.
 

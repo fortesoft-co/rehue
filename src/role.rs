@@ -1,3 +1,5 @@
+//! The four roles, their names, and `assign`, shared by both directions.
+//!
 //! Roles: the four groups a base16 scheme's 16 slots fall into
 //! (background, surfaces, foreground, accents), the names they go by,
 //! and `assign`, which gives a role's slots hues taken from the

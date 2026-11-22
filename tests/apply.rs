@@ -1,3 +1,5 @@
+//! `rehue apply`: pipeline files, the tinty handoff, the wallpaper command.
+//!
 //! `rehue apply`: pipeline files, the tinty handoff and the wallpaper
 //! command.  tinty is faked by a shell script on PATH that logs its
 //! arguments, so these run without network or a real tinty.

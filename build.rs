@@ -1,3 +1,5 @@
+//! Embeds `vendor/tinted-schemes` as the bundled scheme table.
+//!
 //! Embeds the vendored tinted-theming scheme snapshot
 //! (`vendor/tinted-schemes`, refreshed by `scripts/update-schemes.sh`):
 //! a sorted `(spec, name, yaml text)` table of `include_str!` entries.

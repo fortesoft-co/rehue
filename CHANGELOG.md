@@ -37,8 +37,8 @@ rejected (pre-1.0, see the table below).
   links, copies in what links outside it, renames it, rebuilds the
   icon cache when it can, and writes a before/after `preview.png`.
   `--folders` sets the folder color (Places icons named `folder*`,
-  `user-home`, `user-desktop`, and `inode-directory`); `-p` makes a
-  one-color pack. Themes are found by name in the usual icon
+  `user-home`, `user-desktop`, and `inode-directory`); `-p` paints every
+  icon in only the colors you name. Themes are found by name in the usual icon
   directories. Nix: `lib.icons` builds a package for `stylix.icons`.
   Looks take an `[icons]` section (else their `[wal]` one).
 - Looks: saved grades picked by name, `-l NAME` on `wal` and
@@ -80,6 +80,12 @@ rejected (pre-1.0, see the table below).
   A scheme's grays no longer catch the colors beside their faint hue
   (Gruvbox's warm beiges turned saturated yellows gray);
   `--neutrals mix` lets every slot compete again, as before.
+- `icons` preview sheets wrap at 15 icons per row.
+- Docs: the README covers the essentials and links to a page per
+  topic in `docs/` (scheme, wal, icons, inspect, looks, grading,
+  config, nix, apply, development), each holding its options' examples;
+  EXAMPLES.md is split across them, and the roadmap moves to
+  ROADMAP.md.
 
 ### Changed (breaking)
 

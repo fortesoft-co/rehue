@@ -1,4 +1,6 @@
-//! The docs are templates of themselves: README.md and EXAMPLES.md carry
+//! The docs: generated regions, the drift check, links, example images.
+//!
+//! The docs are templates of themselves: README.md and docs/*.md carry
 //! marked regions (`<!-- gen:NAME -->` ... `<!-- /gen:NAME -->`) whose
 //! contents render from the code, so reference tables can't drift from
 //! the CLI and config they describe.  Everything outside a region is
@@ -19,14 +21,25 @@ use std::path::PathBuf;
 use clap::CommandFactory;
 use rehue::cli::Cli;
 
-#[path = "../docs/manifest.rs"]
+#[path = "../examples/docs/manifest.rs"]
 mod manifest;
 
 fn examples() -> manifest::Manifest {
     manifest::Manifest::load(env!("CARGO_MANIFEST_DIR").as_ref()).unwrap()
 }
 
-const DOCS: [&str; 2] = ["README.md", "EXAMPLES.md"];
+/// Every page checked: the README and each page under docs/.
+fn docs() -> Vec<String> {
+    let mut pages: Vec<String> = std::fs::read_dir(path("docs"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "md"))
+        .map(|p| format!("docs/{}", p.file_name().unwrap().to_string_lossy()))
+        .collect();
+    pages.sort();
+    pages.insert(0, "README.md".into());
+    pages
+}
 
 // ---------------------------------------------------------------- parser
 
@@ -416,10 +429,18 @@ fn render_region(name: &str) -> Result<String, String> {
         return manifest::display_ladder(&m, ladder);
     }
     match name {
-        "ladder-bases" => manifest::display_bases(&examples()),
         "commands" => Ok(commands_table()),
         "roles" => Ok(roles_table()),
         "looks" => Ok(looks_table()),
+        "source-files" => source_files(),
+        "look-names" => {
+            let names: Vec<String> = rehue::look::BUILTIN
+                .iter()
+                .map(|(n, _)| format!("`{n}`"))
+                .collect();
+            let (last, rest) = names.split_last().unwrap();
+            Ok(format!("{} and {last}", rest.join(", ")))
+        }
         "extraction-table" => Ok(extraction_table()),
         "extraction-keys" => Ok(rehue::extract::ExtractionParams::KEYS
             .iter()
@@ -431,6 +452,54 @@ fn render_region(name: &str) -> Result<String, String> {
     }
 }
 
+/// The source files and what each is: the first line of its `//!`
+/// module doc, which must be a paragraph of its own (rustdoc's summary).
+fn source_files() -> Result<String, String> {
+    let rs = |dir: &str| -> Vec<String> {
+        let mut files: Vec<String> = std::fs::read_dir(path(dir))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+            .map(|p| format!("{dir}/{}", p.file_name().unwrap().to_string_lossy()))
+            .collect();
+        files.sort();
+        files
+    };
+    let files: Vec<String> = [
+        rs("src"),
+        rs("src/bin"),
+        vec!["build.rs".into()],
+        rs("examples"),
+    ]
+    .into_iter()
+    .chain([rs("tests"), vec!["tests/common/mod.rs".into()]])
+    .flatten()
+    .collect();
+    let mut rows = vec![
+        "| file | what it is |".to_string(),
+        "| --- | --- |".to_string(),
+    ];
+    for file in files {
+        let text = std::fs::read_to_string(path(&file)).map_err(|e| format!("{file}: {e}"))?;
+        let mut doc = text
+            .lines()
+            .skip_while(|l| !l.starts_with("//!"))
+            .take_while(|l| l.starts_with("//!"))
+            .map(|l| l.trim_start_matches("//!").trim());
+        let summary = doc
+            .next()
+            .filter(|l| !l.is_empty())
+            .ok_or_else(|| format!("{file}: no //! summary line"))?;
+        if doc.next().is_some_and(|l| !l.is_empty()) {
+            return Err(format!(
+                "{file}: the first //! line is the summary: give it a paragraph of its own"
+            ));
+        }
+        rows.push(format!("| `{file}` | {} |", escape(summary)));
+    }
+    Ok(rows.join("\n"))
+}
+
 fn path(file: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file)
 }
@@ -439,7 +508,8 @@ fn path(file: &str) -> PathBuf {
 fn docs_are_current() {
     let bless = std::env::var_os("REHUE_BLESS").is_some();
     let mut stale = Vec::new();
-    for file in DOCS {
+    let pages = docs();
+    for file in &pages {
         let text = std::fs::read_to_string(path(file)).unwrap();
         let rendered = render(&text, &render_region).unwrap_or_else(|e| panic!("{file}: {e}"));
         if rendered != text {
@@ -506,7 +576,7 @@ fn every_docs_image_is_built_from_the_manifest() {
         );
     }
     let mut orphans = Vec::new();
-    for doc in DOCS {
+    for doc in &docs() {
         let text = std::fs::read_to_string(path(doc)).unwrap();
         let mut rest = text.as_str();
         while let Some(i) = rest.find("assets/examples/") {
@@ -526,6 +596,106 @@ fn every_docs_image_is_built_from_the_manifest() {
         "docs images with no recipe in {}:\n  {}",
         manifest::MANIFEST,
         orphans.join("\n  ")
+    );
+}
+
+/// GitHub's anchor for a heading: lowercase, spaces to dashes, every
+/// other character but letters, digits, `-` and `_` dropped; repeats get
+/// `-1`, `-2`, ...
+fn anchors(text: &str) -> BTreeSet<String> {
+    let fenced = fences(text);
+    let mut seen = BTreeSet::new();
+    let mut pos = 0;
+    for line in text.lines() {
+        let at = pos;
+        pos += line.len() + 1;
+        if fenced.iter().any(|&(a, b)| at >= a && at < b) {
+            continue;
+        }
+        let Some(heading) = line.strip_prefix('#') else {
+            continue;
+        };
+        let heading = heading.trim_start_matches('#');
+        if !heading.starts_with(' ') {
+            continue;
+        }
+        let slug: String = heading
+            .trim()
+            .to_lowercase()
+            .chars()
+            .filter_map(|c| match c {
+                ' ' => Some('-'),
+                c if c.is_alphanumeric() || c == '-' || c == '_' => Some(c),
+                _ => None,
+            })
+            .collect();
+        let mut unique = slug.clone();
+        let mut n = 0;
+        while seen.contains(&unique) {
+            n += 1;
+            unique = format!("{slug}-{n}");
+        }
+        seen.insert(unique);
+    }
+    seen
+}
+
+/// Every link target in a page's prose: `](target)` and `src="target"`.
+fn links(text: &str) -> Vec<(usize, String)> {
+    let fenced = fences(text);
+    let mut out = Vec::new();
+    for (open, close) in [("](", ")"), ("src=\"", "\"")] {
+        let mut from = 0;
+        while let Some(i) = text[from..].find(open) {
+            let start = from + i + open.len();
+            let Some(len) = text[start..].find(close) else {
+                break;
+            };
+            from = start + len;
+            if fenced.iter().any(|&(a, b)| start >= a && start < b) {
+                continue;
+            }
+            out.push((line_of(text, start), text[start..start + len].to_string()));
+        }
+    }
+    out
+}
+
+#[test]
+fn links_between_pages_resolve() {
+    let mut broken = Vec::new();
+    let pages: Vec<String> = docs()
+        .into_iter()
+        .chain(["CHANGELOG.md".into(), "ROADMAP.md".into()])
+        .collect();
+    for page in &pages {
+        let text = std::fs::read_to_string(path(page)).unwrap();
+        let dir = std::path::Path::new(page).parent().unwrap();
+        for (line, target) in links(&text) {
+            if target.contains("://") || target.starts_with("mailto:") {
+                continue;
+            }
+            let (file, anchor) = target.split_once('#').unwrap_or((&target, ""));
+            let file = if file.is_empty() {
+                path(page)
+            } else {
+                path(&dir.join(file).to_string_lossy())
+            };
+            let shown = format!("{page}:{line}: {target}");
+            if !file.exists() {
+                broken.push(format!("{shown} (no such file)"));
+            } else if !anchor.is_empty() {
+                let body = std::fs::read_to_string(&file).unwrap_or_default();
+                if !anchors(&body).contains(anchor) {
+                    broken.push(format!("{shown} (no such heading)"));
+                }
+            }
+        }
+    }
+    assert!(
+        broken.is_empty(),
+        "broken links:\n  {}",
+        broken.join("\n  ")
     );
 }
 
@@ -653,7 +823,7 @@ fn handwritten_docs_name_only_real_flags_and_keys() {
     let flags = known_flags();
     let names = known_names();
     let mut unknown = Vec::new();
-    for file in DOCS {
+    for file in &docs() {
         let text = handwritten(&std::fs::read_to_string(path(file)).unwrap());
         let fenced = fences(&text);
         let mut section = "";
@@ -743,6 +913,22 @@ fn renders_block_and_inline_regions_and_keeps_the_rest() {
         render(empty, &fake).unwrap(),
         "<!-- gen:table -->\n| a |\n| - |\n<!-- /gen:table -->\n"
     );
+}
+
+#[test]
+fn anchors_follow_github() {
+    let a = anchors(
+        "# Top\n## match-chroma — `0..1`, default `0` (set by harmonize)\n### cycle\n### cycle\n```\n# not a heading\n```\n",
+    );
+    for want in [
+        "top",
+        "match-chroma--01-default-0-set-by-harmonize",
+        "cycle",
+        "cycle-1",
+    ] {
+        assert!(a.contains(want), "{want}: {a:?}");
+    }
+    assert!(!a.contains("not-a-heading"));
 }
 
 #[test]

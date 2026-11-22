@@ -1,8 +1,8 @@
 # Every documented command and every docs image, defined once.
 #
-# The docs render from this (README / EXAMPLES regions `run:ID` and
-# `ladder:ID`, checked by `cargo test --test docs`), and the images are
-# built from it:
+# The docs render from this (regions `run:ID` and `ladder:ID` in the
+# README and docs/*.md, checked by `cargo test --test docs`), and the
+# images are built from it:
 #
 #   nix develop .#examples -c cargo run --release --example docs-images
 #
@@ -14,7 +14,7 @@ glitter = "assets/vidsplay-rainbow-glitter.webp"
 butterfly = "assets/kelly-ishmael-butterfly-closeup.webp"
 bango = "assets/bango-renders-3d-abstract.webp"
 
-# ------------------------------------------------------------ README
+# ---------------------------------------- README and page examples
 
 [[run]]
 id = "glitter"
@@ -57,6 +57,16 @@ cells = [
 ]
 
 [[run]]
+id = "butterfly-icons"
+args = "icons -i Papirus -s {out:butterfly-mapped}/scheme.yaml -o {out}"
+out = "icons"
+
+[[image]]
+file = "assets/examples/butterfly-icons.png"
+kind = "copy"
+cells = [{ src = "{out:butterfly-icons}/preview.png" }]
+
+[[run]]
 id = "bango-mapped"
 args = "scheme -i tokyo-night-dark -w {bango} -o {out}"
 out = "mapped"
@@ -85,13 +95,13 @@ cells = [
 file = "assets/examples/preview-palette.webp"
 kind = "shot"
 views = ["palette"]
-cells = [{ src = "{out:bango-repainted}/preview.html" }]
+cells = [{ src = "{out:butterfly-repainted}/preview.html" }]
 
 [[image]]
 file = "assets/examples/preview-toolkits.webp"
 kind = "shot"
 views = ["gtk", "qt"]
-cells = [{ src = "{out:bango-repainted}/preview.html" }]
+cells = [{ src = "{out:butterfly-repainted}/preview.html" }]
 
 [[run]]
 id = "inspect-butterfly"
@@ -117,7 +127,7 @@ rungs = [
   { args = "--assign accents 0,1,2,3 --cycle accents 1" },
 ]
 
-# ---------------------------------------------------------- EXAMPLES
+# --------------------------------------------------- option ladders
 # wal ladders: gruvbox-light, each opening with the original; bango
 # unless another image shows the option better.
 
@@ -222,7 +232,7 @@ output = "wallpaper.png"
 original = "{bango}"
 width = 384
 common = "--mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9"
-crop = "128x72+40+760"
+crop = "128x72+1408+576"
 rungs = [
   { args = "--dithering 0" },
   { args = "--dithering 0.5" },
@@ -237,7 +247,7 @@ output = "wallpaper.png"
 original = "{bango}"
 width = 384
 common = "--mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1"
-crop = "128x72+40+760"
+crop = "128x72+1408+576"
 rungs = [
   { args = "--dithering-mode blue-noise" },
   { args = "--dithering-mode bayer" },
@@ -389,4 +399,56 @@ rungs = [
   { config = { max-families = 2 } },
   { config = { max-families = 3 } },
   { config = { max-families = 6 }, note = "the default" },
+]
+
+# icons ladders: papirus with gruvbox-light; each cell is one row of
+# the preview sheet's "after" icons (the first rung, harmonize 0, is the
+# theme as it ships)
+
+[[ladder]]
+id = "icons-folders"
+file = "assets/examples/icons-folders.png"
+base = "icons -i Papirus -s gruvbox-light -o {out}"
+output = "preview.png"
+width = 672
+crop = "336x56+284+218"
+rungs = [
+  { args = "--harmonize 0", note = "as Papirus ships" },
+  { args = "", note = "graded with the rest of the theme" },
+  { args = "--folders base0E" },
+  { args = "--folders base0B" },
+  { args = "--folders base08" },
+]
+
+[[ladder]]
+id = "icons-palette"
+file = "assets/examples/icons-palette.png"
+base = "icons -i Papirus -s gruvbox-light -o {out}"
+output = "preview.png"
+width = 848
+crop = "848x56+0+90"
+rungs = [
+  { args = "--harmonize 0", note = "as Papirus ships" },
+  { args = "-p base0D", note = "one color" },
+  { args = "-p base0D,base0E", note = "two" },
+  { args = "-p base08", note = "red" },
+]
+
+[[ladder]]
+id = "looks-icons"
+file = "assets/examples/looks-icons.png"
+base = "icons -i Papirus -s gruvbox-light -o {out}"
+output = "preview.png"
+width = 848
+crop = "848x56+0+90"
+rungs = [
+  { args = "--harmonize 0", note = "as Papirus ships" },
+  { args = "", note = "no look: harmonize 1" },
+  { args = "-l soft" },
+  { args = "-l tight" },
+  { args = "-l pop" },
+  { args = "-l muted" },
+  { args = "-l wash" },
+  { args = "-l snap" },
+  { args = "-l vivid" },
 ]

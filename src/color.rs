@@ -1,4 +1,6 @@
-//! Colour math.  Three details are load-bearing for byte-level parity of
+//! sRGB, OKLab and OKLCH conversions, and circular-hue math.
+//!
+//! Three details are load-bearing for byte-level parity of
 //! outputs across rebuilds:
 //!
 //! * hue arithmetic uses FLOOR-modulo: Rust's `%` truncates toward zero

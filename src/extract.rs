@@ -1,3 +1,5 @@
+//! Hue extraction: a chroma²-weighted hue histogram and a deterministic circular k-means.
+//!
 //! Wallpaper hue extraction: chroma^2-weighted hue histogram over a
 //! downsized image, then a deterministic circular k-means (greedy
 //! histogram seeding, fixed iteration count - no RNG anywhere).

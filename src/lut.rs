@@ -1,3 +1,5 @@
+//! Hald CLUT and `.cube` export of a color function.
+//!
 //! 3D LUT export: bake a colour → colour function into a lookup table
 //! other tools can apply (ImageMagick `-hald-clut`, ffmpeg `haldclut` /
 //! `lut3d`, GIMP, Darktable, Resolve, OBS).

@@ -1,3 +1,5 @@
+//! wal's `palette` option.
+//!
 //! wal's `palette` option: which scheme colors pixels may be pulled
 //! toward, and how hard.
 

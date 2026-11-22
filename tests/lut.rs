@@ -1,3 +1,5 @@
+//! LUT export and the per-color remap it bakes.
+//!
 //! LUT export and the per-colour remap it bakes: `ColorMap::map_rgb` is
 //! exactly what `grade_wal::apply` paints at dithering 0, and the Hald /
 //! .cube grids reproduce it.

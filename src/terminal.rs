@@ -1,3 +1,5 @@
+//! Truecolor ANSI swatch strips for `inspect`.
+//!
 //! Terminal-native swatch rendering: truecolor ANSI art for `inspect`
 //! output.  Always emitted (no TTY detection) — a pipe captures the
 //! same bytes, so the render stays deterministic.

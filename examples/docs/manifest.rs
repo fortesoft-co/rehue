@@ -1,6 +1,6 @@
-//! The examples manifest (`docs/examples.toml`): every documented
+//! The examples manifest (`examples/docs/examples.toml`): every documented
 //! command and every docs image, defined once.  Shared by the docs test
-//! (`tests/docs.rs`, which renders the commands into README / EXAMPLES
+//! (`tests/docs.rs`, which renders the commands into the README and docs/
 //! and checks the images are current) and the image builder
 //! (`examples/docs-images.rs`, which runs the commands and assembles
 //! the images).  Included by path from both, so it is plain Rust with
@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-pub const MANIFEST: &str = "docs/examples.toml";
-pub const LOCK: &str = "docs/examples.lock";
+pub const MANIFEST: &str = "examples/docs/examples.toml";
+pub const LOCK: &str = "examples/docs/examples.lock";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -241,11 +241,13 @@ impl Manifest {
             }
             seen.push(id);
         }
+        text.push_str(&looks_named(&text));
         Ok(fnv1a(&self.expand_vars(&text)))
     }
 
     pub fn fingerprint_ladder(&self, ladder: &Ladder) -> Result<u64, String> {
-        let text = toml::to_string(ladder).map_err(|e| e.to_string())?;
+        let mut text = toml::to_string(ladder).map_err(|e| e.to_string())?;
+        text.push_str(&looks_named(&text));
         Ok(fnv1a(&self.expand_vars(&text)))
     }
 
@@ -270,6 +272,25 @@ impl Manifest {
         lines.sort();
         Ok(lines.join("\n") + "\n")
     }
+}
+
+/// The built-in looks a recipe names (`-l a,b` / `--look a`), their
+/// files' text: editing a look changes the hash of every image using it.
+fn looks_named(text: &str) -> String {
+    let words: Vec<&str> = text
+        .split(|c: char| c.is_whitespace() || c == '"')
+        .collect();
+    let mut out = String::new();
+    for pair in words.windows(2) {
+        if pair[0] == "-l" || pair[0] == "--look" {
+            for name in pair[1].split(',') {
+                if let Some((_, look)) = rehue::look::BUILTIN.iter().find(|(n, _)| *n == name) {
+                    out.push_str(look);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// FNV-1a, 64-bit: stable across Rust versions (unlike `DefaultHasher`).
@@ -340,15 +361,8 @@ pub const RUNG_CONFIG: &str = "config.json";
 pub fn display_ladder(m: &Manifest, ladder: &Ladder) -> Result<String, String> {
     let none = |_: &str| -> Result<String, String> { Err("ladders can't use {out}".into()) };
     let mut lines = Vec::new();
-    // a ladder on other inputs than its command's usual ones says so
-    let default = m
-        .ladder
-        .iter()
-        .find(|l| ladder_command(l) == ladder_command(ladder))
-        .map(|l| l.base.as_str());
-    if default != Some(ladder.base.as_str()) {
-        lines.push(format!("# inputs: {}", base_line(m, ladder)?));
-    }
+    // every recipe names the inputs its commands run on
+    lines.push(format!("# inputs: {}", base_line(m, ladder)?));
     for rung in &ladder.rungs {
         if !rung.note.is_empty() {
             lines.push(format!("# {}", rung.note));
@@ -396,20 +410,4 @@ fn base_line(m: &Manifest, l: &Ladder) -> Result<String, String> {
         words.push(shell_word(&m.expand(t, &none)?));
     }
     Ok(words.join(" "))
-}
-
-/// The docs block listing each ladder command's usual inputs once (the
-/// first ladder's); ladders on other inputs name theirs.
-pub fn display_bases(m: &Manifest) -> Result<String, String> {
-    let mut seen: Vec<&str> = Vec::new();
-    let mut lines = Vec::new();
-    for l in &m.ladder {
-        let command = ladder_command(l);
-        if !seen.contains(&command) {
-            lines.push(format!("# {command} recipes run as:"));
-            lines.push(base_line(m, l)?);
-            seen.push(command);
-        }
-    }
-    Ok(format!("```sh\n{}\n```", lines.join("\n")))
 }

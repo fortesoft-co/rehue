@@ -1,3 +1,5 @@
+//! `rehue enhance`: the model table, parameter checks, scaling.
+//!
 //! The enhance stage: the model table, param validation, and the
 //! deterministic Lanczos pipeline.
 

@@ -1,6 +1,8 @@
-//! Rebuild the docs images from `docs/examples.toml`: run every command,
+//! Builds the docs images from `examples/docs/examples.toml`.
+//!
+//! Rebuild the docs images from `examples/docs/examples.toml`: run every command,
 //! assemble montages / screenshots, then record each image's fingerprint
-//! in `docs/examples.lock` (the docs test fails when an example changes
+//! in `examples/docs/examples.lock` (the docs test fails when an example changes
 //! without a rebuild).
 //!
 //!   nix develop .#examples -c cargo run --release --example docs-images
@@ -8,16 +10,19 @@
 //!
 //! Needs ImageMagick (`magick`) and, for the preview screenshots, a
 //! Chromium (`chromium`, `google-chrome`, or $CHROME); the examples
-//! devshell provides both.  Scratch output lands in .scratch/docs-images.
+//! devshell provides both, and the pinned Papirus the icon examples
+//! recolor (`$REHUE_DOCS_ICONS`).  Scratch output lands in .scratch/docs-images.
 
-#[path = "../docs/manifest.rs"]
+#[path = "docs/manifest.rs"]
 mod manifest;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use manifest::{Cell, Image, Kind, LOCK, Ladder, Manifest, RUNG_CONFIG, rung_label};
+use manifest::{
+    Cell, Image, Kind, LOCK, Ladder, Manifest, RUNG_CONFIG, ladder_command, rung_label,
+};
 
 const BG: &str = "#232327";
 
@@ -40,6 +45,8 @@ struct Builder {
     bin: PathBuf,
     font: String,
     chrome: Option<String>,
+    /// `share` dir holding the icon themes icon examples use
+    icons: Option<String>,
     manifest: Manifest,
     done: BTreeSet<String>,
 }
@@ -103,7 +110,20 @@ impl Builder {
     }
 
     fn rehue(&self, args: &[String]) -> Result<()> {
-        sh(Command::new(&self.bin).args(args).current_dir(&self.root)).map(|_| ())
+        let mut cmd = Command::new(&self.bin);
+        cmd.args(args).current_dir(&self.root);
+        if args.first().is_some_and(|a| a == "icons") {
+            // the pinned themes only: nothing the machine has installed
+            let share = self
+                .icons
+                .as_ref()
+                .ok_or("missing: REHUE_DOCS_ICONS (try: nix develop .#examples)")?;
+            let none = self.work.join("no-data");
+            cmd.env("XDG_DATA_DIRS", share)
+                .env("XDG_DATA_HOME", &none)
+                .env("HOME", &none);
+        }
+        sh(&mut cmd).map(|_| ())
     }
 
     fn src(&mut self, cell: &Cell) -> Result<PathBuf> {
@@ -270,6 +290,15 @@ impl Builder {
             }
             println!("  rehue {}", args.join(" "));
             self.rehue(&args)?;
+            if ladder_command(ladder) == "icons" {
+                // keep the preview, not a whole recolored theme per rung
+                for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+                    let path = entry.map_err(|e| e.to_string())?.path();
+                    if path.is_dir() {
+                        std::fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+                    }
+                }
+            }
             cells.push((rung_label(rung), dir.join(&ladder.output)));
         }
         if let Some(geometry) = &ladder.crop {
@@ -443,6 +472,7 @@ fn run() -> Result<()> {
         root: root.clone(),
         work,
         chrome,
+        icons: std::env::var("REHUE_DOCS_ICONS").ok(),
         manifest: manifest.clone(),
         done: BTreeSet::new(),
     };

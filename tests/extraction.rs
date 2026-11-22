@@ -1,4 +1,4 @@
-//! The extraction stage: determinism on the synthetic gradient.
+//! Extraction: determinism on a synthetic gradient.
 
 mod common;
 

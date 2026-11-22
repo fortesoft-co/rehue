@@ -1,3 +1,5 @@
+//! Config layering, file reading and the unknown-key check.
+//!
 //! Reading grading configs.  A `--config` file, a pipeline table and a
 //! look's section all become one JSON value; values layer key by key
 //! ([`merge`]), and the result is checked for unknown keys before it

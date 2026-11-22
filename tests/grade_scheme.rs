@@ -1,3 +1,5 @@
+//! `rehue scheme`: the role pipeline, assign and cycle.
+//!
 //! scheme: the role pipeline — assign/stop semantics,
 //! dial behaviour, the config contract, and the CLI surface.
 

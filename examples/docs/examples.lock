@@ -1,12 +1,16 @@
 assets/examples/bango-roundtrip-pair.webp c8bc0c5ae9fff0b5
 assets/examples/bango-schemes-roundtrip.png 4e8ea100fdb7a718
+assets/examples/butterfly-icons.png 5db890748226d794
 assets/examples/butterfly-rose-pine-dawn.png 456b3b43103b3011
 assets/examples/butterfly-roundtrip-pair.webp dfe8cb0a2d956784
 assets/examples/glitter-facade1-pair.webp 488992b545c17d78
 assets/examples/grading-groups.png abb03f6b9a9c0569
+assets/examples/icons-folders.png 482e8889275b0017
+assets/examples/icons-palette.png ca9619b6fdd84594
 assets/examples/inspect-families.png 0330664e93e25953
-assets/examples/looks-scheme.png d31575df7eb91ab9
-assets/examples/looks-wal.webp eceeb9188880f29f
+assets/examples/looks-icons.png 07e2919b9292e5e1
+assets/examples/looks-scheme.png de459523e7fcb5c8
+assets/examples/looks-wal.webp 2e3e3d1717dc563e
 assets/examples/options/extract-max-families.png 8f7e1274c2b48daa
 assets/examples/options/scheme-assign.png 030b7dd096b053f3
 assets/examples/options/scheme-chroma.png fbf035d8aec9e25d
@@ -15,8 +19,8 @@ assets/examples/options/scheme-match-hue.png da05ea682ce82d4a
 assets/examples/options/scheme-reach.png 08adc73c207a7c30
 assets/examples/options/wal-assign.webp 26f11b8fd48b91db
 assets/examples/options/wal-chroma.webp eb05746bec2b42ea
-assets/examples/options/wal-dithering-mode.webp f6b5687af9d841c3
-assets/examples/options/wal-dithering.webp 43f5868a6ab3d809
+assets/examples/options/wal-dithering-mode.webp 27ca736693c08f93
+assets/examples/options/wal-dithering.webp 90d39a7ead67d691
 assets/examples/options/wal-harmonize.webp 82547b5c896b4b31
 assets/examples/options/wal-lightness.webp fac27cd533ccf808
 assets/examples/options/wal-match-chroma.webp f9c6a29cbcd842cb
@@ -28,5 +32,5 @@ assets/examples/options/wal-neutrals.webp 0e880715c19e3901
 assets/examples/options/wal-palette.webp 36f05776532b0c7f
 assets/examples/options/wal-reach.webp f6945c359c3bb7d1
 assets/examples/options/wal-role-grades.webp 8ba3ed873dd7ecd4
-assets/examples/preview-palette.webp 012bd3519d19480d
-assets/examples/preview-toolkits.webp 89c107b1308f2629
+assets/examples/preview-palette.webp d627cfc3ee959898
+assets/examples/preview-toolkits.webp 5dda2fd554dbad74
