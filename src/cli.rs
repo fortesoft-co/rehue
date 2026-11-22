@@ -74,8 +74,8 @@ pub enum Commands {
         #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
         /// Start from a look, a saved grade: built-in, or
-        /// ~/.config/rehue/looks/NAME.toml.  --config and flags still win;
-        /// repeat or comma-list to stack (left to right).
+        /// ~/.config/rehue/looks/NAME.toml (or .yaml, .json).  --config and
+        /// flags still win; repeat or comma-list to stack (left to right).
         ///
         /// e.g. -l pop   -l snap,vivid   (rehue inspect --looks lists them)
         #[arg(short, long, value_name = "NAME")]
@@ -169,8 +169,8 @@ pub enum Commands {
         #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
         /// Start from a look, a saved grade: built-in, or
-        /// ~/.config/rehue/looks/NAME.toml.  --config and flags still win;
-        /// repeat or comma-list to stack (left to right).
+        /// ~/.config/rehue/looks/NAME.toml (or .yaml, .json).  --config and
+        /// flags still win; repeat or comma-list to stack (left to right).
         ///
         /// e.g. -l pop   -l snap,vivid   (rehue inspect --looks lists them)
         #[arg(short, long, value_name = "NAME")]
@@ -277,9 +277,9 @@ pub enum Commands {
         #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
         /// Start from a look, a saved grade: built-in, or
-        /// ~/.config/rehue/looks/NAME.toml (its [icons] section, else its
-        /// [wal] one).  --config and flags still win; repeat or comma-list to
-        /// stack (left to right).
+        /// ~/.config/rehue/looks/NAME.toml (or .yaml, .json): its [icons]
+        /// section, else its [wal] one.  --config and flags still win; repeat
+        /// or comma-list to stack (left to right).
         ///
         /// e.g. -l vivid   -l snap
         #[arg(short, long, value_name = "NAME")]

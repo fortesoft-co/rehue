@@ -91,10 +91,12 @@ before. Configs and pipelines take `look` as a key too
 
 ## Writing your own
 
-Your own looks go in `~/.config/rehue/looks/NAME.toml`. A look has a
-`description` and a section per command, `[wal]`, `[scheme]` and
-`[icons]`, each taking the same keys as that command's config. A look
-without an `[icons]` section grades icons with its `[wal]` one.
+Your own looks go in `~/.config/rehue/looks/`, one file per look,
+named after it. Like a [config](config.md), a look can be TOML, YAML
+or JSON (`dusk.toml`, `dusk.yaml`, `dusk.json`). A look has a
+`description` and a section per command, `wal`, `scheme` and `icons`,
+each taking the same keys as that command's config. A look without an
+`icons` section grades icons with its `wal` one.
 
 ```toml
 # ~/.config/rehue/looks/dusk.toml
@@ -109,7 +111,23 @@ lightness = -0.04
 roles.all.chroma = 0.85
 ```
 
-Then `rehue wal -l dusk ...`. A file named like a built-in replaces
+The same look in YAML:
+
+```yaml
+# ~/.config/rehue/looks/dusk.yaml
+description: "evening: quieter, a little darker"
+wal:
+  harmonize: 1
+  chroma: 0.8
+  lightness: -0.04
+scheme:
+  roles:
+    all:
+      chroma: 0.85
+```
+
+Then `rehue wal -l dusk ...`. Keep one file per name: if `dusk.toml`
+and `dusk.yaml` both exist, rehue asks you to remove one. A file named like a built-in replaces
 it, and a name with a `/` is a path (`-l ./dusk.toml`).
 `rehue inspect --looks` marks your own looks and the built-ins they
 replace.

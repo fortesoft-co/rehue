@@ -119,6 +119,28 @@ pub fn from_value<T: DeserializeOwned + Serialize>(value: Value) -> Result<T, St
     Ok(typed)
 }
 
+/// The file formats a config or look can be written in, by extension.
+pub const EXTENSIONS: [&str; 4] = ["toml", "yaml", "yml", "json"];
+
+/// Parse config text in the format its file extension names (`toml`,
+/// `yaml` / `yml`, `json`; any case).  The result must be a table.
+pub fn parse_text(text: &str, extension: &str) -> Result<Value, String> {
+    let value = match extension.to_lowercase().as_str() {
+        "json" => serde_json::from_str(text).map_err(|e| e.to_string())?,
+        "toml" => from_toml(toml::from_str(text).map_err(|e| e.to_string())?),
+        "yaml" | "yml" => from_yaml(text)?,
+        _ => {
+            return Err(
+                "name it .toml, .yaml or .json (the extension picks the format)".to_string(),
+            );
+        }
+    };
+    if !value.is_object() {
+        return Err("expected a table of settings".into());
+    }
+    Ok(value)
+}
+
 /// A config file as a value (an object), read by its extension:
 /// `.json`, `.toml`, or `.yaml` / `.yml`.  No file is the empty object.
 pub fn read_file(path: Option<&Path>) -> Result<Value, String> {
@@ -129,24 +151,9 @@ pub fn read_file(path: Option<&Path>) -> Result<Value, String> {
         .map_err(|e| format!("can't read config {}: {}", p.display(), e))?;
     let ext = p
         .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
+        .map(|e| e.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let bad = |e: String| format!("bad config {}: {e}", p.display());
-    let value = match ext.as_str() {
-        "json" => serde_json::from_str(&text).map_err(|e| bad(e.to_string()))?,
-        "toml" => from_toml(toml::from_str(&text).map_err(|e| bad(e.to_string()))?),
-        "yaml" | "yml" => from_yaml(&text).map_err(bad)?,
-        _ => {
-            return Err(format!(
-                "config {}: name it .json, .toml or .yaml (the extension picks the format)",
-                p.display()
-            ));
-        }
-    };
-    if !value.is_object() {
-        return Err(bad("expected a table of settings".into()));
-    }
-    Ok(value)
+    parse_text(&text, &ext).map_err(|e| format!("bad config {}: {e}", p.display()))
 }
 
 /// A YAML document as a JSON value (YAML 1.2: `no` and `on` stay

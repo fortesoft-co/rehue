@@ -82,7 +82,7 @@ fn bad_files_say_what_is_wrong() {
     let dir = scratch("bad");
     let ini = write(&dir, "wal.ini", "harmonize = 1\n");
     let err = read_file(Some(&ini)).unwrap_err();
-    assert!(err.contains(".json, .toml or .yaml"), "{err}");
+    assert!(err.contains(".toml, .yaml or .json"), "{err}");
     let list = write(&dir, "wal.yaml", "- 1\n- 2\n");
     let err = read_file(Some(&list)).unwrap_err();
     assert!(err.contains("expected a table"), "{err}");

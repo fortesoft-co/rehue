@@ -231,3 +231,87 @@ fn the_pipeline_takes_a_shared_look_and_per_step_looks() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn looks_are_written_in_any_config_format() {
+    let dir = scratch("formats");
+    let toml = write(
+        &dir,
+        "dusk.toml",
+        "description = \"evening\"\n[wal]\nharmonize = 1\nchroma = 0.8\n\n[scheme]\nroles.all.chroma = 0.85\n",
+    );
+    let yaml = write(
+        &dir,
+        "dusk.yaml",
+        "description: evening\nwal:\n  harmonize: 1\n  chroma: 0.8\nscheme:\n  roles:\n    all:\n      chroma: 0.85\n",
+    );
+    let json = write(
+        &dir,
+        "dusk.json",
+        r#"{ "description": "evening", "wal": { "harmonize": 1, "chroma": 0.8 },
+             "scheme": { "roles": { "all": { "chroma": 0.85 } } } }"#,
+    );
+    let want = wal(json!({}), &[&toml]).unwrap();
+    assert_eq!(want.chroma, 0.8);
+    for other in [&yaml, &json] {
+        assert_eq!(wal(json!({}), &[other]).unwrap(), want, "{other}");
+        let look = look::find(other).unwrap();
+        assert_eq!(
+            (look.description.as_str(), look.targets().as_str()),
+            ("evening", "wal, scheme, icons")
+        );
+    }
+    for (file, text, needle) in [
+        ("stray.yaml", "colour: 1\nwal: {}\n", "unknown key 'colour'"),
+        ("flat.yaml", "wal: 1\n", "[wal] is a table"),
+        ("look.ini", "[wal]\n", ".toml, .yaml or .json"),
+    ] {
+        let path = write(&dir, file, text);
+        let err = look::find(&path).map(|_| ()).unwrap_err();
+        assert!(err.contains(needle), "{file}: {err}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn user_looks_by_name_in_any_format_but_only_one_file_each() {
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let home = scratch("named");
+    let looks = home.join("rehue/looks");
+    std::fs::create_dir_all(&looks).unwrap();
+    write(
+        &looks,
+        "calm.yaml",
+        "description: calm\nwal:\n  chroma: 0.5\n",
+    );
+    write(
+        &looks,
+        "loud.json",
+        r#"{ "description": "loud", "wal": { "chroma": 1.5 } }"#,
+    );
+    let inspect = |args: &[&str]| {
+        std::process::Command::new(bin)
+            .arg("inspect")
+            .args(args)
+            .env("XDG_CONFIG_HOME", &home)
+            .output()
+            .unwrap()
+    };
+    let out = inspect(&["--looks"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && text.contains("* calm") && text.contains("* loud"),
+        "{text}"
+    );
+    let out = inspect(&["--looks", "calm"]);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("chroma: 0.5"));
+
+    write(&looks, "calm.toml", "[wal]\nchroma = 0.6\n");
+    let out = inspect(&["--looks", "calm"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success() && err.contains("more than one file"),
+        "{err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

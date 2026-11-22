@@ -353,7 +353,7 @@ fn roles_table() -> String {
 fn looks_table() -> String {
     let mut t = String::from("| look | grades | what it does |\n| --- | --- | --- |\n");
     for (name, text) in rehue::look::BUILTIN {
-        let l = rehue::look::Look::parse(name, text, rehue::look::Source::BuiltIn)
+        let l = rehue::look::Look::parse(name, text, "toml", rehue::look::Source::BuiltIn)
             .expect("built-in looks parse");
         t.push_str(&format!(
             "| `{name}` | {} | {} |\n",

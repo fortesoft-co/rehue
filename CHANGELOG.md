@@ -5,6 +5,15 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
+## [Unreleased]
+
+### Added
+
+- Looks in YAML or JSON as well as TOML, like configs: a user look is
+  `NAME.toml`, `NAME.yaml`, `NAME.yml` or `NAME.json`, and a look given
+  by path is read by its extension. Two files for one name are an
+  error rather than a silent pick.
+
 ## [0.3.0] - 2026-11-22
 
 The vocabulary release: commands, flags and config keys are renamed to

@@ -1,25 +1,24 @@
 //! Looks: saved grades, selectable by name (`-l pop`).
 //!
-//! A look is a TOML file with a `description` and `[wal]`, `[scheme]`
-//! and/or `[icons]` sections; the sections take the same keys as the
+//! A look is a file (TOML, YAML or JSON, like a config) with a
+//! `description` and `[wal]`, `[scheme]` and/or `[icons]` sections; the sections take the same keys as the
 //! commands' configs, and `icons` falls back to a look's `[wal]` section
 //! when it has no `[icons]` one.  A look is a starting point: it lays under the
 //! `--config` file and the flags, key by key, so anything stated
 //! explicitly wins.  Looks stack left to right (`-l snap,pop`).
 //!
 //! Built-in looks are compiled in; your own live in
-//! `$XDG_CONFIG_HOME/rehue/looks/NAME.toml` (default
-//! `~/.config/rehue/looks`), where a file named like a built-in
-//! replaces it.  A name with a `/` is a path to a look file.
+//! `$XDG_CONFIG_HOME/rehue/looks/NAME.toml` (or `.yaml`, `.yml`,
+//! `.json`; default `~/.config/rehue/looks`), where a file named like a
+//! built-in replaces it.  A name with a `/` is a path to a look file.
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
-use crate::config::{from_toml, from_value, layer as layer_config};
+use crate::config::{EXTENSIONS, from_value, layer as layer_config, parse_text};
 use crate::grade_scheme::SchemeConfig;
 use crate::grade_wal::WalConfig;
 
@@ -84,29 +83,37 @@ pub struct Look {
     icons: Option<Value>,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LookFile {
-    #[serde(default)]
-    description: String,
-    wal: Option<toml::Table>,
-    scheme: Option<toml::Table>,
-    icons: Option<toml::Table>,
-}
-
 impl Look {
-    /// Parse and validate a look: every section must be a valid config
-    /// for its command.
-    pub fn parse(name: &str, text: &str, source: Source) -> Result<Look, String> {
-        let file: LookFile = toml::from_str(text).map_err(|e| format!("look '{name}': {e}"))?;
-        if file.wal.is_none() && file.scheme.is_none() && file.icons.is_none() {
+    /// Parse and validate a look written in the format `extension`
+    /// names: every section must be a valid config for its command.
+    pub fn parse(name: &str, text: &str, extension: &str, source: Source) -> Result<Look, String> {
+        let err = |e: String| format!("look '{name}': {e}");
+        let Value::Object(mut file) = parse_text(text, extension).map_err(err)? else {
+            unreachable!("parse_text returns a table")
+        };
+        let description = match file.remove("description") {
+            None => String::new(),
+            Some(Value::String(d)) => d,
+            Some(_) => return Err(err("description is text".into())),
+        };
+        let mut section = |key: &str| match file.remove(key) {
+            None => Ok(None),
+            Some(v @ Value::Object(_)) => Ok(Some(v)),
+            Some(_) => Err(err(format!("[{key}] is a table of settings"))),
+        };
+        let wal = section("wal")?;
+        let scheme = section("scheme")?;
+        let icons = section("icons")?;
+        if let Some(key) = file.keys().next() {
+            return Err(err(format!(
+                "unknown key '{key}' (a look has description, [wal], [scheme] and [icons])"
+            )));
+        }
+        if wal.is_none() && scheme.is_none() && icons.is_none() {
             return Err(format!(
                 "look '{name}' has none of the [wal], [scheme] and [icons] sections"
             ));
         }
-        let wal = file.wal.map(from_toml);
-        let scheme = file.scheme.map(from_toml);
-        let icons = file.icons.map(from_toml);
         if let Some(v) = &icons {
             from_value::<crate::icons::IconsConfig>(v.clone())
                 .map_err(|e| format!("look '{name}' [icons]: {e}"))?;
@@ -120,7 +127,7 @@ impl Look {
         }
         Ok(Look {
             name: name.to_string(),
-            description: file.description,
+            description,
             source,
             text: text.to_string(),
             wal,
@@ -178,7 +185,11 @@ pub fn find(name: &str) -> Result<Look, String> {
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| name.to_string());
-        return Look::parse(&stem, &read(&path)?, Source::File(path));
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        return Look::parse(&stem, &read(&path)?, &ext, Source::File(path));
     }
     if name.is_empty()
         || !name
@@ -190,18 +201,29 @@ pub fn find(name: &str) -> Result<Look, String> {
         ));
     }
     if let Some(dir) = user_dir() {
-        let path = dir.join(format!("{name}.toml"));
-        if path.is_file() {
+        let found: Vec<(PathBuf, &str)> = EXTENSIONS
+            .iter()
+            .map(|ext| (dir.join(format!("{name}.{ext}")), *ext))
+            .filter(|(p, _)| p.is_file())
+            .collect();
+        if found.len() > 1 {
+            let files: Vec<String> = found.iter().map(|(p, _)| p.display().to_string()).collect();
+            return Err(format!(
+                "look '{name}' is in more than one file: {} (keep one)",
+                files.join(", ")
+            ));
+        }
+        if let Some((path, ext)) = found.into_iter().next() {
             let source = if builtin(name).is_some() {
                 Source::Override(path.clone())
             } else {
                 Source::File(path.clone())
             };
-            return Look::parse(name, &read(&path)?, source);
+            return Look::parse(name, &read(&path)?, ext, source);
         }
     }
     match builtin(name) {
-        Some(text) => Look::parse(name, text, Source::BuiltIn),
+        Some(text) => Look::parse(name, text, "toml", Source::BuiltIn),
         None => {
             let known: Vec<String> = all()
                 .map(|looks| looks.into_iter().map(|l| l.name).collect())
@@ -223,7 +245,10 @@ pub fn all() -> Result<Vec<Look>, String> {
     {
         for entry in listing.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "toml")
+            if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| EXTENSIONS.contains(&e))
                 && path.is_file()
                 && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
                 && builtin(stem).is_none()
@@ -233,6 +258,7 @@ pub fn all() -> Result<Vec<Look>, String> {
         }
     }
     user.sort();
+    user.dedup();
     BUILTIN
         .iter()
         .map(|(n, _)| n.to_string())
