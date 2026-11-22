@@ -20,6 +20,16 @@ shipped.
   terminal, as git does, with `--no-pager`; pipes stay plain. Later: an
   interactive browser (ratatui) with a live preview of the selected
   scheme (its terminal colors, or the wallpaper repainted).
+- **Aesthetic dithering**: `--dither STYLE` as the last stage of a
+  wal grade, drawing each pixel with the scheme's colors only, as a
+  visible pattern: `checker` (the 16-color game look, the default),
+  `halftone` (print dots), `pattern` (designed hatching tiles) and
+  `diffuse` (Floyd-Steinberg, or Atkinson with `loss`). Settings in the
+  `--palette` form (`--dither checker,scale=2,flat=0.1`): pattern pixel
+  size, a flat zone that keeps near colors solid, and each style's own
+  keys. Built-in looks for the iconic presets (`pc98`, `newsprint`,
+  `onebit`, `hatch`). Replaces today's `--dithering` and
+  `--dithering-mode`.
 - **TOML and YAML configs**: `-c` reads JSON today; accept `.toml`
   and `.yaml` too (picked by file extension), so a config can be
   written in the same format as the `apply` pipeline or a scheme.
