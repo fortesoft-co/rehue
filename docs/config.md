@@ -1,16 +1,34 @@
 # Config files
 
 Every flag has a config key, so a grade you want to keep can live in a
-JSON file passed with `-c` (`--config`). Keys are the flag names
-without the dashes:
+file passed with `-c` (`--config`). Keys are the flag names without
+the dashes. A config can be TOML, YAML or JSON; the file's extension
+(`.toml`, `.yaml` or `.yml`, `.json`) picks the format:
+
+```toml
+# grade.toml
+harmonize = 1
+reach = 90
+palette = { ac = 1, base0D = 2 }
+```
+
+```yaml
+# grade.yaml
+harmonize: 1
+reach: 90
+palette: { ac: 1, base0D: 2 }
+```
 
 ```json
 { "harmonize": 1, "reach": 90, "palette": { "ac": 1, "base0D": 2 } }
 ```
 
 ```sh
-rehue wal -i wall.png -s gruvbox-light -c grade.json
+rehue wal -i wall.png -s gruvbox-light -c grade.toml
 ```
+
+YAML is read as YAML 1.2, so a bare `no` or `on` stays a word rather
+than turning into true or false.
 
 Every key is optional: anything left out keeps its default. A few
 settings exist only as keys: the [extraction](grading.md#extraction)
@@ -22,12 +40,15 @@ Per-role settings sit under `roles`, one record per role (full or
 short names) plus `all` for every role. On `wal` and `icons`, the
 role records grade pixels by the role of the slot they land on:
 
-```json
-{ "roles": {
-    "all": { "match-hue": 1 },
-    "accents": { "chroma": 1.3 },
-    "bg": { "lightness": -0.05 }
-} }
+```toml
+[roles.all]
+match-hue = 1
+
+[roles.accents]
+chroma = 1.3
+
+[roles.bg]
+lightness = -0.05
 ```
 
 The [`apply` pipeline](apply.md) takes the same keys in its
@@ -46,7 +67,7 @@ it, key by key:
 
 Within each layer, config records resolve `globals // all // role`: bare flags seed
 `all`, flags with a role (`--chroma bg 1.6`) write that role's record,
-and `--config` JSON records do the same job, with one precedence rule
+and `--config` records do the same job, with one precedence rule
 per key:
 
 1. the role's own record (flag with a role, or config file),
@@ -54,7 +75,7 @@ per key:
 3. else the role's default.
 
 Only wal's bare `--lightness` / `--chroma` differ by design: they are
-the image-wide grade, not a seed. Extraction options are config-JSON
+the image-wide grade, not a seed. Extraction options are config-file
 only. Dithering is global-only: role records do not carry it. Role
 names take their short forms in config keys too (`"bg"`, `"ac"`).
 `palette` is the one key that replaces instead of merging: a palette
@@ -72,15 +93,26 @@ rehue scheme -i solarized-dark -w pic.webp -o out \
   --assign ac 0,1,2,3
 ```
 
-```json
-{ "roles": {
-    "all": {"match-hue": 1.0},
-    "background": {"assign": 1, "chroma": 1.6},
-    "surfaces": {"assign": [1, 3], "chroma": 1.6},
-    "foreground": {"assign": 0, "chroma": 1.6},
-    "accents": {"assign": [0, 1, 2, 3], "chroma": 0.75}
-} }
+```toml
+[roles.all]
+match-hue = 1.0
+
+[roles.background]
+assign = 1
+chroma = 1.6
+
+[roles.surfaces]
+assign = [1, 3]
+chroma = 1.6
+
+[roles.foreground]
+assign = 0
+chroma = 1.6
+
+[roles.accents]
+assign = [0, 1, 2, 3]
+chroma = 0.75
 ```
 
-Both run the same merge and the same engine; the JSON form wins when
+Both run the same merge and the same engine; the config file wins when
 the same dial needs the same value on several roles.

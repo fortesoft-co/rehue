@@ -37,7 +37,7 @@ in {
 ```
 
 The builders take the same settings as the commands: `config` is the
-`--config` JSON as a Nix attribute set ([config.md](config.md)).
+`--config` settings as a Nix attribute set ([config.md](config.md)).
 
 ## Icon themes
 

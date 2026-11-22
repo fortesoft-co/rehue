@@ -197,6 +197,7 @@ Flakes only see files git tracks: `git add` new files before
 | `examples/docs-images.rs` | Builds the docs images from `examples/docs/examples.toml`. |
 | `tests/apply.rs` | `rehue apply`: pipeline files, the tinty handoff, the wallpaper command. |
 | `tests/cli.rs` | Cross-command CLI behaviour (the shared flags). |
+| `tests/config.rs` | Config files: JSON, TOML and YAML, picked by extension. |
 | `tests/docs.rs` | The docs: generated regions, the drift check, links, example images. |
 | `tests/enhance.rs` | `rehue enhance`: the model table, parameter checks, scaling. |
 | `tests/extraction.rs` | Extraction: determinism on a synthetic gradient. |

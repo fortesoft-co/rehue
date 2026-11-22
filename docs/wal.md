@@ -261,7 +261,7 @@ Before painting, gives the role's slots hues taken from the
 wallpaper's families (lightness and chroma stay the scheme's).
 Values: `auto` = the heaviest families spread across the role's
 slots, `3` = every slot from family 3, `0,1,2,3` = explicit stops
-(duplicates give flat runs; in JSON, `"auto"`, `3` or `[0, 1, 2, 3]`).
+(duplicates give flat runs; in a config, `"auto"`, `3` or `[0, 1, 2, 3]`).
 Family indices come from [`rehue inspect`](inspect.md). Without a role only a family
 index works: the single-slot background inherits `all`, so `auto` and
 lists need a role. Shown on the glitter, whose many hues give the

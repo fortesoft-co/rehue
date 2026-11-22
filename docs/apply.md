@@ -40,7 +40,7 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
 ```
 
 - **Steps:** `[rehue.scheme]` and `[rehue.wal]` take the same keys as their
-  JSON `--config` files ([config.md](config.md)); a table being present turns that step on.
+  `--config` files ([config.md](config.md)); a table being present turns that step on.
   With both, the wallpaper is repainted with the scheme it just
   produced (the round trip). With only `[rehue.wal]`, the reference
   scheme is applied as-is. `look` under `[rehue]` starts both steps

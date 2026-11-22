@@ -67,10 +67,11 @@ pub enum Commands {
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Config JSON: extraction options, `min-text-contrast`, `reach` and per-role records.
+        /// Config file (.json, .toml or .yaml): extraction options,
+        /// `min-text-contrast`, `reach` and per-role records.
         ///
-        /// e.g. -c scheme.json
-        #[arg(short, long, value_name = "JSON")]
+        /// e.g. -c scheme.toml
+        #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
         /// Start from a look, a saved grade: built-in, or
         /// ~/.config/rehue/looks/NAME.toml.  --config and flags still win;
@@ -161,10 +162,11 @@ pub enum Commands {
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Config JSON: extraction options and the grading options below, globally and per role.
+        /// Config file (.json, .toml or .yaml): extraction options and the
+        /// grading options below, globally and per role.
         ///
-        /// e.g. -c wal.json
-        #[arg(short, long, value_name = "JSON")]
+        /// e.g. -c wal.toml
+        #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
         /// Start from a look, a saved grade: built-in, or
         /// ~/.config/rehue/looks/NAME.toml.  --config and flags still win;
@@ -268,11 +270,11 @@ pub enum Commands {
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Config JSON: the grading options below, globally and per role,
-        /// and `folders`.
+        /// Config file (.json, .toml or .yaml): the grading options below,
+        /// globally and per role, and `folders`.
         ///
-        /// e.g. -c icons.json
-        #[arg(short, long, value_name = "JSON")]
+        /// e.g. -c icons.toml
+        #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
         /// Start from a look, a saved grade: built-in, or
         /// ~/.config/rehue/looks/NAME.toml (its [icons] section, else its
@@ -349,10 +351,11 @@ pub enum Commands {
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Extraction options as JSON (families mode).
+        /// Config file (.json, .toml or .yaml) with extraction options
+        /// (families mode).
         ///
-        /// e.g. -c extract.json
-        #[arg(short, long, value_name = "JSON")]
+        /// e.g. -c extract.toml
+        #[arg(short, long, value_name = "FILE")]
         config: Option<PathBuf>,
         /// Output directory: families mode = inspect.png, scheme mode =
         /// preview.html; absent prints the strips only.
@@ -416,7 +419,7 @@ pub enum Commands {
     ///
     /// The pipeline is TOML: `wallpaper`, `scheme`, then a
     /// `[rehue.scheme]` and/or `[rehue.wal]` table (the same keys as their
-    /// JSON --config files; a table's presence turns its step on) and an
+    /// --config files; a table's presence turns its step on) and an
     /// `[apply]` table.  The mapped scheme is installed as a tinty custom scheme
     /// and applied with `tinty apply base16-<tinty-name>`; the wallpaper
     /// command runs with `{wallpaper}` filled in.

@@ -267,7 +267,8 @@ the accents without touching the text:
 rehue scheme -i nord -w my-photo.jpg --chroma accents 1.3 --lightness fg 0.05
 ```
 
-A grade you want to keep goes in a config file, passed with `-c`.
+A grade you want to keep goes in a config file (TOML, YAML or JSON),
+passed with `-c`.
 More: [docs/grading.md](docs/grading.md) for roles and extraction,
 [docs/config.md](docs/config.md) for config files and how settings
 combine.

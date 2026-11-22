@@ -1,7 +1,7 @@
 //! `rehue apply`: run a pipeline file and hand the result to the desktop.
 //!
 //! The pipeline is a TOML file.  `[rehue.scheme]` and `[rehue.wal]` are the
-//! same records the JSON `--config` files take (same keys, same merge
+//! same records the `--config` files take (same keys, same merge
 //! rules), so a dial means the same thing everywhere; a table's presence
 //! is what turns its step on.  `look = "pop"` under `[rehue]` starts
 //! both steps from a look; a step's own `look` key replaces it.  `[apply]`

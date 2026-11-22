@@ -119,19 +119,76 @@ pub fn from_value<T: DeserializeOwned + Serialize>(value: Value) -> Result<T, St
     Ok(typed)
 }
 
-/// A JSON config file as a value (an object); no file is the empty object.
+/// A config file as a value (an object), read by its extension:
+/// `.json`, `.toml`, or `.yaml` / `.yml`.  No file is the empty object.
 pub fn read_file(path: Option<&Path>) -> Result<Value, String> {
     let Some(p) = path else {
         return Ok(Value::Object(Map::new()));
     };
     let text = std::fs::read_to_string(p)
         .map_err(|e| format!("can't read config {}: {}", p.display(), e))?;
-    let value: Value =
-        serde_json::from_str(&text).map_err(|e| format!("bad config {}: {}", p.display(), e))?;
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let bad = |e: String| format!("bad config {}: {e}", p.display());
+    let value = match ext.as_str() {
+        "json" => serde_json::from_str(&text).map_err(|e| bad(e.to_string()))?,
+        "toml" => from_toml(toml::from_str(&text).map_err(|e| bad(e.to_string()))?),
+        "yaml" | "yml" => from_yaml(&text).map_err(bad)?,
+        _ => {
+            return Err(format!(
+                "config {}: name it .json, .toml or .yaml (the extension picks the format)",
+                p.display()
+            ));
+        }
+    };
     if !value.is_object() {
-        return Err(format!("bad config {}: expected an object", p.display()));
+        return Err(bad("expected a table of settings".into()));
     }
     Ok(value)
+}
+
+/// A YAML document as a JSON value (YAML 1.2: `no` and `on` stay
+/// strings).  An empty file is the empty object.
+pub fn from_yaml(text: &str) -> Result<Value, String> {
+    use yaml_rust2::{Yaml, YamlLoader};
+    let docs = YamlLoader::load_from_str(text).map_err(|e| e.to_string())?;
+    if docs.len() > 1 {
+        return Err("one YAML document only (found a `---` separator)".into());
+    }
+    fn convert(y: &Yaml) -> Result<Value, String> {
+        Ok(match y {
+            Yaml::Null => Value::Null,
+            Yaml::Boolean(b) => Value::Bool(*b),
+            Yaml::Integer(i) => Value::from(*i),
+            Yaml::Real(r) => {
+                let f: f64 = r.parse().map_err(|_| format!("not a number: {r}"))?;
+                serde_json::Number::from_f64(f)
+                    .map(Value::Number)
+                    .ok_or_else(|| format!("not a finite number: {r}"))?
+            }
+            Yaml::String(s) => Value::String(s.clone()),
+            Yaml::Array(a) => Value::Array(a.iter().map(convert).collect::<Result<_, _>>()?),
+            Yaml::Hash(h) => {
+                let mut map = Map::new();
+                for (k, v) in h {
+                    let key = match k {
+                        Yaml::String(s) => s.clone(),
+                        Yaml::Integer(i) => i.to_string(),
+                        other => return Err(format!("keys are names, not {other:?}")),
+                    };
+                    map.insert(key, convert(v)?);
+                }
+                Value::Object(map)
+            }
+            Yaml::Alias(_) | Yaml::BadValue => return Err("unreadable value".into()),
+        })
+    }
+    match docs.first() {
+        None => Ok(Value::Object(Map::new())),
+        Some(doc) => convert(doc),
+    }
 }
 
 /// A TOML table as a JSON value.

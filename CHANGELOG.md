@@ -62,6 +62,11 @@ rejected (pre-1.0, see the table below).
   generated from the code and `docs/examples.toml`; `cargo test` fails
   when they drift.
 
+- Config files (`-c`) in TOML or YAML as well as JSON, picked by the
+  file's extension (`.toml`, `.yaml` / `.yml`, `.json`). YAML is read
+  as YAML 1.2, so `no` and `on` stay words. `inspect -c` now checks its
+  keys like the other commands.
+
 ### Changed
 
 - `wal` blend mode (the default) grades by colorfulness: hue comes

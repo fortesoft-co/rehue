@@ -13,17 +13,6 @@ use rehue::scheme::{BASE_SLOTS, Scheme};
 use rehue::terminal::{families_strip, scheme_strip};
 use rehue::{apply, extract, grade_scheme, grade_wal, preview, role};
 
-fn read_json<T: serde::de::DeserializeOwned + Default>(path: Option<&Path>) -> Result<T, String> {
-    match path {
-        None => Ok(T::default()),
-        Some(p) => {
-            let text = std::fs::read_to_string(p)
-                .map_err(|e| format!("can't read config {}: {}", p.display(), e))?;
-            serde_json::from_str(&text).map_err(|e| format!("bad config {}: {}", p.display(), e))
-        }
-    }
-}
-
 fn fill_rect(img: &mut image::RgbImage, x0: u32, y0: u32, x1: u32, y1: u32, rgb: [u8; 3]) {
     for y in y0..=y1 {
         for x in x0..=x1 {
@@ -823,7 +812,15 @@ fn run_inspect(
     }
     let wallpaper =
         wallpaper.ok_or_else(|| "pass --wallpaper, --scheme or --schemes".to_string())?;
-    let config = read_json::<grade_scheme::SchemeConfig>(config_path)?;
+    let config: grade_scheme::SchemeConfig =
+        rehue::config::from_value(rehue::config::read_file(config_path)?).map_err(|e| {
+            format!(
+                "config {}: {e}",
+                config_path
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default()
+            )
+        })?;
     let clusters = extract::extract_hues(wallpaper, &config.extraction)?;
     if clusters.is_empty() {
         println!("rehue inspect: no chromatic signal (greyscale wallpaper)");
