@@ -21,10 +21,15 @@ use manifest::{Cell, Image, Kind, LOCK, Ladder, Manifest, RUNG_CONFIG, rung_labe
 
 const BG: &str = "#232327";
 
-/// A rung that changes the picture less than this (mean OKLab
-/// difference x100 from the cell before it; ~2 is just noticeable) is
-/// flagged: the example would not show what the option does.
-const MIN_CHANGE: f64 = 2.0;
+/// A rung that changes the picture less than this is flagged: the
+/// example would not show what the option does.  The score is the mean
+/// OKLab difference x100 over the part that changed most (the top tenth
+/// of an image's pixels, the top four slots of a scheme); ~2 is just
+/// noticeable over a whole image, so a changed region asks for a bit more.
+const MIN_CHANGE: f64 = 3.0;
+/// The same for scheme ladders, whose score is already narrowed to the
+/// four most-changed slots.
+const MIN_SCHEME_CHANGE: f64 = 2.0;
 const FG: &str = "#e8e8ef";
 
 type Result<T> = std::result::Result<T, String>;
@@ -330,10 +335,12 @@ impl Builder {
                     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
                 })
                 .collect();
-            if schemes {
-                d.sort_by(|x, y| y.total_cmp(x));
-                d.truncate(4);
-            }
+            // score the part that changed: the four most-changed slots of
+            // a scheme, the most-changed tenth of an image's pixels (a
+            // grade can rightly leave whatever already matches alone)
+            d.sort_by(|x, y| y.total_cmp(x));
+            let keep = if schemes { 4 } else { (d.len() / 10).max(1) };
+            d.truncate(keep);
             d.iter().sum::<f64>() / d.len() as f64 * 100.0
         };
         // Each rung against the cell before it (steps) and against the
@@ -352,7 +359,12 @@ impl Builder {
                 line += &format!(" (vs first rung {first:5.1})");
                 least = least.min(first);
             }
-            let flag = if least < MIN_CHANGE {
+            let min = if schemes {
+                MIN_SCHEME_CHANGE
+            } else {
+                MIN_CHANGE
+            };
+            let flag = if least < min {
                 "  <- barely visible"
             } else {
                 ""

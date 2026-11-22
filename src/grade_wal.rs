@@ -97,6 +97,31 @@ pub enum Mode {
     Snap,
 }
 
+/// What the scheme's neutral slots (base00-07) do for colorful pixels
+/// in `blend` mode.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum Neutrals {
+    /// The default: the neutrals only set the chroma floor; hue and
+    /// vivid color come from the accents, and chroma follows how
+    /// colorful each pixel is within its image.
+    #[default]
+    Floor,
+    /// The neutrals join the mix for hue and chroma like any slot: the
+    /// image takes on the scheme's overall cast, calmer and faded
+    /// toward its grays (rehue's blend before 0.3).
+    Mix,
+}
+
+impl Neutrals {
+    pub fn describe(&self) -> &'static str {
+        match self {
+            Self::Floor => "floor",
+            Self::Mix => "mix",
+        }
+    }
+}
+
 impl Mode {
     pub fn describe(&self) -> &'static str {
         match self {
@@ -150,6 +175,9 @@ pub struct WalConfig {
     /// How pixels find their palette color: `blend` (weighted mixing,
     /// the default) or `snap` (nearest slot).
     pub mode: Option<Mode>,
+    /// What the scheme's neutral slots do in `blend` mode: `floor`
+    /// (the default) or `mix`.
+    pub neutrals: Neutrals,
     pub max_gray_chroma: f64,
     pub lightness: f64,
     pub chroma: f64,
@@ -173,6 +201,7 @@ impl Default for WalConfig {
             dithering: 0.0,
             dithering_mode: None,
             mode: None,
+            neutrals: Neutrals::Floor,
             max_gray_chroma: 0.02,
             lightness: 0.0,
             chroma: 1.0,
@@ -496,6 +525,39 @@ pub struct ColorMap<'a> {
     options: &'a [SlotOptions],
     config: &'a WalConfig,
     mode: Mode,
+    vivid: f64,
+}
+
+/// The chroma a "fully vivid" pixel has when no image says otherwise
+/// (a saturated photo's 95th percentile is around here).
+pub const DEFAULT_VIVID: f64 = 0.2;
+
+/// An image's vivid chroma: the 95th percentile of its pixels' chroma
+/// (at least 0.02), from a histogram, so it costs one pass and no
+/// memory per pixel.  Blend mode measures each pixel's colorfulness
+/// against it.
+pub fn vivid_chroma(pixels: &[u8]) -> f64 {
+    const BINS: usize = 1024;
+    const MAX: f64 = 0.4;
+    let mut hist = [0u64; BINS];
+    let mut n = 0u64;
+    for px in pixels.as_chunks::<3>().0 {
+        let c = rgb_to_oklch(&[px[0], px[1], px[2]]).c;
+        hist[((c / MAX * BINS as f64) as usize).min(BINS - 1)] += 1;
+        n += 1;
+    }
+    if n == 0 {
+        return DEFAULT_VIVID;
+    }
+    let want = n * 95 / 100;
+    let mut seen = 0u64;
+    for (i, count) in hist.iter().enumerate() {
+        seen += count;
+        if seen > want {
+            return ((i as f64 + 0.5) / BINS as f64 * MAX).max(0.02);
+        }
+    }
+    MAX
 }
 
 impl<'a> ColorMap<'a> {
@@ -514,7 +576,16 @@ impl<'a> ColorMap<'a> {
             options,
             config,
             mode: config.mode.unwrap_or(Mode::Blend),
+            vivid: DEFAULT_VIVID,
         }
+    }
+
+    /// Measure colorfulness against this chroma (the image's
+    /// [`vivid_chroma`]); `apply` sets it from the image, and a LUT baked
+    /// for an image should use the same value.
+    pub fn with_vivid(mut self, vivid: f64) -> Self {
+        self.vivid = vivid.max(1e-3);
+        self
     }
 
     /// One colour through the remap, undithered: exactly what `apply`
@@ -624,38 +695,70 @@ impl<'a> ColorMap<'a> {
             best_index = best;
             let target = self.slots[best].lch;
             let n = self.options[best];
-            // In blend mode the targets are the palette's weighted means
-            // over all slots by circular hue distance; influence falls off
-            // with distance instead of cutting off at the reach, so the
-            // snap-mode cutoff is bypassed.
+            // Blend mode: weighted means by circular hue distance, so
+            // influence falls off with distance instead of cutting off at
+            // the reach (the snap-mode cutoff is bypassed).
+            //
+            // * hue: from the accents (base08-0F) in the palette, every
+            //   palette slot when it has none, so the near-arbitrary hues
+            //   of the scheme's grays never steer a color;
+            // * lightness: from every palette slot;
+            // * chroma: by how colorful the pixel is within the image (its
+            //   chroma against the image's vivid chroma), between the
+            //   palette's neutral chroma and the accents': muted areas
+            //   settle at the scheme's neutral level, as the surfaces of
+            //   a themed desktop do, and the vivid details reach accent
+            //   strength.  A palette with no neutrals gives every pixel
+            //   accent strength.
+            //
+            // `neutrals = mix` counts every slot as an accent here: hue,
+            // lightness and chroma are then plain means over the whole
+            // palette (the faded cast toward the scheme's grays).
             let (hue_t, l_t, c_t) = if self.mode == Mode::Blend {
                 let t = reach.max(1e-3);
-                let mut hues = Vec::new();
-                let mut ls = Vec::new();
-                let mut cs = Vec::new();
-                let mut ws = Vec::new();
-                let mut total = 0.0f64;
+                let mix_neutrals = self.config.neutrals == Neutrals::Mix;
+                let accent =
+                    |i: usize| mix_neutrals || role_of_slot(self.slots[i].slot) == "accents";
+                let has_accents = (0..self.slots.len()).any(|i| accent(i) && weight(i) > 0.0);
+                let (mut ls, mut lw) = (Vec::new(), Vec::new());
+                let (mut hues, mut cs, mut hw) = (Vec::new(), Vec::new(), Vec::new());
+                let (mut neutral_c, mut neutral_w) = (0.0f64, 0.0f64);
                 for (idx, s) in self.slots.iter().enumerate() {
                     let w = weight(idx);
                     if w <= 0.0 {
                         continue;
                     }
-                    let d = circ_dist(raw.h, s.lch.h);
-                    let d = d / w;
+                    let d = circ_dist(raw.h, s.lch.h) / w;
                     let v = (-(d * d) / (t * t)).exp();
-                    hues.push(s.lch.h);
                     ls.push(s.lch.l);
-                    cs.push(s.lch.c);
-                    ws.push(v);
-                    total += v;
+                    lw.push(v);
+                    if !accent(idx) {
+                        neutral_c += s.lch.c * w;
+                        neutral_w += w;
+                    }
+                    if !has_accents || accent(idx) {
+                        hues.push(s.lch.h);
+                        cs.push(s.lch.c);
+                        hw.push(v);
+                    }
                 }
-                if total > 1e-12 {
-                    let mix = |xs: &Vec<f64>| {
-                        xs.iter().zip(ws.iter()).map(|(x, w)| x * w).sum::<f64>() / total
-                    };
-                    (weighted_circ_mean(&hues, &ws), mix(&ls), mix(&cs))
-                } else {
-                    (target.h, target.l, target.c)
+                let mean = |xs: &[f64], ws: &[f64]| {
+                    let total: f64 = ws.iter().sum();
+                    (total > 1e-12)
+                        .then(|| xs.iter().zip(ws).map(|(x, w)| x * w).sum::<f64>() / total)
+                };
+                match (mean(&ls, &lw), mean(&cs, &hw)) {
+                    (Some(l), Some(accent_c)) => {
+                        let c = if neutral_w > 0.0 {
+                            let floor = neutral_c / neutral_w;
+                            let r = (raw.c / self.vivid).clamp(0.0, 1.0);
+                            floor + r * (accent_c - floor)
+                        } else {
+                            accent_c
+                        };
+                        (weighted_circ_mean(&hues, &hw), l, c)
+                    }
+                    _ => (target.h, target.l, target.c),
                 }
             } else {
                 (target.h, target.l, target.c)
@@ -739,7 +842,8 @@ pub fn apply(
         width as usize * height as usize * 3,
         "flat buffer must match dimensions"
     );
-    let core = ColorMap::new(slots, neutral_slots, options, config);
+    let core =
+        ColorMap::new(slots, neutral_slots, options, config).with_vivid(vivid_chroma(pixels));
     let dither = config.dithering.clamp(0.0, 1.0);
     let mode = config.dithering_mode.unwrap_or(DitherMode::BlueNoise);
 

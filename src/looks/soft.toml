@@ -1,7 +1,8 @@
-description = "a gentle nudge: halfway to the other side, still clearly itself"
+description = "calm: a gentle harmony with a soft cast toward the scheme's grays"
 
 [wal]
-harmonize = 0.5
+neutrals = "mix"
+harmonize = 0.7
 
 [scheme]
 roles.all.match-hue = 0.5

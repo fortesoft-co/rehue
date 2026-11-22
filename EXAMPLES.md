@@ -56,7 +56,7 @@ output is a re-encoded passthrough.
 
 | | |
 | --- | --- |
-| `blend` | every pixel's target is the palette's weighted mean under a smooth influence field (a Gaussian falloff on circular hue distance, lightness distance for gray pixels). Slot boundaries become smooth crossings; the flat-constant posterize look disappears by construction. |
+| `blend` | every pixel's target is a weighted mean under a smooth influence field (a Gaussian falloff on circular hue distance, lightness distance for gray pixels). Hue comes from the accents (base08-0F), so the scheme's grays never steer a color; chroma follows how colorful the pixel is within the image (see [match-chroma](#match-chroma--01-default-0-set-by-harmonize)). Slot boundaries become smooth crossings; the flat-constant posterize look disappears by construction. |
 | `snap` | nearest-slot snapping: pixels adopt exact palette colors and flat constants, the stylized, dithering-as-art mode. The match dials cut off at `reach`. |
 
 ![original / blend, harmonize 1 / snap, harmonize 1](assets/examples/options/wal-mode.webp)
@@ -69,6 +69,29 @@ rehue wal --harmonize 1
 rehue wal --harmonize 1 --mode snap
 ```
 <!-- /gen:ladder:wal-mode -->
+
+### neutrals — `floor` (default) | `mix`
+
+What the scheme's grays (base00-07) do for colorful pixels in `blend`.
+With `floor`, they only set the lowest chroma: hue comes from the
+accents and chroma follows how colorful each pixel is within its image
+(see [match-chroma](#match-chroma--01-default-0-set-by-harmonize)), so
+the picture keeps its color structure in the scheme's range. With
+`mix`, they join the mix for hue and chroma like any slot: the image
+takes on the scheme's overall cast, calmer and faded toward its grays.
+`mix` is rehue's blend before 0.3, exactly; the `soft` look uses it.
+No effect in `snap`, which takes the nearest slot's own color.
+
+![original / harmonize 1 with neutrals floor / with neutrals mix, on the butterfly](assets/examples/options/wal-neutrals.webp)
+
+<!-- gen:ladder:wal-neutrals -->
+```sh
+# inputs: rehue wal -i assets/kelly-ishmael-butterfly-closeup.webp -s gruvbox-light -o out
+# floor, the default
+rehue wal --harmonize 1
+rehue wal --harmonize 1 --neutrals mix
+```
+<!-- /gen:ladder:wal-neutrals -->
 
 ### harmonize — `0..1`, default `0`
 
@@ -112,10 +135,21 @@ rehue wal --palette base0D,base0E --match-hue 1
 How much of the target chroma pixels take on. This is the dial that
 carries the "repaint" feel; harmonize sets it along with match-hue.
 
-![original / match-chroma 0.5 / 1 on bango](assets/examples/options/wal-match-chroma.webp)
+In `blend`, the target depends on how colorful the pixel is **within
+its image**: its chroma, against the image's most colorful areas (the
+95th percentile), places it between the scheme's neutral chroma (the
+average of base00-07) and its accents' chroma. Muted areas settle at
+the scheme's neutral level, the way a themed desktop's surfaces do,
+and the vivid details reach accent strength, so the picture keeps its
+own saturation structure in the scheme's range. A `--palette` without
+neutral slots (`-p ac`) gives every pixel accent strength. In `snap`,
+the target is the nearest slot's own chroma.
+
+![original / match-chroma 0.5 / 1 on the glitter](assets/examples/options/wal-match-chroma.webp)
 
 <!-- gen:ladder:wal-match-chroma -->
 ```sh
+# inputs: rehue wal -i assets/vidsplay-rainbow-glitter.webp -s gruvbox-light -o out
 rehue wal --match-chroma 0.5
 rehue wal --match-chroma 1
 ```
@@ -140,19 +174,25 @@ rehue wal --match-lightness 1
 
 ### reach — degrees, default `45`
 
-How far influence reaches on the hue wheel. In `blend` mode it is
-the falloff width (larger = farther slots pull on each pixel); in
-`snap` it is the cutoff the match dials use. Shown paired with a full
-`harmonize 1`, without which reach changes nothing.
+How far influence reaches on the hue wheel: the lever for washing more
+of the palette over the image. In `blend` mode it is the falloff width
+(larger = farther slots pull on each pixel). Up to about 45 each color
+keeps to its nearest accent; from about 90 neighboring accents blend
+and the image leans toward the scheme's dominant accent colors; at 180
+it is close to a tint in one blended accent hue (the `wash` look sits
+at 120). With `neutrals mix` the wash goes toward the scheme's overall
+cast instead, grays included. In `snap` it is the cutoff the match
+dials use. Shown paired with a full `harmonize 1`, without which reach
+changes nothing.
 
-![original / reach 15, 45, 140 with harmonize 1](assets/examples/options/wal-reach.webp)
+![original / reach 45, 90, 180 with harmonize 1](assets/examples/options/wal-reach.webp)
 
 <!-- gen:ladder:wal-reach -->
 ```sh
-rehue wal --harmonize 1 --reach 15
 # the default
 rehue wal --harmonize 1 --reach 45
-rehue wal --harmonize 1 --reach 140
+rehue wal --harmonize 1 --reach 90
+rehue wal --harmonize 1 --reach 180
 ```
 <!-- /gen:ladder:wal-reach -->
 
@@ -460,7 +500,7 @@ A look is a saved grade (`-l NAME`; `rehue inspect --looks` lists
 them, see the [README](README.md#looks) for writing your own). Each
 cell below is one built-in look and nothing else.
 
-![original, then the wal looks soft, tight, pop, muted, snap and vivid](assets/examples/looks-wal.webp)
+![original, then the wal looks soft, tight, pop, muted, wash, snap and vivid](assets/examples/looks-wal.webp)
 
 <!-- gen:ladder:looks-wal -->
 ```sh
@@ -468,6 +508,7 @@ rehue wal -l soft
 rehue wal -l tight
 rehue wal -l pop
 rehue wal -l muted
+rehue wal -l wash
 rehue wal -l snap
 rehue wal -l vivid
 ```

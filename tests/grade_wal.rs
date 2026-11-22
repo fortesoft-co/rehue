@@ -402,3 +402,34 @@ fn wal_cli_flags_track_the_config_surface() {
         let _ = std::fs::remove_dir_all(std::env::temp_dir().join(dir));
     }
 }
+
+#[test]
+fn blend_keeps_the_images_saturation_structure_in_the_schemes_range() {
+    use rehue::color::rgb_to_oklch;
+    use rehue::grade_wal::{ColorMap, vivid_chroma};
+    let (_, slots) = solarized();
+    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
+    let config = WalConfig {
+        harmonize: 1.0,
+        ..Default::default()
+    };
+    let regs = rehue::grade_wal::resolved_roles(&config).unwrap();
+    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
+    let blue = slots[13].lch.h;
+    let px = |c: f64| oklch_to_rgb(&Lch { l: 0.6, c, h: blue });
+    let map = ColorMap::new(&slots, &neutral, &options, &config).with_vivid(0.15);
+    let chroma = |c: f64| rgb_to_oklch(&map.map_rgb(&px(c))).c;
+    let neutral_c = (0..8).map(|i| slots[i].lch.c).sum::<f64>() / 8.0;
+    // a muted pixel settles near the scheme's neutral chroma, a vivid one
+    // reaches the accent's
+    assert!((chroma(0.03) - (neutral_c + 0.2 * (slots[13].lch.c - neutral_c))).abs() < 0.02);
+    assert!((chroma(0.15) - slots[13].lch.c).abs() < 0.02);
+    assert!(chroma(0.03) < chroma(0.08) && chroma(0.08) < chroma(0.15));
+
+    // the image decides what "vivid" means: 95th percentile
+    let mut pixels = Vec::new();
+    for i in 0..100 {
+        pixels.extend(px(if i < 96 { 0.05 } else { 0.18 }));
+    }
+    assert!((vivid_chroma(&pixels) - 0.05).abs() < 0.01);
+}

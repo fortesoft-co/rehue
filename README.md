@@ -83,8 +83,10 @@ All inputs are in-repo assets (CC0, see
 
 One dial: `--harmonize 1`. It moves the hue *and* chroma of every
 pixel toward the palette, but leaves lightness alone, so the glitter
-keeps its sparkle and loses its rainbow (the image at the top of this
-page).
+keeps its sparkle and trades its rainbow for Gruvbox's aqua, yellow
+and orange (the image at the top of this page). Its brightest specks
+reach the accents' full strength while the dim ones stay quiet: the
+picture keeps its own range of color, inside the scheme's.
 
 <!-- gen:run:glitter -->
 ```sh
@@ -96,9 +98,9 @@ rehue wal \
 ```
 <!-- /gen:run:glitter -->
 
-The colors land spread wide: the scheme's brightest surface covers 39%
-of the pixels, the next about 11%, and the rest single digits each. One
-palette, and still a photograph.
+The colors land spread wide: the scheme's darkest gray (the glitter's
+black background) takes 39% of the pixels, the next slot about 11%,
+and the rest single digits each. One palette, and still a photograph.
 
 ### Rosé Pine Dawn → Butterfly
 
@@ -246,12 +248,13 @@ rehue inspect --looks                                  # list them
 <!-- gen:looks -->
 | look | grades | what it does |
 | --- | --- | --- |
-| `soft` | wal, scheme | a gentle nudge: halfway to the other side, still clearly itself |
-| `tight` | wal, scheme | the closest bond: wallpaper hues lock to the palette, scheme accents follow every family |
+| `soft` | wal, scheme | calm: a gentle harmony with a soft cast toward the scheme's grays |
+| `tight` | wal, scheme | the closest bond: palette hue, chroma and some of its lightness; scheme accents follow every family |
 | `pop` | wal, scheme | full harmony with the color turned up |
 | `muted` | wal, scheme | full harmony, softer color: calm, low-saturation results |
+| `wash` | wal | the palette washed over the image: everything leans toward the scheme's main accent colors |
 | `snap` | wal | exact palette hues and chroma, the image's own shading kept |
-| `vivid` | wal | harmonize toward the accents only: no gray wash over bright colors |
+| `vivid` | wal | accents only, at full strength: bold color, grays left alone |
 <!-- /gen:looks -->
 
 A look is a starting point: your `-c` config and your flags still win,
@@ -309,6 +312,7 @@ Extraction settings go in the `--config` JSON (on `scheme`, `wal` or
 | flag | value | what it does |
 | --- | --- | --- |
 | `--mode` | `blend \| snap` | How pixels find their palette color: `blend` = mix the nearby palette colors, weighted by hue distance (default); `snap` = take the nearest one |
+| `--neutrals` | `floor \| mix` | What the scheme's grays (base00-07) do in blend mode: `floor` = only set the lowest chroma, so the image keeps its color structure (default); `mix` = join the mix, a calmer cast faded toward the scheme's grays |
 | `--harmonize` | `0..1` | How strongly to harmonize with the scheme, 0..1: sets match-hue and match-chroma wherever they aren't set (default 0) |
 | `--match-hue` | `[ROLE] 0..1` | How much of the palette's hue each pixel takes on (0 = keep its own, 1 = fully adopt) |
 | `--match-chroma` | `[ROLE] 0..1` | How much of the palette's chroma each pixel takes on (0 = keep its own, 1 = fully adopt) |

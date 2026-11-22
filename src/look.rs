@@ -23,11 +23,12 @@ use crate::grade_scheme::SchemeConfig;
 use crate::grade_wal::WalConfig;
 
 /// The built-in looks: (name, file text).
-pub const BUILTIN: [(&str, &str); 6] = [
+pub const BUILTIN: [(&str, &str); 7] = [
     ("soft", include_str!("looks/soft.toml")),
     ("tight", include_str!("looks/tight.toml")),
     ("pop", include_str!("looks/pop.toml")),
     ("muted", include_str!("looks/muted.toml")),
+    ("wash", include_str!("looks/wash.toml")),
     ("snap", include_str!("looks/snap.toml")),
     ("vivid", include_str!("looks/vivid.toml")),
 ];

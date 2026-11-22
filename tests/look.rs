@@ -86,7 +86,7 @@ fn the_flag_replaces_the_configs_look_and_the_config_beats_an_inherited_one() {
     let c = wal(json!({ "look": "soft" }), &["pop"]).unwrap();
     assert_eq!(c.chroma, 1.2, "-l pop, not the config's soft");
     let c = wal(json!({ "look": ["soft"] }), &[]).unwrap();
-    assert_eq!(c.harmonize, 0.5);
+    assert_eq!(c.harmonize, 0.7);
     let inherited = Some(vec!["pop".to_string()]);
     let (c, _) =
         look::resolve::<WalConfig>("test", json!({}), &[], inherited.clone(), Target::Wal).unwrap();
@@ -99,7 +99,7 @@ fn the_flag_replaces_the_configs_look_and_the_config_beats_an_inherited_one() {
         Target::Wal,
     )
     .unwrap();
-    assert_eq!((c.harmonize, c.chroma), (0.5, 1.0));
+    assert_eq!((c.harmonize, c.chroma), (0.7, 1.0));
 }
 
 #[test]

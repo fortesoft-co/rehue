@@ -133,6 +133,18 @@ rungs = [
 ]
 
 [[ladder]]
+id = "wal-neutrals"
+file = "assets/examples/options/wal-neutrals.webp"
+base = "wal -i {butterfly} -s gruvbox-light -o {out}"
+output = "wallpaper.png"
+original = "{butterfly}"
+common = "--harmonize 1"
+rungs = [
+  { args = "", note = "floor, the default" },
+  { args = "--neutrals mix" },
+]
+
+[[ladder]]
 id = "wal-harmonize"
 file = "assets/examples/options/wal-harmonize.webp"
 base = "wal -i {bango} -s gruvbox-light -o {out}"
@@ -151,9 +163,9 @@ rungs = [{ args = "--match-hue 0.5" }, { args = "--match-hue 1" }]
 [[ladder]]
 id = "wal-match-chroma"
 file = "assets/examples/options/wal-match-chroma.webp"
-base = "wal -i {bango} -s gruvbox-light -o {out}"
+base = "wal -i {glitter} -s gruvbox-light -o {out}"
 output = "wallpaper.png"
-original = "{bango}"
+original = "{glitter}"
 rungs = [{ args = "--match-chroma 0.5" }, { args = "--match-chroma 1" }]
 [[ladder]]
 id = "wal-match-lightness"
@@ -171,9 +183,9 @@ output = "wallpaper.png"
 original = "{bango}"
 common = "--harmonize 1"
 rungs = [
-  { args = "--reach 15" },
   { args = "--reach 45", note = "the default" },
-  { args = "--reach 140" },
+  { args = "--reach 90" },
+  { args = "--reach 180" },
 ]
 
 [[ladder]]
@@ -346,6 +358,7 @@ rungs = [
   { args = "-l tight" },
   { args = "-l pop" },
   { args = "-l muted" },
+  { args = "-l wash" },
   { args = "-l snap" },
   { args = "-l vivid" },
 ]

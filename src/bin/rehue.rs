@@ -237,6 +237,7 @@ impl SchemeOverrides {
 #[derive(Debug, Default)]
 struct WalOverrides {
     mode: Option<grade_wal::Mode>,
+    neutrals: Option<grade_wal::Neutrals>,
     harmonize: Option<f64>,
     match_hue: Vec<String>,
     match_chroma: Vec<String>,
@@ -256,6 +257,9 @@ impl WalOverrides {
     fn apply(self, config: &mut grade_wal::WalConfig) -> Result<(), String> {
         if self.mode.is_some() {
             config.mode = self.mode;
+        }
+        if let Some(n) = self.neutrals {
+            config.neutrals = n;
         }
         if self.dithering_mode.is_some() {
             config.dithering_mode = self.dithering_mode;
@@ -570,6 +574,9 @@ fn run_wal(
         .decode()
         .map_err(|e| format!("can't decode wallpaper {}: {}", wallpaper.display(), e))?;
     let source = dynamic.to_rgb8();
+    // what blend mode measures colorfulness against (the LUT and the
+    // report carry it too)
+    let vivid = grade_wal::vivid_chroma(source.as_raw());
 
     if dry_run {
         let clusters = wal_clusters(&regs, &dynamic, &config);
@@ -595,8 +602,9 @@ fn run_wal(
 
         let (seed_hue, seed_light, seed_chroma) = grade_wal::facade_defaults(&config);
         println!(
-            "rehue wal: mode {}  harmonize {:.2}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  reach {}  dithering {:.2} ({})  lightness {:+.3}  chroma {:.2}",
+            "rehue wal: mode {}  neutrals {}  harmonize {:.2}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  reach {}  dithering {:.2} ({})  lightness {:+.3}  chroma {:.2}",
             config.mode.unwrap_or(grade_wal::Mode::Blend).describe(),
+            config.neutrals.describe(),
             config.harmonize,
             seed_hue,
             seed_light,
@@ -667,7 +675,8 @@ fn run_wal(
             let clusters = wal_clusters(&regs, &dynamic, &config);
             let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
             let options = grade_wal::slot_options(&regs, &config)?;
-            let map = grade_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config);
+            let map = grade_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config)
+                .with_vivid(vivid);
             write_lut(out, format, level, &parsed.meta_name(), |rgb| {
                 map.map_rgb(rgb)
             })?
@@ -683,6 +692,7 @@ fn run_wal(
         .collect();
     let report = serde_json::json!({
         "params": config,
+        "vivid_chroma": vivid,
         "passthrough": passive,
         "slot_coverage": coverage_map,
     });
@@ -1136,6 +1146,7 @@ fn run(command: Commands) -> Result<(), String> {
             look,
             dry_run,
             mode,
+            neutrals,
             harmonize,
             match_hue,
             match_chroma,
@@ -1162,6 +1173,7 @@ fn run(command: Commands) -> Result<(), String> {
             print_looks("wal", &looks);
             WalOverrides {
                 mode,
+                neutrals,
                 harmonize,
                 match_hue,
                 match_chroma,

@@ -39,7 +39,8 @@ fn color_map_matches_apply_pixel_for_pixel() {
             &options,
             &config,
         );
-        let map = ColorMap::new(&slots, &neutral, &options, &config);
+        let map = ColorMap::new(&slots, &neutral, &options, &config)
+            .with_vivid(rehue::grade_wal::vivid_chroma(rgb.as_raw()));
         for (i, px) in rgb.pixels().enumerate() {
             let want = &out.pixels[i * 3..i * 3 + 3];
             assert_eq!(map.map_rgb(&px.0), want, "{mode:?} pixel {i}");

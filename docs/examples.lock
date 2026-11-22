@@ -6,7 +6,7 @@ assets/examples/glitter-facade1-pair.webp 488992b545c17d78
 assets/examples/grading-groups.png abb03f6b9a9c0569
 assets/examples/inspect-families.png 0330664e93e25953
 assets/examples/looks-scheme.png d31575df7eb91ab9
-assets/examples/looks-wal.webp bec938aa46b0d735
+assets/examples/looks-wal.webp eceeb9188880f29f
 assets/examples/options/extract-max-families.png 8f7e1274c2b48daa
 assets/examples/options/scheme-assign.png 030b7dd096b053f3
 assets/examples/options/scheme-chroma.png fbf035d8aec9e25d
@@ -19,13 +19,14 @@ assets/examples/options/wal-dithering-mode.webp f6b5687af9d841c3
 assets/examples/options/wal-dithering.webp 43f5868a6ab3d809
 assets/examples/options/wal-harmonize.webp 82547b5c896b4b31
 assets/examples/options/wal-lightness.webp fac27cd533ccf808
-assets/examples/options/wal-match-chroma.webp 61887612b886661f
+assets/examples/options/wal-match-chroma.webp f9c6a29cbcd842cb
 assets/examples/options/wal-match-hue.webp fd2262ea27e23b7d
 assets/examples/options/wal-match-lightness.webp 647f21ad2d36a031
 assets/examples/options/wal-max-gray-chroma.webp 328abcb4ccec910c
 assets/examples/options/wal-mode.webp 8787d4ac1c0557ba
+assets/examples/options/wal-neutrals.webp 0e880715c19e3901
 assets/examples/options/wal-palette.webp 36f05776532b0c7f
-assets/examples/options/wal-reach.webp c1fff8924d325ec6
+assets/examples/options/wal-reach.webp f6945c359c3bb7d1
 assets/examples/options/wal-role-grades.webp 8ba3ed873dd7ecd4
 assets/examples/preview-palette.webp 012bd3519d19480d
 assets/examples/preview-toolkits.webp 89c107b1308f2629

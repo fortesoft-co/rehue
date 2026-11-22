@@ -178,6 +178,14 @@ pub enum Commands {
         /// e.g. --mode snap
         #[arg(long, help_heading = "Grading", value_enum)]
         mode: Option<grade_wal::Mode>,
+        /// What the scheme's grays (base00-07) do in blend mode: `floor` = only
+        /// set the lowest chroma, so the image keeps its color structure
+        /// (default); `mix` = join the mix, a calmer cast faded toward the
+        /// scheme's grays.
+        ///
+        /// e.g. --neutrals mix
+        #[arg(long, help_heading = "Grading", value_enum)]
+        neutrals: Option<grade_wal::Neutrals>,
         /// How strongly to harmonize with the scheme, 0..1: sets match-hue and
         /// match-chroma wherever they aren't set (default 0).
         ///

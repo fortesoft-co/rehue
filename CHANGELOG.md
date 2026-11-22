@@ -32,7 +32,7 @@ rejected (pre-1.0, see the table below).
   `parse_palette`, and `slot_options` now takes the config.
 - Looks: saved grades picked by name, `-l NAME` on `wal` and
   `scheme` (stack with `-l snap,pop`). Built-ins: soft, tight, pop,
-  muted, snap, vivid; your own go in `~/.config/rehue/looks/NAME.toml`
+  muted, wash, snap, vivid (soft uses `neutrals mix`); your own go in `~/.config/rehue/looks/NAME.toml`
   with `[wal]` / `[scheme]` sections (a built-in's name replaces it, a
   name with `/` is a path). A look is a starting point: the config and
   the flags win over it, key by key. Configs and pipelines take a
@@ -49,6 +49,21 @@ rejected (pre-1.0, see the table below).
 - Docs: reference tables, example commands and every docs image are
   generated from the code and `docs/examples.toml`; `cargo test` fails
   when they drift.
+
+### Changed
+
+- `wal` blend mode (the default) grades by colorfulness: hue comes
+  from the accents only (the scheme's grays no longer steer colors),
+  and chroma follows how colorful each pixel is within its image,
+  between the scheme's neutral chroma and its accents'. Muted areas
+  settle at the scheme's neutral level like a themed desktop's
+  surfaces; vivid details reach accent strength. Wallpapers keep their
+  saturation structure instead of being dulled toward sepia.
+  `report.json` records the image's `vivid_chroma`; library:
+  `grade_wal::vivid_chroma`, `ColorMap::with_vivid`.
+- `wal --neutrals floor|mix` (config `neutrals`): `mix` brings back the
+  previous blend exactly (the scheme's grays join the mix: a calmer
+  cast faded toward them).
 
 ### Changed (breaking)
 
