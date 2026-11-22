@@ -1,3 +1,5 @@
+//! `rehue icons`: SVG and PNG recoloring, theme layout, folders, the preview.
+//!
 //! `rehue icons`: recolor an icon theme with a scheme, through the same
 //! grade as `wal` ([`ColorMap`], per colour, no dithering).
 //!
@@ -823,8 +825,9 @@ pub fn render_icon(path: &Path, size: u32) -> Option<image::RgbaImage> {
     Some(img)
 }
 
-/// The preview sheet: the scheme's accents on top, then each icon before
-/// (upper row) and after (lower row), on the scheme's background.
+/// The preview sheet: the scheme's accents on top, then the icons in
+/// bands of up to 15, each band one row before and one row after, on the
+/// scheme's background.
 pub fn preview_sheet(
     before: &[Option<image::RgbaImage>],
     after: &[Option<image::RgbaImage>],
@@ -833,10 +836,14 @@ pub fn preview_sheet(
 ) -> image::RgbImage {
     const ICON: u32 = 48;
     const GAP: u32 = 8;
+    const PER_BAND: u32 = 15;
     let n = before.len().max(1) as u32;
-    let width = GAP + n * (ICON + GAP);
+    let columns = n.min(PER_BAND);
+    let bands = n.div_ceil(PER_BAND);
+    let band = 2 * (ICON + GAP) + 2 * GAP;
+    let width = GAP + columns * (ICON + GAP);
     let strip = 14;
-    let height = GAP + strip + GAP + 2 * (ICON + GAP);
+    let height = GAP + strip + 2 * GAP + bands * band - 2 * GAP;
     let mut sheet = image::RgbImage::from_pixel(width, height, image::Rgb(background));
     let sw = (width - 2 * GAP) / accents.len().max(1) as u32;
     for (i, a) in accents.iter().enumerate() {
@@ -858,9 +865,10 @@ pub fn preview_sheet(
             );
         }
     };
-    let top = GAP + strip + GAP;
     for (i, (b, a)) in before.iter().zip(after).enumerate() {
-        let x = GAP + i as u32 * (ICON + GAP);
+        let (row, col) = (i as u32 / PER_BAND, i as u32 % PER_BAND);
+        let x = GAP + col * (ICON + GAP);
+        let top = GAP + strip + 2 * GAP + row * band;
         if let Some(b) = b {
             paste(b, x, top);
         }
