@@ -1,3 +1,5 @@
+//! `rehue wal`: the per-color remap (`ColorMap`), its modes and dithering.
+//!
 //! Per-pixel palette remap: arrange (assign + cycle), then blend
 //! toward the palette (hue, light and chroma channel fidelity), then
 //! per-role grading, then image-wide grading.  Deterministic and
@@ -97,19 +99,19 @@ pub enum Mode {
     Snap,
 }
 
-/// What the scheme's neutral slots (base00-07) do for colorful pixels
-/// in `blend` mode.
+/// What the scheme's neutral slots (base00-07) do for colorful pixels.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Neutrals {
-    /// The default: the neutrals only set the chroma floor; hue and
-    /// vivid color come from the accents, and chroma follows how
-    /// colorful each pixel is within its image.
+    /// The default: in blend the neutrals only set the chroma floor;
+    /// hue and vivid color come from the accents, and chroma follows how
+    /// colorful each pixel is within its image.  In snap, colorful
+    /// pixels snap to the accents only.
     #[default]
     Floor,
-    /// The neutrals join the mix for hue and chroma like any slot: the
-    /// image takes on the scheme's overall cast, calmer and faded
-    /// toward its grays (rehue's blend before 0.3).
+    /// The neutrals join in for hue and chroma like any slot: the image
+    /// takes on the scheme's overall cast, calmer and faded toward its
+    /// grays (rehue's blend and snap before 0.3).
     Mix,
 }
 
@@ -677,12 +679,23 @@ impl<'a> ColorMap<'a> {
         } else {
             // Chromatic: nearest slot by raw hue (first minimum), then
             // the opt-in blend moves, reach-gated in snap mode.
+            //
+            // Snap picks among the palette's accents (every palette slot
+            // when it has none): a gray's hue is near-arbitrary, and a
+            // warm or cool gray would otherwise catch the colors beside
+            // its hue and drain them.  `neutrals = mix` keeps every slot
+            // in the running.  Blend's pick only chooses which role's
+            // options apply; its hue already comes from the accents.
+            let accent = |i: usize| role_of_slot(self.slots[i].slot) == "accents";
+            let accents_only = self.mode == Mode::Snap
+                && self.config.neutrals != Neutrals::Mix
+                && (0..self.slots.len()).any(|i| accent(i) && weight(i) > 0.0);
             let mut best = 0usize;
             let mut best_score = f64::INFINITY;
             let mut best_d = f64::INFINITY;
             for (idx, slots_target) in self.slots.iter().enumerate() {
                 let w = weight(idx);
-                if w <= 0.0 {
+                if w <= 0.0 || (accents_only && !accent(idx)) {
                     continue;
                 }
                 let d = circ_dist(raw.h, slots_target.lch.h);

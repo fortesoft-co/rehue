@@ -76,6 +76,10 @@ rejected (pre-1.0, see the table below).
 - `wal --neutrals floor|mix` (config `neutrals`): `mix` brings back the
   previous blend exactly (the scheme's grays join the mix: a calmer
   cast faded toward them).
+- `wal --mode snap` takes colorful pixels to the nearest accent only.
+  A scheme's grays no longer catch the colors beside their faint hue
+  (Gruvbox's warm beiges turned saturated yellows gray);
+  `--neutrals mix` lets every slot compete again, as before.
 
 ### Changed (breaking)
 

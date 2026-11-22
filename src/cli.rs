@@ -1,3 +1,5 @@
+//! The CLI's commands, flags and help, as data (the docs render from it).
+//!
 //! The `rehue` command line, as data: every command, flag and help
 //! text.  Lives in the library (not the binary) so the docs generator
 //! can render reference tables from the same definitions `--help`
@@ -511,10 +513,10 @@ pub struct GradeArgs {
     /// e.g. --mode snap
     #[arg(long, help_heading = "Grading", value_enum)]
     pub mode: Option<grade_wal::Mode>,
-    /// What the scheme's grays (base00-07) do in blend mode: `floor` = only
-    /// set the lowest chroma, so the image keeps its color structure
-    /// (default); `mix` = join the mix, a calmer cast faded toward the
-    /// scheme's grays.
+    /// What the scheme's grays (base00-07) do for colorful pixels: `floor`
+    /// = only set the lowest chroma in blend, and never catch a color in
+    /// snap, so the image keeps its color structure (default); `mix` =
+    /// join in like any slot, a calmer cast faded toward the scheme's grays.
     ///
     /// e.g. --neutrals mix
     #[arg(long, help_heading = "Grading", value_enum)]

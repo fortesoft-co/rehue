@@ -312,7 +312,7 @@ Extraction settings go in the `--config` JSON (on `scheme`, `wal` or
 | flag | value | what it does |
 | --- | --- | --- |
 | `--mode` | `blend \| snap` | How pixels find their palette color: `blend` = mix the nearby palette colors, weighted by hue distance (default); `snap` = take the nearest one |
-| `--neutrals` | `floor \| mix` | What the scheme's grays (base00-07) do in blend mode: `floor` = only set the lowest chroma, so the image keeps its color structure (default); `mix` = join the mix, a calmer cast faded toward the scheme's grays |
+| `--neutrals` | `floor \| mix` | What the scheme's grays (base00-07) do for colorful pixels: `floor` = only set the lowest chroma in blend, and never catch a color in snap, so the image keeps its color structure (default); `mix` = join in like any slot, a calmer cast faded toward the scheme's grays |
 | `--harmonize` | `0..1` | How strongly to harmonize with the scheme, 0..1: sets match-hue and match-chroma wherever they aren't set (default 0) |
 | `--match-hue` | `[ROLE] 0..1` | How much of the palette's hue each pixel takes on (0 = keep its own, 1 = fully adopt) |
 | `--match-chroma` | `[ROLE] 0..1` | How much of the palette's chroma each pixel takes on (0 = keep its own, 1 = fully adopt) |
@@ -464,7 +464,7 @@ turn the color up or down. All the `wal` grading flags work too:
 | --- | --- | --- |
 | `--folders` | `KEY[=W],...` | The folder color: which scheme colors folder icons are painted with, in the --palette form (a slot, a role, weights). Folders are the theme's Places icons named folder*, plus user-home, user-desktop and inode-directory; the rest of the theme is graded as usual |
 | `--mode` | `blend \| snap` | How pixels find their palette color: `blend` = mix the nearby palette colors, weighted by hue distance (default); `snap` = take the nearest one |
-| `--neutrals` | `floor \| mix` | What the scheme's grays (base00-07) do in blend mode: `floor` = only set the lowest chroma, so the image keeps its color structure (default); `mix` = join the mix, a calmer cast faded toward the scheme's grays |
+| `--neutrals` | `floor \| mix` | What the scheme's grays (base00-07) do for colorful pixels: `floor` = only set the lowest chroma in blend, and never catch a color in snap, so the image keeps its color structure (default); `mix` = join in like any slot, a calmer cast faded toward the scheme's grays |
 | `--harmonize` | `0..1` | How strongly to harmonize with the scheme, 0..1: sets match-hue and match-chroma wherever they aren't set (default 0) |
 | `--match-hue` | `[ROLE] 0..1` | How much of the palette's hue each pixel takes on (0 = keep its own, 1 = fully adopt) |
 | `--match-chroma` | `[ROLE] 0..1` | How much of the palette's chroma each pixel takes on (0 = keep its own, 1 = fully adopt) |

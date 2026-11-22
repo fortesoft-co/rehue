@@ -80,7 +80,8 @@ the picture keeps its color structure in the scheme's range. With
 `mix`, they join the mix for hue and chroma like any slot: the image
 takes on the scheme's overall cast, calmer and faded toward its grays.
 `mix` is rehue's blend before 0.3, exactly; the `soft` look uses it.
-No effect in `snap`, which takes the nearest slot's own color.
+In `snap`, `floor` snaps colorful pixels to the nearest accent, never
+a gray; `mix` lets every slot compete, as snap did before.
 
 ![original / harmonize 1 with neutrals floor / with neutrals mix, on the butterfly](assets/examples/options/wal-neutrals.webp)
 

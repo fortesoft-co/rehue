@@ -1,3 +1,5 @@
+//! `rehue wal`: modes, dither kernels, arrangement, blend dials.
+//!
 //! wal: the per-pixel engine — mode, dither kernels,
 //! arrangement, blend-dial resolution.
 
@@ -432,4 +434,42 @@ fn blend_keeps_the_images_saturation_structure_in_the_schemes_range() {
         pixels.extend(px(if i < 96 { 0.05 } else { 0.18 }));
     }
     assert!((vivid_chroma(&pixels) - 0.05).abs() < 0.01);
+}
+
+#[test]
+fn snap_takes_colors_to_the_accents_not_a_gray_of_nearby_hue() {
+    use rehue::color::{hex_to_oklch, rgb_to_oklch};
+    use rehue::grade_wal::{ColorMap, Neutrals};
+    // gruvbox-light's grays are warm beiges whose hue sits right by a
+    // saturated yellow's
+    let scheme = rehue::scheme::Scheme::resolve("gruvbox-light", None).unwrap();
+    let slots: Vec<SlotPalette> = BASE_SLOTS
+        .iter()
+        .zip(scheme.slot_hexes().unwrap())
+        .map(|(slot, hex)| SlotPalette {
+            slot,
+            lch: hex_to_oklch(&hex).unwrap(),
+        })
+        .collect();
+    let neutral: Vec<usize> = (0..8).collect();
+    let yellow = [240, 198, 67];
+    let graded = |neutrals: Neutrals| {
+        let config = WalConfig {
+            mode: Some(Mode::Snap),
+            harmonize: 1.0,
+            neutrals,
+            ..Default::default()
+        };
+        let regs = rehue::grade_wal::resolved_roles(&config).unwrap();
+        let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
+        rgb_to_oklch(&ColorMap::new(&slots, &neutral, &options, &config).map_rgb(&yellow))
+    };
+    let base0a = slots[10].lch;
+    let floor = graded(Neutrals::Floor);
+    assert!(
+        circ_dist(floor.h, base0a.h) < 1.0 && (floor.c - base0a.c).abs() < 0.01,
+        "snaps to base0A: {floor:?} vs {base0a:?}"
+    );
+    // neutrals mix lets the grays compete, as snap did before
+    assert!(graded(Neutrals::Mix).c < 0.05);
 }
