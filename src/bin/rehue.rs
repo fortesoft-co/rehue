@@ -428,7 +428,8 @@ fn run_scheme(
     let input = preview::Preview {
         flow: preview::PreviewFlow::SchemeFromWallpaper,
         wallpaper_label: Some(&wall_label),
-        wallpaper_src: Some(&wall_src),
+        // a format the browser can't show leaves the wallpaper panel off
+        wallpaper_src: preview::browser_shows(wallpaper).then_some(wall_src.as_str()),
         scheme: &scheme_name,
         hexes: &mapped_hexes,
         left_out: &[],

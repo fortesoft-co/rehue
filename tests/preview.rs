@@ -5,7 +5,7 @@ mod common;
 use std::path::Path;
 
 use common::solarized;
-use rehue::preview::{Preview, PreviewFlow, relative_link, render};
+use rehue::preview::{Preview, PreviewFlow, browser_shows, relative_link, render};
 use rehue::scheme::BASE_SLOTS;
 
 fn alone(scheme: &str) -> Preview<'_> {
@@ -160,4 +160,14 @@ fn the_heading_flows_match_the_commands() {
     };
     let err = render(&bad).expect_err("paired flows need a wallpaper name");
     assert!(err.contains("wallpaper name"), "{err}");
+}
+
+#[test]
+fn the_wallpaper_panel_links_only_formats_a_browser_shows() {
+    for name in ["a.png", "a.JPG", "a.jpeg", "a.webp", "a.gif", "a.bmp"] {
+        assert!(browser_shows(Path::new(name)), "{name}");
+    }
+    for name in ["a.tiff", "a.tif", "a.qoi", "a"] {
+        assert!(!browser_shows(Path::new(name)), "{name}");
+    }
 }

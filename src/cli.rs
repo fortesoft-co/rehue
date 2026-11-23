@@ -46,7 +46,7 @@ pub enum Commands {
         /// e.g. -i rose-pine-dawn   -i ~/schemes/mine.yaml
         #[arg(short, long, value_name = "SCHEME")]
         input: String,
-        /// The wallpaper whose hues the scheme takes on.
+        /// The wallpaper whose hues the scheme takes on: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
         ///
         /// e.g. -w ~/pictures/butterfly.webp
         #[arg(short, long)]
@@ -135,7 +135,7 @@ pub enum Commands {
     ///
     #[command(visible_alias = "wallpaper", after_help = WAL_ROLES)]
     Wal {
-        /// The wallpaper to repaint.
+        /// The wallpaper to repaint: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
         ///
         /// e.g. -i ~/pictures/glitter.webp
         #[arg(short, long, value_name = "WALLPAPER")]
@@ -334,7 +334,7 @@ pub enum Commands {
     ///          rehue inspect --schemes gruvbox
     ///          rehue inspect --looks
     Inspect {
-        /// The image whose hues get extracted (families mode).
+        /// The image whose hues get extracted (families mode): png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
         ///
         /// e.g. -w ~/pictures/butterfly.webp
         #[arg(short, long)]
@@ -401,7 +401,7 @@ pub enum Commands {
     /// Example: rehue enhance -i pic.webp -o up4 --upscale 4
     ///          rehue enhance -i pic.webp -o up4 --upscale 4 --sr
     Enhance {
-        /// The picture to scale.
+        /// The picture to scale: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
         ///
         /// e.g. -i ~/pictures/pic.webp
         #[arg(short, long, value_name = "WALLPAPER")]

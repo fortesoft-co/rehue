@@ -27,10 +27,9 @@ shipped.
   wallpaper, so `rehue scheme` works without a reference scheme at all.
 - **Look book**: a docs page showcasing standout results, each with
   the images and the recipe that made it.
-- **Media formats**: more inputs beyond png / jpeg / webp (gif, tiff,
-  bmp, qoi, avif where a pure-Rust decoder allows), and animated
-  GIF / APNG / WebP (LUT export already makes per-frame repaints a
-  table lookup).
+- **Media formats**: animated GIF / APNG / WebP (LUT export already
+  makes per-frame repaints a table lookup), and AVIF or JPEG XL inputs
+  where a pure-Rust decoder allows.
 - **Alternative extraction backends**: optional extraction libraries
   alongside the built-in histogram + circular k-means (the options
   themselves are documented in [docs/grading.md](docs/grading.md#extraction)).

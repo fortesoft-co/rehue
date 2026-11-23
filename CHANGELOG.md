@@ -7,6 +7,13 @@ versions may break).
 
 ## [Unreleased]
 
+### Added
+
+- GIF, TIFF, BMP and QOI inputs alongside PNG, JPEG and WebP, for
+  `wal`, `scheme`, `inspect` and `enhance`. A GIF paints its first
+  frame. `scheme`'s `preview.html` leaves the wallpaper panel out for
+  TIFF and QOI, which browsers don't show.
+
 ### Changed
 
 - `wal` runs across all cores, and the per-pixel grade does less

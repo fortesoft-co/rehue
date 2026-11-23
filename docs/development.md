@@ -213,6 +213,7 @@ Flakes only see files git tracks: `git add` new files before
 | `tests/docs.rs` | The docs: generated regions, the drift check, links, example images. |
 | `tests/enhance.rs` | `rehue enhance`: the model table, parameter checks, scaling. |
 | `tests/extraction.rs` | Extraction: determinism on a synthetic gradient. |
+| `tests/formats.rs` | Input formats: png, jpeg, webp, gif, tiff, bmp and qoi all read. |
 | `tests/grade_scheme.rs` | `rehue scheme`: the role pipeline, assign and cycle. |
 | `tests/grade_wal.rs` | `rehue wal`: modes, arrangement, blend dials. |
 | `tests/icons.rs` | `rehue icons`: colour rewriting, theme layout, folders. |

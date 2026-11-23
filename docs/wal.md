@@ -23,6 +23,7 @@ orange. Its brightest specks reach the accents' full strength while
 the dim ones stay quiet: the picture keeps its own range of color,
 inside the scheme's.
 
+It reads PNG, JPEG, WebP, GIF (the first frame), TIFF, BMP and QOI.
 A run writes:
 
 - `wallpaper.png`, the repainted image

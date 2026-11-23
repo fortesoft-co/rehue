@@ -72,6 +72,17 @@ pub fn relative_link(from_dir: &Path, to: &Path) -> String {
     link.to_string_lossy().into_owned()
 }
 
+/// Whether a browser can show this picture in `preview.html` (by
+/// extension): rehue reads TIFF and QOI too, but browsers don't.
+pub fn browser_shows(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        matches!(
+            e.to_ascii_lowercase().as_str(),
+            "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp"
+        )
+    })
+}
+
 /// A wallpaper's human label from its file name: separators (-, _, .,
 /// whitespace) split away, each word title-cased (first letter upper,
 /// the rest lower), joined back with single spaces; edge and duplicate
