@@ -30,6 +30,20 @@ shipped.
 - **Dithered video**: `--dither` on a video wallpaper (ordered styles;
   diffuse with a warning that it shimmers). Which codec settings keep
   a dither pattern intact is under test.
+- **Encoder options for video**: a generic way to hand ffmpeg its
+  encoding flags (`--ffmpeg-args "-c:v libsvtav1 -crf 30"`, or a
+  `ffmpeg-args` key in a config or look), replacing rehue's codec
+  defaults while rehue keeps the frame pipe, the color tags and the
+  audio mapping. To investigate: which flags rehue must refuse or
+  keep (input options, filters, `-pix_fmt` for 10-bit), and an output
+  extension that follows the chosen codec.
+- **Seamless loops**: `--loop SECONDS` crossfades a video's last
+  seconds into its first, so the end flows into the beginning (the
+  output is that much shorter), done by ffmpeg (`xfade`, `acrossfade`
+  for the audio). rehue picks where to cut: the frame that looks most
+  like the opening, so the crossfade has little to hide. To
+  investigate: how to score "looks most like" (on the graded frames),
+  and how far from the end to search.
 - **Alternative extraction backends**: optional extraction libraries
   alongside the built-in histogram + circular k-means (the options
   themselves are documented in [docs/grading.md](docs/grading.md#extraction)).
