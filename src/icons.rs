@@ -687,21 +687,8 @@ pub fn recolor_theme(
         }
     }
 
-    let workers = std::thread::available_parallelism().map_or(4, |n| n.get());
-    let chunk = jobs.len().div_ceil(workers).max(1);
-    let results: Vec<Result<WorkerResult, String>> = std::thread::scope(|scope| {
-        let handles: Vec<_> = jobs
-            .chunks(chunk)
-            .map(|part| {
-                let index_name = name;
-                scope.spawn(move || paint_files(part, out, index_name, painter))
-            })
-            .collect();
-        handles
-            .into_iter()
-            .map(|h| h.join().expect("worker"))
-            .collect()
-    });
+    let results: Vec<Result<WorkerResult, String>> =
+        crate::par::chunks(&jobs, 1, |_, part| paint_files(part, out, name, painter));
     let mut colours = HashSet::new();
     for r in results {
         let (s, c) = r?;

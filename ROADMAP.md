@@ -37,9 +37,3 @@ shipped.
 - **Enhance expansion**: beyond v1 (Lanczos + Vulkan SR): denoise and
   JPEG-artifact restoration models (Real-CUGAN / realesrnet), and an
   opt-in Nix SR builder (lavapipe for machines without a GPU driver).
-- **Performance**: the per-pixel wal pass is single-threaded.
-  Non-dithered and ordered-dither modes parallelize cleanly (each
-  pixel depends only on x, y), which should bring a 33MP remap from
-  ~18s to ~2-3s; error-diffusion dithering stays sequential by nature.
-  For non-dithered runs, a LUT (already built across threads for
-  `--lut`) is the other fast path: build once, then look up.

@@ -5,6 +5,17 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
+## [Unreleased]
+
+### Changed
+
+- `wal` runs across all cores, and the per-pixel grade does less
+  work: an 8K (33 MP) wallpaper paints in about 1.5 s instead of 25 s,
+  a 4K one in 0.4 s. Dithering runs across cores too (diffuse's error
+  pass stays in order), as do the comparison thumbnails. The output is
+  the same bytes as before, whatever the thread count;
+  `REHUE_THREADS=N` pins it.
+
 ## [0.4.0] - 2026-11-22
 
 The dithering release: `wal --dither` draws a wallpaper with the

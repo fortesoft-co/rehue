@@ -15,6 +15,11 @@ nix build .#rehue
 
 `cargo test` runs the snapshot and determinism suites.
 
+Per-pixel work runs across threads (`src/par.rs`): contiguous runs of
+whole pixels, rows or block rows, so the output never depends on the
+thread count. `REHUE_THREADS=N` pins the count (`1` runs everything on
+one thread); `tests/threads.rs` checks 1 and 5 give the same bytes.
+
 ## Bundled schemes
 
 The bundled schemes are a vendored snapshot of
@@ -193,6 +198,7 @@ Flakes only see files git tracks: `git add` new files before
 | `src/lib.rs` | rehue: paint base16 color schemes and wallpapers with each other's colors. |
 | `src/look.rs` | Looks: saved grades, selectable by name (`-l pop`). |
 | `src/lut.rs` | Hald CLUT and `.cube` export of a color function. |
+| `src/par.rs` | Per-pixel work across threads, with results that don't depend on the thread count. |
 | `src/preview.rs` | The compiled-in `preview.html`: CSS-only views, GTK and Qt mocks. |
 | `src/role.rs` | The four roles, their names, and `assign`, shared by both directions. |
 | `src/scheme.rs` | Base16 scheme loading and rendering. |
@@ -216,6 +222,7 @@ Flakes only see files git tracks: `git add` new files before
 | `tests/preview.rs` | The compiled-in HTML preview (`preview.html`). |
 | `tests/scheme.rs` | Schemes: parsing and rendering, the bundled collection, name resolution. |
 | `tests/terminal.rs` | The ANSI strip renderers (the terminal previews). |
+| `tests/threads.rs` | The output is the same bytes however many threads the work is cut into. |
 | `tests/common/mod.rs` | Shared test inputs: repo-fixture paths and synthetic palettes/images. |
 <!-- /gen:source-files -->
 

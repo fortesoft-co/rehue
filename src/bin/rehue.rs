@@ -94,8 +94,11 @@ fn write_compare(
     original: &image::RgbImage,
     remapped: &image::RgbImage,
 ) -> Result<(), String> {
-    let left = thumb(original);
-    let right = thumb(remapped);
+    let (left, right) = std::thread::scope(|scope| {
+        let left = scope.spawn(|| thumb(original));
+        let right = thumb(remapped);
+        (left.join().expect("thumbnail thread"), right)
+    });
     let height = left.height().max(right.height()) + 8;
     let mut img = image::ImageBuffer::from_pixel(384 * 2 + 12, height, image::Rgb([22u8, 22, 26]));
     for (x, y, p) in left.enumerate_pixels() {
@@ -678,10 +681,17 @@ fn run_wal(
         (pixels, result.coverage)
     };
 
-    remapped_rgb
-        .save(out.join("wallpaper.png"))
-        .map_err(|e| format!("can't write wallpaper.png: {}", e))?;
-    write_compare(out, &source, &remapped_rgb)?;
+    // The full-size PNG and the comparison thumbnails at the same time.
+    std::thread::scope(|scope| {
+        let wallpaper = scope.spawn(|| {
+            remapped_rgb
+                .save(out.join("wallpaper.png"))
+                .map_err(|e| format!("can't write wallpaper.png: {}", e))
+        });
+        let compare = write_compare(out, &source, &remapped_rgb);
+        wallpaper.join().expect("wallpaper.png thread")?;
+        compare
+    })?;
     if let Some((format, level)) = lut {
         // The same palette and dials that painted the wallpaper; passive
         // runs are the identity.

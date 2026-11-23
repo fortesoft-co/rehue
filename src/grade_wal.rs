@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::color::{Lch, circ_dist, circ_lerp, oklch_to_rgb, rgb_to_oklch, weighted_circ_mean};
+use crate::color::{Lch, circ_dist, circ_lerp, floor_mod, oklch_to_rgb, rgb_to_oklch};
 use crate::dither::{Dither, Ink};
 use crate::extract::{Cluster, ExtractionParams};
 use crate::role::{
@@ -461,12 +461,37 @@ pub fn is_passive(
 /// stage, which depends on position.
 pub struct ColorMap<'a> {
     slots: &'a [SlotPalette],
-    neutral_slots: &'a [usize],
     options: &'a [SlotOptions],
     config: &'a WalConfig,
     mode: Mode,
     vivid: f64,
+    // Everything below depends only on the palette and the config, so it
+    // is worked out once here rather than per pixel.
+    /// The neutral slots the palette keeps (weight above 0), in order.
+    kept_neutrals: Vec<usize>,
+    /// Per slot: is it an accent (base08-0F)?
+    accent: Vec<bool>,
+    /// Snap picks only among the accents (see `run`).
+    snap_accents_only: bool,
+    /// Per slot: does blend count it as an accent (`neutrals = mix`
+    /// counts every slot)?
+    blend_accent: Vec<bool>,
+    /// Blend's palette has an accent with weight above 0.
+    blend_has_accents: bool,
+    /// Blend's chroma floor: the weighted mean chroma of the palette's
+    /// non-accent slots, `None` when it has none.
+    neutral_floor: Option<f64>,
+    /// Per slot: sine and cosine of the hue, for the circular mean.
+    hue_sin: Vec<f64>,
+    hue_cos: Vec<f64>,
 }
+
+/// The most slots a palette holds (a base16 scheme's 16): `run` keeps its
+/// per-pixel scratch on the stack at this size.
+const MAX_SLOTS: usize = 16;
+
+/// The finest split of per-pixel work across threads, in pixels.
+const PIXELS_PER_UNIT: usize = 4096;
 
 /// The chroma a "fully vivid" pixel has when no image says otherwise
 /// (a saturated photo's 95th percentile is around here).
@@ -479,13 +504,16 @@ pub const DEFAULT_VIVID: f64 = 0.2;
 pub fn vivid_chroma(pixels: &[u8]) -> f64 {
     const BINS: usize = 1024;
     const MAX: f64 = 0.4;
-    let mut hist = [0u64; BINS];
-    let mut n = 0u64;
-    for px in pixels.as_chunks::<3>().0 {
-        let c = rgb_to_oklch(&[px[0], px[1], px[2]]).c;
-        hist[((c / MAX * BINS as f64) as usize).min(BINS - 1)] += 1;
-        n += 1;
-    }
+    let parts = crate::par::chunks(pixels, PIXELS_PER_UNIT * 3, |_, run| {
+        let mut hist = vec![0u64; BINS];
+        for px in run.as_chunks::<3>().0 {
+            let c = rgb_to_oklch(px).c;
+            hist[((c / MAX * BINS as f64) as usize).min(BINS - 1)] += 1;
+        }
+        hist
+    });
+    let hist = crate::par::sum_counts(parts, BINS);
+    let n: u64 = hist.iter().sum();
     if n == 0 {
         return DEFAULT_VIVID;
     }
@@ -510,13 +538,49 @@ impl<'a> ColorMap<'a> {
         config: &'a WalConfig,
     ) -> Self {
         debug_assert_eq!(slots.len(), options.len());
+        assert!(slots.len() <= MAX_SLOTS, "a palette holds at most 16 slots");
+        let mode = config.mode.unwrap_or(Mode::Blend);
+        let weight = |idx: usize| options[idx].weight;
+        let kept_neutrals: Vec<usize> = neutral_slots
+            .iter()
+            .copied()
+            .filter(|&idx| weight(idx) > 0.0)
+            .collect();
+        let accent: Vec<bool> = slots
+            .iter()
+            .map(|s| role_of_slot(s.slot) == "accents")
+            .collect();
+        let mix_neutrals = config.neutrals == Neutrals::Mix;
+        let snap_accents_only = mode == Mode::Snap
+            && !mix_neutrals
+            && (0..slots.len()).any(|i| accent[i] && weight(i) > 0.0);
+        let blend_accent: Vec<bool> = accent.iter().map(|&a| mix_neutrals || a).collect();
+        let blend_has_accents = (0..slots.len()).any(|i| blend_accent[i] && weight(i) > 0.0);
+        let (mut neutral_c, mut neutral_w) = (0.0f64, 0.0f64);
+        for (idx, s) in slots.iter().enumerate() {
+            let w = weight(idx);
+            if w > 0.0 && !blend_accent[idx] {
+                neutral_c += s.lch.c * w;
+                neutral_w += w;
+            }
+        }
+        let neutral_floor = (neutral_w > 0.0).then(|| neutral_c / neutral_w);
+        let hue_sin = slots.iter().map(|s| s.lch.h.to_radians().sin()).collect();
+        let hue_cos = slots.iter().map(|s| s.lch.h.to_radians().cos()).collect();
         ColorMap {
             slots,
-            neutral_slots,
             options,
             config,
-            mode: config.mode.unwrap_or(Mode::Blend),
+            mode,
             vivid: DEFAULT_VIVID,
+            kept_neutrals,
+            accent,
+            snap_accents_only,
+            blend_accent,
+            blend_has_accents,
+            neutral_floor,
+            hue_sin,
+            hue_cos,
         }
     }
 
@@ -534,6 +598,21 @@ impl<'a> ColorMap<'a> {
         let raw = rgb_to_oklch(rgb);
         let (l, c, h, _) = self.run(raw);
         oklch_to_rgb(&Lch { l, c, h })
+    }
+
+    /// The weighted circular mean of these slots' hues: the same sums as
+    /// `weighted_circ_mean`, from each slot's precomputed sine and cosine.
+    fn circ_mean(&self, set: &[(usize, f64)]) -> f64 {
+        if set.is_empty() {
+            return 0.0;
+        }
+        let mut sin_sum = 0.0;
+        let mut cos_sum = 0.0;
+        for &(idx, w) in set {
+            sin_sum += w * self.hue_sin[idx];
+            cos_sum += w * self.hue_cos[idx];
+        }
+        floor_mod(sin_sum.atan2(cos_sum).to_degrees(), 360.0)
     }
 
     /// Returns the final (l, c, h) before the 8-bit render, plus the
@@ -555,12 +634,7 @@ impl<'a> ColorMap<'a> {
         if raw.c < gray_floor {
             // Achromatic: keyed to the scheme's low-chroma slots by raw
             // lightness (first minimum wins).
-            let neutrals: Vec<usize> = self
-                .neutral_slots
-                .iter()
-                .copied()
-                .filter(|&idx| weight(idx) > 0.0)
-                .collect();
+            let neutrals = &self.kept_neutrals;
             if neutrals.is_empty() {
                 // The palette left the neutrals out: grays stay gray.
                 let (l, c) = image_grade(self.config, l_in, c_in);
@@ -568,7 +642,7 @@ impl<'a> ColorMap<'a> {
             }
             let mut best = neutrals[0];
             let mut best_d = f64::INFINITY;
-            for &idx in &neutrals {
+            for &idx in neutrals {
                 let d = (self.slots[idx].lch.l - raw.l).abs() / weight(idx);
                 if d < best_d {
                     best_d = d;
@@ -583,23 +657,23 @@ impl<'a> ColorMap<'a> {
             // the constant - the lightness ramp blends smoothly.
             let (target_l, target_c) = if self.mode == Mode::Blend {
                 let t = reach.max(1e-3);
-                let mut ls = Vec::new();
-                let mut cs = Vec::new();
-                let mut ws = Vec::new();
+                let mut ws = [0.0f64; MAX_SLOTS];
                 let mut total = 0.0f64;
-                for &idx in &neutrals {
-                    let s = self.slots[idx].lch;
-                    let d = (s.l - raw.l).abs() / weight(idx);
+                for (k, &idx) in neutrals.iter().enumerate() {
+                    let d = (self.slots[idx].lch.l - raw.l).abs() / weight(idx);
                     let v = (-(d * d) / (t * t)).exp();
-                    ls.push(s.l);
-                    cs.push(s.c);
-                    ws.push(v);
+                    ws[k] = v;
                     total += v;
                 }
-                let mix = |xs: &Vec<f64>| {
-                    xs.iter().zip(ws.iter()).map(|(x, w)| x * w).sum::<f64>() / total
+                let mix = |x: fn(&Lch) -> f64| {
+                    neutrals
+                        .iter()
+                        .zip(ws.iter())
+                        .map(|(&idx, w)| x(&self.slots[idx].lch) * w)
+                        .sum::<f64>()
+                        / total
                 };
-                (mix(&ls), mix(&cs))
+                (mix(|s| s.l), mix(|s| s.c))
             } else {
                 (slots_target.l, slots_target.c)
             };
@@ -625,16 +699,13 @@ impl<'a> ColorMap<'a> {
             // its hue and drain them.  `neutrals = mix` keeps every slot
             // in the running.  Blend's pick only chooses which role's
             // options apply; its hue already comes from the accents.
-            let accent = |i: usize| role_of_slot(self.slots[i].slot) == "accents";
-            let accents_only = self.mode == Mode::Snap
-                && self.config.neutrals != Neutrals::Mix
-                && (0..self.slots.len()).any(|i| accent(i) && weight(i) > 0.0);
+            let accents_only = self.snap_accents_only;
             let mut best = 0usize;
             let mut best_score = f64::INFINITY;
             let mut best_d = f64::INFINITY;
             for (idx, slots_target) in self.slots.iter().enumerate() {
                 let w = weight(idx);
-                if w <= 0.0 || (accents_only && !accent(idx)) {
+                if w <= 0.0 || (accents_only && !self.accent[idx]) {
                     continue;
                 }
                 let d = circ_dist(raw.h, slots_target.lch.h);
@@ -668,13 +739,11 @@ impl<'a> ColorMap<'a> {
             // palette (the faded cast toward the scheme's grays).
             let (hue_t, l_t, c_t) = if self.mode == Mode::Blend {
                 let t = reach.max(1e-3);
-                let mix_neutrals = self.config.neutrals == Neutrals::Mix;
-                let accent =
-                    |i: usize| mix_neutrals || role_of_slot(self.slots[i].slot) == "accents";
-                let has_accents = (0..self.slots.len()).any(|i| accent(i) && weight(i) > 0.0);
-                let (mut ls, mut lw) = (Vec::new(), Vec::new());
-                let (mut hues, mut cs, mut hw) = (Vec::new(), Vec::new(), Vec::new());
-                let (mut neutral_c, mut neutral_w) = (0.0f64, 0.0f64);
+                // Weighted slots for lightness (`all`), and the subset
+                // steering hue and chroma (`hue`), with their weights.
+                let mut all = [(0usize, 0.0f64); MAX_SLOTS];
+                let mut hue = [(0usize, 0.0f64); MAX_SLOTS];
+                let (mut n_all, mut n_hue) = (0usize, 0usize);
                 for (idx, s) in self.slots.iter().enumerate() {
                     let w = weight(idx);
                     if w <= 0.0 {
@@ -682,33 +751,32 @@ impl<'a> ColorMap<'a> {
                     }
                     let d = circ_dist(raw.h, s.lch.h) / w;
                     let v = (-(d * d) / (t * t)).exp();
-                    ls.push(s.lch.l);
-                    lw.push(v);
-                    if !accent(idx) {
-                        neutral_c += s.lch.c * w;
-                        neutral_w += w;
-                    }
-                    if !has_accents || accent(idx) {
-                        hues.push(s.lch.h);
-                        cs.push(s.lch.c);
-                        hw.push(v);
+                    all[n_all] = (idx, v);
+                    n_all += 1;
+                    if !self.blend_has_accents || self.blend_accent[idx] {
+                        hue[n_hue] = (idx, v);
+                        n_hue += 1;
                     }
                 }
-                let mean = |xs: &[f64], ws: &[f64]| {
-                    let total: f64 = ws.iter().sum();
-                    (total > 1e-12)
-                        .then(|| xs.iter().zip(ws).map(|(x, w)| x * w).sum::<f64>() / total)
+                let (all, hue) = (&all[..n_all], &hue[..n_hue]);
+                let mean = |set: &[(usize, f64)], x: fn(&Lch) -> f64| {
+                    let total: f64 = set.iter().map(|(_, w)| w).sum();
+                    (total > 1e-12).then(|| {
+                        set.iter()
+                            .map(|&(idx, w)| x(&self.slots[idx].lch) * w)
+                            .sum::<f64>()
+                            / total
+                    })
                 };
-                match (mean(&ls, &lw), mean(&cs, &hw)) {
+                match (mean(all, |s| s.l), mean(hue, |s| s.c)) {
                     (Some(l), Some(accent_c)) => {
-                        let c = if neutral_w > 0.0 {
-                            let floor = neutral_c / neutral_w;
+                        let c = if let Some(floor) = self.neutral_floor {
                             let r = (raw.c / self.vivid).clamp(0.0, 1.0);
                             floor + r * (accent_c - floor)
                         } else {
                             accent_c
                         };
-                        (weighted_circ_mean(&hues, &hw), l, c)
+                        (self.circ_mean(hue), l, c)
                     }
                     _ => (target.h, target.l, target.c),
                 }
@@ -771,20 +839,25 @@ pub fn apply(
     let core =
         ColorMap::new(slots, neutral_slots, options, config).with_vivid(vivid_chroma(pixels));
     let mut out = vec![0u8; pixels.len()];
-    let mut counts = vec![0u64; slots.len()];
-    for (src, dst) in pixels
-        .as_chunks::<3>()
-        .0
-        .iter()
-        .zip(out.as_chunks_mut::<3>().0.iter_mut())
-    {
-        let raw = rgb_to_oklch(src);
-        let (l, c, h, slot) = core.run(raw);
-        *dst = oklch_to_rgb(&Lch { l, c, h });
-        if let Some(slot) = slot {
-            counts[slot] += 1;
+    let parts = crate::par::chunks_mut(&mut out, PIXELS_PER_UNIT * 3, |start, run| {
+        let src = &pixels[start..start + run.len()];
+        let mut counts = vec![0u64; slots.len()];
+        for (src, dst) in src
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .zip(run.as_chunks_mut::<3>().0.iter_mut())
+        {
+            let raw = rgb_to_oklch(src);
+            let (l, c, h, slot) = core.run(raw);
+            *dst = oklch_to_rgb(&Lch { l, c, h });
+            if let Some(slot) = slot {
+                counts[slot] += 1;
+            }
         }
-    }
+        counts
+    });
+    let mut counts = crate::par::sum_counts(parts, slots.len());
     if let Some(d) = &config.dither {
         (out, counts) = dither_stage(&out, width, height, slots, options, d);
     }

@@ -52,7 +52,15 @@ fn dot(row: &[f64; 3], vec: &[f64; 3]) -> f64 {
     row[0] * vec[0] + row[1] * vec[1] + row[2] * vec[2]
 }
 
+/// The sRGB transfer curve for every 8-bit value, computed once.
+static SRGB_TO_LINEAR: std::sync::LazyLock<[f64; 256]> =
+    std::sync::LazyLock::new(|| std::array::from_fn(|v| srgb_to_linear_exact(v as u8)));
+
 fn srgb_to_linear(v: u8) -> f64 {
+    SRGB_TO_LINEAR[usize::from(v)]
+}
+
+fn srgb_to_linear_exact(v: u8) -> f64 {
     let v = f64::from(v) / 255.0;
     if v <= 0.04045 {
         v / 12.92

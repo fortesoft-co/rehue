@@ -591,20 +591,44 @@ pub fn dither(
         [sum[0] / n, sum[1] / n, sum[2] / n]
     };
 
-    // which ink each block (or, sampling per pixel, each pixel) takes
-    let mut out = vec![0u8; pixels.len()];
-    let mut counts = vec![0u64; inks.len()];
-    let mut paint = |x: usize, y: usize, ink: usize| {
-        let i = (y * w + x) * 3;
-        out[i..i + 3].copy_from_slice(&inks[ink].rgb);
-        counts[ink] += 1;
+    // Paint the image: each block takes `block(bx, by)`'s ink, or, when
+    // that is `None`, each of its pixels takes `pixel(x, y, bx, by)`'s.
+    // Block rows are independent, so they run across threads.
+    let paint = |block: &(dyn Fn(usize, usize) -> Option<usize> + Sync),
+                 pixel: &(dyn Fn(usize, usize, usize, usize) -> usize + Sync)| {
+        let row = w * 3;
+        let mut out = vec![0u8; pixels.len()];
+        let parts = crate::par::chunks_mut(&mut out, s * row, |start, run| {
+            let mut counts = vec![0u64; inks.len()];
+            let first = start / row;
+            let rows = run.len() / row;
+            for by in first / s..(first + rows).div_ceil(s) {
+                for bx in 0..gw {
+                    let ((x0, x1), (y0, y1)) = (span(bx, w), span(by, h));
+                    let ink = block(bx, by);
+                    for y in y0..y1 {
+                        for x in x0..x1 {
+                            let ink = ink.unwrap_or_else(|| pixel(x, y, bx, by));
+                            let i = (y - first) * row + x * 3;
+                            run[i..i + 3].copy_from_slice(&inks[ink].rgb);
+                            counts[ink] += 1;
+                        }
+                    }
+                }
+            }
+            counts
+        });
+        (out, crate::par::sum_counts(parts, inks.len()))
     };
 
     if d.style == Style::Diffuse {
-        let blocks: Vec<[f64; 3]> = (0..gh)
-            .flat_map(|by| (0..gw).map(move |bx| (bx, by)))
-            .map(|(bx, by)| average(bx, by))
-            .collect();
+        let mut blocks = vec![[0.0f64; 3]; gw * gh];
+        crate::par::chunks_mut(&mut blocks, gw, |start, run| {
+            for (k, b) in run.iter_mut().enumerate() {
+                let i = start + k;
+                *b = average(i % gw, i / gw);
+            }
+        });
         let mut err = vec![[0.0f64; 3]; gw * gh];
         let mut chosen = vec![0usize; gw * gh];
         for by in 0..gh {
@@ -637,17 +661,9 @@ pub fn dither(
                 }
             }
         }
-        for by in 0..gh {
-            for bx in 0..gw {
-                let ((x0, x1), (y0, y1)) = (span(bx, w), span(by, h));
-                for y in y0..y1 {
-                    for x in x0..x1 {
-                        paint(x, y, chosen[by * gw + bx]);
-                    }
-                }
-            }
-        }
-        return (out, counts);
+        return paint(&|bx, by| Some(chosen[by * gw + bx]), &|_, _, _, _| {
+            unreachable!("every block has its ink")
+        });
     }
 
     let threshold = |bx: usize, by: usize| {
@@ -679,17 +695,8 @@ pub fn dither(
         }
         if threshold(bx, by) < f { ink } else { paper }
     };
-    for by in 0..gh {
-        for bx in 0..gw {
-            let ((x0, x1), (y0, y1)) = (span(bx, w), span(by, h));
-            let block = (d.sample == Sample::Block).then(|| pick(average(bx, by), bx, by));
-            for y in y0..y1 {
-                for x in x0..x1 {
-                    let ink = block.unwrap_or_else(|| pick(at(x, y), bx, by));
-                    paint(x, y, ink);
-                }
-            }
-        }
-    }
-    (out, counts)
+    paint(
+        &|bx, by| (d.sample == Sample::Block).then(|| pick(average(bx, by), bx, by)),
+        &|x, y, bx, by| pick(at(x, y), bx, by),
+    )
 }

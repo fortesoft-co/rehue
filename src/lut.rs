@@ -53,16 +53,9 @@ where
     let n = samples(level);
     let total = (n * n * n) as usize;
     let mut out = vec![[0u8; 3]; total];
-    let threads = std::thread::available_parallelism().map_or(1, |t| t.get());
-    let chunk = total.div_ceil(threads);
-    std::thread::scope(|scope| {
-        for (c, slice) in out.chunks_mut(chunk).enumerate() {
-            scope.spawn(move || {
-                let start = c * chunk;
-                for (k, cell) in slice.iter_mut().enumerate() {
-                    *cell = f(&grid_color((start + k) as u32, n));
-                }
-            });
+    crate::par::chunks_mut(&mut out, 1, |start, run| {
+        for (k, cell) in run.iter_mut().enumerate() {
+            *cell = f(&grid_color((start + k) as u32, n));
         }
     });
     out

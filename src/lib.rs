@@ -16,6 +16,7 @@ pub mod grade_wal;
 pub mod icons;
 pub mod look;
 pub mod lut;
+pub mod par;
 pub mod preview;
 pub mod role;
 pub mod scheme;
