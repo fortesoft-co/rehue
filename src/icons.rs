@@ -1,7 +1,7 @@
 //! `rehue icons`: SVG and PNG recoloring, theme layout, folders, the preview.
 //!
 //! `rehue icons`: recolor an icon theme with a scheme, through the same
-//! grade as `wal` ([`ColorMap`], per colour, no dithering).
+//! grade as `wal` ([`ColorMap`], per colour).
 //!
 //! * SVG: every colour written into the file is rewritten - `#rgb`,
 //!   `#rrggbb`, `#rrggbbaa`, `rgb()` / `rgba()`, in attributes, inline
@@ -22,12 +22,20 @@
 //! Theme and Icon Naming specs), never a `-symbolic` one; a link with
 //! such a name passes it on to the file it points at when that file's
 //! name says folder too.
+//!
+//! Dithering (`dither`, asked for explicitly) is best effort: an SVG in a
+//! directory whose size `index.theme` gives is drawn at that size
+//! (`Size` x `Scale`), dithered with the scheme's colors and written as
+//! a PNG in its place, links to it re-pointed; PNGs are dithered as they
+//! are.  Transparency is kept.  Symbolic icons (the toolkit colors those)
+//! and icons of unknown size stay recolored SVGs.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::dither::{Dither, Ink};
 use crate::grade_wal::{ColorMap, WalConfig};
 
 /// The icons config: the wal grade, plus the folder colour.
@@ -313,11 +321,15 @@ pub struct ThemeIndex {
     pub inherits: Vec<String>,
     /// directory (as listed in `Directories=`) -> its `Context=`
     pub contexts: HashMap<String, String>,
+    /// directory -> the pixel size its icons are drawn at (`Size` x
+    /// `Scale`)
+    pub sizes: HashMap<String, u32>,
 }
 
 pub fn parse_index(text: &str) -> ThemeIndex {
     let mut index = ThemeIndex::default();
     let mut section = String::new();
+    let mut size: HashMap<String, (u32, u32)> = HashMap::new();
     for line in text.lines() {
         let line = line.trim();
         if let Some(s) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
@@ -330,9 +342,24 @@ pub fn parse_index(text: &str) -> ThemeIndex {
                 index.inherits = v.split(',').map(|t| t.trim().to_string()).collect();
             } else if section != "Icon Theme" && k == "Context" {
                 index.contexts.insert(section.clone(), v.to_string());
+            } else if section != "Icon Theme"
+                && (k == "Size" || k == "Scale")
+                && let Ok(n) = v.parse::<u32>()
+            {
+                let e = size.entry(section.clone()).or_insert((0, 1));
+                if k == "Size" {
+                    e.0 = n;
+                } else {
+                    e.1 = n.max(1);
+                }
             }
         }
     }
+    index.sizes = size
+        .into_iter()
+        .filter(|(_, (s, _))| *s > 0)
+        .map(|(dir, (s, scale))| (dir, s * scale))
+        .collect();
     index
 }
 
@@ -463,11 +490,22 @@ fn relative(from: &Path, target: &Path) -> PathBuf {
     out
 }
 
-/// The two grades a theme is painted with.
+/// The two grades a theme is painted with, and the dither, if asked for.
 pub struct Painter<'a> {
     pub icons: ColorMap<'a>,
     pub folders: ColorMap<'a>,
+    pub dither: Option<IconDither>,
 }
+
+/// Dithering icons: the dither and the colors each grade draws with.
+pub struct IconDither {
+    pub dither: Dither,
+    pub icon_inks: Vec<Ink>,
+    pub folder_inks: Vec<Ink>,
+}
+
+/// The size a single icon file is dithered at (no theme to say).
+pub const SINGLE_ICON_SIZE: u32 = 48;
 
 /// What a run did.
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -480,6 +518,8 @@ pub struct Stats {
     pub brought_in: usize,
     pub folders: usize,
     pub colours: usize,
+    /// icons dithered (SVGs drawn to PNG, and PNGs)
+    pub dithered: usize,
 }
 
 /// A theme's colours, for its vivid chroma: every literal in its SVGs.
@@ -569,11 +609,43 @@ pub fn recolor_theme(
         }
     }
 
+    // dithering: which SVGs become PNGs (a known size, not symbolic), and
+    // which links follow them to the new name
+    let mut converted: HashSet<PathBuf> = HashSet::new();
+    if painter.dither.is_some() {
+        for (rel, e) in &plan.entries {
+            if matches!(e, Entry::File(_)) && dither_size(rel, &index).is_some() {
+                converted.insert(rel.clone());
+            }
+        }
+        loop {
+            let before = converted.len();
+            for (rel, e) in &plan.entries {
+                if let Entry::Link(t) = e
+                    && is_svg(rel)
+                    && converted.contains(t)
+                {
+                    converted.insert(rel.clone());
+                }
+            }
+            if converted.len() == before {
+                break;
+            }
+        }
+    }
+    let renamed = |rel: &Path| -> PathBuf {
+        if converted.contains(rel) {
+            rel.with_extension("png")
+        } else {
+            rel.to_path_buf()
+        }
+    };
+
     let mut stats = Stats::default();
     if let Some(out) = out {
         std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {e}", out.display()))?;
     }
-    let mut jobs: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
+    let mut jobs: Vec<Job> = Vec::new();
     for (rel, e) in &plan.entries {
         match e {
             Entry::Dir => {
@@ -585,10 +657,12 @@ pub fn recolor_theme(
                 stats.links += 1;
                 if let Some(out) = out {
                     let text = match e {
-                        Entry::Link(_) => relative(rel.parent().unwrap_or(Path::new("")), target),
+                        Entry::Link(_) => {
+                            relative(rel.parent().unwrap_or(Path::new("")), &renamed(target))
+                        }
                         _ => target.clone(),
                     };
-                    let dest = out.join(rel);
+                    let dest = out.join(renamed(rel));
                     let _ = std::fs::remove_file(&dest);
                     symlink(&text, &dest)?;
                 }
@@ -597,7 +671,18 @@ pub fn recolor_theme(
                 if !from.starts_with(&root) {
                     stats.brought_in += 1;
                 }
-                jobs.push((rel.clone(), from.clone(), folder_files.contains(rel)));
+                jobs.push(Job {
+                    rel: rel.clone(),
+                    from: from.clone(),
+                    folder: folder_files.contains(rel),
+                    dither_at: if converted.contains(rel)
+                        || (is_png(rel) && painter.dither.is_some())
+                    {
+                        dither_size(rel, &index)
+                    } else {
+                        None
+                    },
+                });
             }
         }
     }
@@ -624,6 +709,7 @@ pub fn recolor_theme(
         stats.png += s.png;
         stats.copied += s.copied;
         stats.folders += s.folders;
+        stats.dithered += s.dithered;
         colours.extend(c);
     }
     stats.colours = colours.len();
@@ -646,8 +732,105 @@ fn symlink(_target: &Path, at: &Path) -> Result<(), String> {
 /// One worker's tally and the colours it mapped.
 type WorkerResult = (Stats, HashSet<[u8; 3]>);
 
+/// A file to paint: where it goes, where it's read from, whether it's a
+/// folder, and the size to dither it at (when dithering it).
+struct Job {
+    rel: PathBuf,
+    from: PathBuf,
+    folder: bool,
+    dither_at: Option<u32>,
+}
+
+fn is_svg(rel: &Path) -> bool {
+    rel.extension().is_some_and(|x| x == "svg")
+}
+
+fn is_png(rel: &Path) -> bool {
+    rel.extension().is_some_and(|x| x == "png")
+}
+
+/// The size an icon is dithered at: its directory's size from the index,
+/// for an SVG or PNG that isn't symbolic.
+fn dither_size(rel: &Path, index: &ThemeIndex) -> Option<u32> {
+    if !(is_svg(rel) || is_png(rel)) || rel.to_string_lossy().contains("symbolic") {
+        return None;
+    }
+    let dir = rel
+        .parent()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+    index.sizes.get(&dir).copied()
+}
+
+/// Draw SVG text at `size` x `size`, straight RGBA.
+pub fn rasterize_svg(text: &[u8], resources: Option<&Path>, size: u32) -> Option<image::RgbaImage> {
+    let options = resvg::usvg::Options {
+        resources_dir: resources.map(Path::to_path_buf),
+        ..Default::default()
+    };
+    let tree = resvg::usvg::Tree::from_data(text, &options).ok()?;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size)?;
+    let s = tree.size();
+    let scale = size as f32 / s.width().max(s.height());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    let mut img = image::RgbaImage::new(size, size);
+    for (px, c) in img.pixels_mut().zip(pixmap.pixels()) {
+        let c = c.demultiply();
+        px.0 = [c.red(), c.green(), c.blue(), c.alpha()];
+    }
+    Some(img)
+}
+
+/// Dither an icon's colors, keeping its transparency.  Fully transparent
+/// pixels take the icon's average color first, so they don't pull the
+/// pattern at the edges toward black.
+pub fn dither_icon(img: &image::RgbaImage, d: &Dither, inks: &[Ink]) -> image::RgbaImage {
+    let (w, h) = img.dimensions();
+    let mut sum = [0u64; 3];
+    let mut n = 0u64;
+    for p in img.pixels().filter(|p| p.0[3] > 0) {
+        for (total, channel) in sum.iter_mut().zip(p.0) {
+            *total += u64::from(channel);
+        }
+        n += 1;
+    }
+    let mean = sum.map(|total| total.checked_div(n).unwrap_or(0) as u8);
+    let rgb: Vec<u8> = img
+        .pixels()
+        .flat_map(|p| {
+            if p.0[3] == 0 {
+                mean
+            } else {
+                [p.0[0], p.0[1], p.0[2]]
+            }
+        })
+        .collect();
+    let (out, _) = crate::dither::dither(&rgb, w, h, inks, d);
+    let mut back = image::RgbaImage::new(w, h);
+    for (i, px) in back.pixels_mut().enumerate() {
+        px.0 = [
+            out[i * 3],
+            out[i * 3 + 1],
+            out[i * 3 + 2],
+            img.as_raw()[i * 4 + 3],
+        ];
+    }
+    back
+}
+
+fn encode_png(img: &image::RgbaImage) -> Result<Vec<u8>, String> {
+    let mut buf = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut buf, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(buf.into_inner())
+}
+
 fn paint_files(
-    jobs: &[(PathBuf, PathBuf, bool)],
+    jobs: &[Job],
     out: Option<&Path>,
     name: &str,
     painter: &Painter,
@@ -655,7 +838,8 @@ fn paint_files(
     let mut stats = Stats::default();
     let mut icon_cache: HashMap<[u8; 3], [u8; 3]> = HashMap::new();
     let mut folder_cache: HashMap<[u8; 3], [u8; 3]> = HashMap::new();
-    for (rel, from, folder) in jobs {
+    for job in jobs {
+        let (rel, from, folder) = (&job.rel, &job.from, &job.folder);
         let file = rel.file_name().and_then(|f| f.to_str()).unwrap_or("");
         if file == "icon-theme.cache" && rel.parent() == Some(Path::new("")) {
             continue;
@@ -669,6 +853,35 @@ fn paint_files(
         let mut f = |rgb: [u8; 3]| *cache.entry(rgb).or_insert_with(|| map.map_rgb(&rgb));
         let read =
             || std::fs::read(from).map_err(|e| format!("can't read {}: {e}", from.display()));
+        if let (Some(size), Some(dither)) = (job.dither_at, &painter.dither) {
+            let inks = if *folder {
+                &dither.folder_inks
+            } else {
+                &dither.icon_inks
+            };
+            let bytes = read()?;
+            let drawn = if is_svg(rel) {
+                std::str::from_utf8(&bytes).ok().and_then(|text| {
+                    let painted = recolor_svg(text, &mut f);
+                    rasterize_svg(painted.as_bytes(), from.parent(), size)
+                })
+            } else {
+                recolor_png(&bytes, &mut f)
+                    .ok()
+                    .and_then(|png| image::load_from_memory(&png).ok())
+                    .map(|img| img.to_rgba8())
+            };
+            if let Some(img) = drawn {
+                stats.dithered += 1;
+                if let Some(out) = out {
+                    let dest = out.join(rel).with_extension("png");
+                    std::fs::write(&dest, encode_png(&dither_icon(&img, &dither.dither, inks))?)
+                        .map_err(|e| format!("can't write {}: {e}", dest.display()))?;
+                }
+                continue;
+            }
+            // couldn't be drawn: falls through to a plain recolor
+        }
         let body: Vec<u8> = if rel == Path::new("index.theme") {
             let text = String::from_utf8_lossy(&read()?).into_owned();
             stats.copied += 1;
@@ -804,25 +1017,7 @@ pub fn render_icon(path: &Path, size: u32) -> Option<image::RgbaImage> {
         );
     }
     let data = std::fs::read(path).ok()?;
-    let options = resvg::usvg::Options {
-        resources_dir: path.parent().map(Path::to_path_buf),
-        ..Default::default()
-    };
-    let tree = resvg::usvg::Tree::from_data(&data, &options).ok()?;
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size)?;
-    let s = tree.size();
-    let scale = size as f32 / s.width().max(s.height());
-    resvg::render(
-        &tree,
-        resvg::tiny_skia::Transform::from_scale(scale, scale),
-        &mut pixmap.as_mut(),
-    );
-    let mut img = image::RgbaImage::new(size, size);
-    for (px, c) in img.pixels_mut().zip(pixmap.pixels()) {
-        let c = c.demultiply();
-        px.0 = [c.red(), c.green(), c.blue(), c.alpha()];
-    }
-    Some(img)
+    rasterize_svg(&data, path.parent(), size)
 }
 
 /// The preview sheet: the scheme's accents on top, then the icons in

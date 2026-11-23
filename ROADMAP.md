@@ -20,11 +20,6 @@ shipped.
   terminal, as git does, with `--no-pager`; pipes stay plain. Later: an
   interactive browser (ratatui) with a live preview of the selected
   scheme (its terminal colors, or the wallpaper repainted).
-- **Dithered icons** (best effort, opt-in): `rehue icons --dither`
-  draws each SVG at its folder's size, dithers it, and writes a PNG in
-  its place; symbolic icons are skipped, and the run warns that the
-  theme loses crisp scaling. A look's `[wal]` dither never carries over
-  on its own.
 - **WCAG contrast mode**: a contrast-ratio option for `rehue scheme`
   (e.g. 4.5:1, the ratio theme designers check against) alongside the
   lightness-gap guard `min-text-contrast`, and possibly covering more

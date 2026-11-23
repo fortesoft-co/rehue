@@ -232,8 +232,8 @@ fn wal_dithers_with_the_schemes_colors_and_icons_leave_it_alone() {
         assert_eq!(covered, 64 * 48, "{extra:?}: every pixel is a slot's");
     }
 
-    // a look's [wal] dither doesn't reach icons; asking icons directly is
-    // refused for now
+    // a look's [wal] dither doesn't reach icons; asking icons directly
+    // dithers them (a single icon at 48 px)
     let svg = dir.join("app.svg");
     std::fs::write(
         &svg,
@@ -255,8 +255,16 @@ fn wal_dithers_with_the_schemes_colors_and_icons_leave_it_alone() {
     assert!(icons(&["-l", "pc98"]).status.success());
     let cfg = dir.join("icons.toml");
     std::fs::write(&cfg, "dither = \"checker\"\n").unwrap();
+    let o = icons(&["-l", "pc98"]);
+    assert!(
+        !String::from_utf8_lossy(&o.stdout).contains("dither"),
+        "no dither from [wal]"
+    );
+    assert!(out.join("app.svg").is_file());
     let o = icons(&["-c", cfg.to_str().unwrap()]);
-    assert!(!o.status.success() && String::from_utf8_lossy(&o.stderr).contains("dither"));
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let png = image::open(out.join("app.png")).unwrap();
+    assert_eq!(png.width(), 48);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

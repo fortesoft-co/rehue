@@ -237,6 +237,7 @@ wallpaper, so the icons match it and the apps.
 rehue icons -i Papirus -s gruvbox-light                     # recolor
 rehue icons -i Papirus -s gruvbox-light --folders base0E    # purple folders
 rehue icons -i Papirus -s gruvbox-light -p base0D           # only the scheme blue
+rehue icons -i Papirus -s gruvbox-light --dither            # dithered, pixel-art icons
 ```
 
 Copy `rehue-out/Papirus-rehue` to `~/.local/share/icons/` and
@@ -340,7 +341,7 @@ setup.
 | [scheme](docs/scheme.md) | `rehue scheme`: every option, with examples |
 | [wal](docs/wal.md) | `rehue wal`: every option, with examples; LUT export |
 | [dither](docs/dither.md) | `wal --dither`: every style and setting, with examples |
-| [icons](docs/icons.md) | `rehue icons`: folder colors, chosen-color packs, looks |
+| [icons](docs/icons.md) | `rehue icons`: folder colors, chosen-color packs, looks, dithering |
 | [inspect](docs/inspect.md) | `rehue inspect`; choosing a scheme |
 | [enhance](docs/enhance.md) | `rehue enhance`: Lanczos and super-resolution upscaling |
 | [looks](docs/looks.md) | the built-in looks, shown; writing your own |

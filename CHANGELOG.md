@@ -21,8 +21,14 @@ versions may break).
   pixel's block, `pixel` keeps edges sharp), `flat` (how much stays
   solid), and each style's own. In configs, `dither = "checker"` or a
   `[dither]` table. With `--lut`, the LUT holds the grade before
-  dithering. Not for icons yet (a look's `[wal]` dither doesn't carry
-  over to icons).
+  dithering.
+- `icons --dither` (best effort): each icon in a folder whose size
+  `index.theme` gives is drawn at that size, dithered with the scheme's
+  colors (folders with the `--folders` ones) and written as a PNG in
+  its place, links re-pointed, transparency kept; symbolic icons and
+  icons of unknown size stay SVGs. A single icon is drawn at 48 px. A
+  look's `[wal]` dither still doesn't carry over to icons; an `[icons]`
+  section's does.
 - Looks `pc98` (harmonize, then checker), `newsprint` (two inks in
   halftone), `onebit` (darkest and lightest in Atkinson) and `hatch`.
 - Docs pages for dithering and `enhance`; enhance's flags sit under an

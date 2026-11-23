@@ -572,3 +572,17 @@ rungs = [
   { args = "-l snap" },
   { args = "-l vivid" },
 ]
+
+[[ladder]]
+id = "icons-dither"
+file = "assets/examples/icons-dither.png"
+base = "icons -i Papirus-Dark -s catppuccin-mocha -o {out}"
+output = "preview.png"
+width = 896
+crop = "448x56+0+90"
+rungs = [
+  { args = "", note = "recolored, no dither" },
+  { args = "--dither" },
+  { args = "--dither halftone" },
+  { args = "--dither diffuse,kernel=atkinson" },
+]

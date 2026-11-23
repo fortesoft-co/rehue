@@ -794,6 +794,25 @@ pub fn apply(
     }
 }
 
+/// The colors a dither draws with: the slots the palette keeps (every
+/// slot when it keeps none).
+pub fn palette_inks(slots: &[SlotPalette], options: &[SlotOptions]) -> Vec<Ink> {
+    let all = |keep: &dyn Fn(usize) -> bool| -> Vec<Ink> {
+        slots
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| keep(*i))
+            .map(|(i, s)| Ink::new(i, oklch_to_rgb(&s.lch)))
+            .collect()
+    };
+    let kept = all(&|i| options[i].weight > 0.0);
+    if kept.is_empty() {
+        all(&|_| true)
+    } else {
+        kept
+    }
+}
+
 /// The dither stage over a graded image: the palette's colors (the slots
 /// the palette keeps) drawn as a pattern.  Coverage counts each slot's
 /// pixels exactly, since every pixel is one of them.
@@ -805,19 +824,7 @@ pub fn dither_stage(
     options: &[SlotOptions],
     d: &Dither,
 ) -> (Vec<u8>, Vec<u64>) {
-    let mut inks: Vec<Ink> = slots
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| options[*i].weight > 0.0)
-        .map(|(i, s)| Ink::new(i, oklch_to_rgb(&s.lch)))
-        .collect();
-    if inks.is_empty() {
-        inks = slots
-            .iter()
-            .enumerate()
-            .map(|(i, s)| Ink::new(i, oklch_to_rgb(&s.lch)))
-            .collect();
-    }
+    let inks = palette_inks(slots, options);
     let (out, per_ink) = crate::dither::dither(pixels, width, height, &inks, d);
     let mut counts = vec![0u64; slots.len()];
     for (ink, n) in inks.iter().zip(per_ink) {

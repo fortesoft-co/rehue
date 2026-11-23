@@ -246,6 +246,48 @@ rehue wal --harmonize 1 --dither diffuse,kernel=atkinson
 ```
 <!-- /gen:ladder:wal-dither-kernel -->
 
+## Icons
+
+`rehue icons --dither` dithers an icon theme too, with the same styles
+and settings. It is best effort: an icon theme is mostly SVG, which
+can't hold a pattern, so each icon is drawn at its folder's size (16,
+24, 48 and so on, as the theme's `index.theme` lists them), dithered
+with the scheme's colors, and written as a PNG in its place. Links to
+it follow, and transparency is kept.
+
+```sh
+rehue icons -i Papirus-Dark -s catppuccin-mocha --dither
+rehue icons -i Papirus-Dark -s catppuccin-mocha --dither diffuse,kernel=atkinson
+```
+
+![Papirus-Dark app icons: recolored / --dither / --dither halftone / --dither diffuse,kernel=atkinson, 2x crop](../assets/examples/icons-dither.png)
+
+<!-- gen:ladder:icons-dither -->
+```sh
+# inputs: rehue icons -i Papirus-Dark -s catppuccin-mocha -o out
+# recolored, no dither
+rehue icons
+rehue icons --dither
+rehue icons --dither halftone
+rehue icons --dither diffuse,kernel=atkinson
+```
+<!-- /gen:ladder:icons-dither -->
+
+What changes in the theme:
+
+- The icons no longer scale crisply: each size is a fixed set of
+  pixels, so a desktop that scales an icon to a size the theme lacks
+  blurs it.
+- Soft edges keep their transparency, but the color under them is
+  dithered like the rest.
+- The theme grows (Papirus-Dark goes from links and SVGs to about
+  400 MB of PNGs).
+- Symbolic icons, which the toolkit colors itself, and icons in folders
+  `index.theme` gives no size for stay recolored SVGs.
+- With `--folders`, folder icons are dithered with the folder colors.
+- `scale=auto` comes out at 1 for icons; a larger `scale` makes each
+  pattern pixel cover several icon pixels.
+
 ## Notes
 
 - `--palette` picks which colors dithering may use: two of them
@@ -256,8 +298,8 @@ rehue wal --harmonize 1 --dither diffuse,kernel=atkinson
   a dither depends on where a pixel is, not just its color.
 - `report.json`'s coverage is exact with dithering: every pixel is one
   of the scheme's colors.
-- Dithering is for wallpapers. A look's dither doesn't carry over to
-  `rehue icons`.
+- A look's dither applies to wallpapers only: `rehue icons` dithers
+  only when asked directly.
 
 <!-- gen:flags:wal:dithering -->
 | flag | value | what it does |

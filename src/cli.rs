@@ -300,6 +300,23 @@ pub enum Commands {
         /// e.g. --folders base0E   --folders base0D,base0C
         #[arg(long, help_heading = "Grading", value_name = "KEY[=W],...")]
         folders: Option<String>,
+        /// Dither the icons (best effort): each SVG is drawn at its
+        /// directory's size, dithered with the scheme's colors and written
+        /// as a PNG.  Bare = checker.
+        ///
+        /// The same STYLE[,key=value...] as wal --dither.  Symbolic icons
+        /// and icons of unknown size stay SVGs; the theme loses crisp
+        /// scaling and grows.
+        ///
+        /// e.g. --dither   --dither diffuse,kernel=atkinson
+        #[arg(
+            long,
+            help_heading = "Dithering",
+            value_name = "STYLE[,K=V]",
+            num_args = 0..=1,
+            default_missing_value = "checker"
+        )]
+        dither: Option<String>,
         #[command(flatten)]
         grade: GradeArgs,
     },

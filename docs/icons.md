@@ -104,6 +104,25 @@ turn the color up or down. [looks.md](looks.md#built-in-looks) shows
 every look on these icons. A look of your own can carry an `[icons]`
 section; without one, its `[wal]` section grades the icons.
 
+## Dither the icons
+
+`--dither` gives the icons a dithered, pixel-art look, with the same
+styles as [wallpaper dithering](dither.md):
+
+```sh
+rehue icons -i Papirus -s gruvbox-light --dither
+```
+
+It is best effort: each icon becomes a PNG at its folder's size, so the
+theme loses crisp scaling and grows. [dither.md](dither.md#icons) shows
+it and lists what changes.
+
+<!-- gen:flags:icons:dithering -->
+| flag | value | what it does |
+| --- | --- | --- |
+| `--dither` | `STYLE[,K=V]` | Dither the icons (best effort): each SVG is drawn at its directory's size, dithered with the scheme's colors and written as a PNG. Bare = checker |
+<!-- /gen:flags:icons:dithering -->
+
 ## Every grading flag
 
 All of [wal's grading options](wal.md#options) work on icons, and icons

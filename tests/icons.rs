@@ -312,3 +312,108 @@ fn looks_lend_icons_their_wal_section_and_icons_start_harmonized() {
     );
     assert_eq!(c.folders.unwrap()["base0E"], 1.0);
 }
+
+#[test]
+fn dithering_draws_sized_icons_to_png_and_follows_the_links() {
+    let dir = std::env::temp_dir().join(format!("rehue-icons-dither-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = dir.join("src/Sized");
+    for d in ["48/apps", "48/places", "symbolic/apps", "scalable/apps"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(
+        root.join("index.theme"),
+        "[Icon Theme]\nName=Sized\nDirectories=48/apps,48/places,symbolic/apps,scalable/apps\n\n\
+         [48/apps]\nContext=Applications\nSize=48\n[48/places]\nContext=Places\nSize=24\nScale=2\n\
+         [symbolic/apps]\nContext=Applications\nSize=16\n[scalable/apps]\nContext=Applications\n",
+    )
+    .unwrap();
+    let gradient = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><defs><linearGradient id="g"><stop offset="0" stop-color="#e66000"/><stop offset="1" stop-color="#2060c0"/></linearGradient></defs><circle cx="2" cy="2" r="1.8" fill="url(#g)"/></svg>"##;
+    std::fs::write(root.join("48/apps/firefox.svg"), gradient).unwrap();
+    std::fs::write(
+        root.join("48/places/default-folder-music.svg"),
+        icon("#5294e2"),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("symbolic/apps/firefox-symbolic.svg"),
+        icon("#bebebe"),
+    )
+    .unwrap();
+    std::fs::write(root.join("scalable/apps/firefox.svg"), gradient).unwrap();
+    std::os::unix::fs::symlink(
+        "default-folder-music.svg",
+        root.join("48/places/folder-music.svg"),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink("firefox.svg", root.join("48/apps/web-browser.svg")).unwrap();
+
+    let out = dir.join("out");
+    let scheme = fixture("solarized-dark.yaml");
+    let log = run(
+        &[
+            "-i",
+            root.to_str().unwrap(),
+            "-s",
+            scheme.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+            "--dither",
+        ],
+        &[],
+    );
+    assert!(
+        log.contains("best effort") && log.contains("2 icons dithered"),
+        "{log}"
+    );
+    let t = out.join("Sized-rehue");
+
+    // sized icons become pngs at their directory's size, scheme colors only
+    let png = image::open(t.join("48/apps/firefox.png"))
+        .unwrap()
+        .to_rgba8();
+    assert_eq!(png.dimensions(), (48, 48));
+    let folder = image::open(t.join("48/places/default-folder-music.png")).unwrap();
+    assert_eq!(folder.width(), 48, "Size 24 x Scale 2");
+    assert!(!t.join("48/apps/firefox.svg").exists());
+    let scheme_colors: std::collections::BTreeSet<[u8; 3]> =
+        rehue::scheme::Scheme::parse_file(&scheme)
+            .unwrap()
+            .slot_hexes()
+            .unwrap()
+            .iter()
+            .map(|h| {
+                let v = u32::from_str_radix(h.trim_start_matches('#'), 16).unwrap();
+                [(v >> 16) as u8, (v >> 8) as u8, v as u8]
+            })
+            .collect();
+    let used: std::collections::BTreeSet<[u8; 3]> = png
+        .pixels()
+        .filter(|p| p.0[3] > 0)
+        .map(|p| [p.0[0], p.0[1], p.0[2]])
+        .collect();
+    assert!(used.is_subset(&scheme_colors), "{used:?}");
+    assert!(used.len() > 1, "the gradient is drawn with several colors");
+    assert!(
+        png.pixels().any(|p| p.0[3] == 0),
+        "transparency is kept around the circle"
+    );
+
+    // links follow their targets to the new name
+    let link = |rel: &str| std::fs::read_link(t.join(rel)).ok();
+    assert_eq!(
+        link("48/places/folder-music.png"),
+        Some("default-folder-music.png".into())
+    );
+    assert_eq!(link("48/apps/web-browser.png"), Some("firefox.png".into()));
+    assert!(
+        t.join("48/apps/web-browser.png").is_file(),
+        "the link resolves"
+    );
+
+    // symbolic and unknown-size icons stay recolored svgs
+    assert!(t.join("symbolic/apps/firefox-symbolic.svg").is_file());
+    assert!(t.join("scalable/apps/firefox.svg").is_file());
+    assert!(!t.join("scalable/apps/firefox.png").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -912,9 +912,6 @@ fn run_icons(
     dry_run: bool,
 ) -> Result<(), String> {
     use rehue::icons::{self, Input};
-    if config.grade.dither.is_some() {
-        return Err("icons can't be dithered yet (dither is for wal)".into());
-    }
     let source = icons::find_input(input)?;
     let mut folder_grade = config.grade.clone();
     if config.folders.is_some() {
@@ -968,6 +965,11 @@ fn run_icons(
             &folder_grade,
         )
         .with_vivid(vivid),
+        dither: config.grade.dither.map(|d| icons::IconDither {
+            dither: d,
+            icon_inks: grade_wal::palette_inks(&arranged, &options),
+            folder_inks: grade_wal::palette_inks(&arranged, &folder_options),
+        }),
     };
     println!(
         "rehue icons: painting with '{}' by {}",
@@ -978,6 +980,12 @@ fn run_icons(
         println!(
             "  {}",
             palette_summary(&grade_wal::palette_weights(&config.grade)?)
+        );
+    }
+    if let Some(d) = &config.grade.dither {
+        println!("  dither {}", d.describe());
+        println!(
+            "  dithering icons is best effort: SVGs become fixed-size PNGs (no crisp scaling), soft edges keep their transparency but not their smoothness, and the theme grows; symbolic icons and icons of unknown size stay SVGs"
         );
     }
     if config.folders.is_some() {
@@ -996,17 +1004,35 @@ fn run_icons(
             let file = path
                 .file_name()
                 .ok_or_else(|| format!("{} has no file name", path.display()))?;
-            let dest = out.join(file);
+            let mut dest = out.join(file);
             let bytes =
                 std::fs::read(&path).map_err(|e| format!("can't read {}: {e}", path.display()))?;
             let mut f = |rgb: [u8; 3]| painter.icons.map_rgb(&rgb);
-            let body = if path.extension().is_some_and(|x| x == "png") {
+            let mut body = if path.extension().is_some_and(|x| x == "png") {
                 icons::recolor_png(&bytes, &mut f)?
             } else {
                 let text = String::from_utf8(bytes)
                     .map_err(|_| format!("{} is not a text SVG", path.display()))?;
                 icons::recolor_svg(&text, &mut f).into_bytes()
             };
+            if let Some(d) = &painter.dither {
+                // one icon has no theme to give its size: drawn at 48 px
+                let size = icons::SINGLE_ICON_SIZE;
+                let img = if path.extension().is_some_and(|x| x == "png") {
+                    image::load_from_memory(&body)
+                        .map_err(|e| format!("{}: {e}", path.display()))?
+                        .to_rgba8()
+                } else {
+                    icons::rasterize_svg(&body, path.parent(), size)
+                        .ok_or_else(|| format!("can't draw {}", path.display()))?
+                };
+                let mut png = std::io::Cursor::new(Vec::new());
+                icons::dither_icon(&img, &d.dither, &d.icon_inks)
+                    .write_to(&mut png, image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?;
+                body = png.into_inner();
+                dest.set_extension("png");
+            }
             if dry_run {
                 println!("rehue icons: dry run (nothing written)");
                 return Ok(());
@@ -1024,7 +1050,10 @@ fn run_icons(
             sheet
                 .save(out.join("preview.png"))
                 .map_err(|e| format!("can't write preview.png: {e}"))?;
-            println!("rehue icons: wrote {}, preview.png", file.to_string_lossy());
+            println!(
+                "rehue icons: wrote {}, preview.png",
+                dest.file_name().unwrap_or(file).to_string_lossy()
+            );
         }
         Input::Theme(root) => {
             let index = icons::read_index(&root)?;
@@ -1060,6 +1089,17 @@ fn run_icons(
                 "rehue icons: {} svg, {} png recolored ({} colors, {} folder icons); {} copied; {} links kept",
                 stats.svg, stats.png, stats.colours, stats.folders, stats.copied, stats.links
             );
+            if painter.dither.is_some() {
+                println!(
+                    "  {} icons dithered to png{}",
+                    stats.dithered,
+                    if stats.dithered == 0 {
+                        " (index.theme gives no sizes for its directories)"
+                    } else {
+                        ""
+                    }
+                );
+            }
             if stats.brought_in > 0 {
                 println!(
                     "  {} files came from links leaving the theme and were copied in",
@@ -1093,7 +1133,16 @@ fn run_icons(
                 .collect();
             let after: Vec<_> = files
                 .iter()
-                .map(|rel| icons::render_icon(&dest.join(rel), 48))
+                .map(|rel| {
+                    // a dithered icon is a png now
+                    let at = dest.join(rel);
+                    let at = if at.exists() {
+                        at
+                    } else {
+                        at.with_extension("png")
+                    };
+                    icons::render_icon(&at, 48)
+                })
                 .collect();
             icons::preview_sheet(&before, &after, background, &accents)
                 .save(out.join("preview.png"))
@@ -1427,6 +1476,7 @@ fn run(command: Commands) -> Result<(), String> {
             config,
             look,
             folders,
+            dither,
             grade,
         } => {
             let (mut icons_config, looks) = rehue::look::resolve::<rehue::icons::IconsConfig>(
@@ -1437,7 +1487,7 @@ fn run(command: Commands) -> Result<(), String> {
                 rehue::look::Target::Icons,
             )?;
             print_looks("icons", &looks);
-            WalOverrides::from_grade(grade, None, Vec::new()).apply(&mut icons_config.grade)?;
+            WalOverrides::from_grade(grade, dither, Vec::new()).apply(&mut icons_config.grade)?;
             if let Some(text) = folders {
                 icons_config.folders =
                     Some(grade_wal::parse_palette(&text).map_err(|e| format!("--folders: {e}"))?);
