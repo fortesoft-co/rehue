@@ -288,6 +288,11 @@ What changes in the theme:
 - `scale=auto` comes out at 1 for icons; a larger `scale` makes each
   pattern pixel cover several icon pixels.
 
+## Video
+
+`rehue wal --dither` dithers a video too, frame by frame: see
+[Dithering a video](video.md#dithering-a-video) for more.
+
 ## Notes
 
 - `--palette` picks which colors dithering may use: two of them

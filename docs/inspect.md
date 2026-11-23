@@ -7,7 +7,8 @@ families, a scheme's colors, every bundled scheme, or the looks.
 hue, chroma and weight, above a row of truecolor swatches in the same
 order. The indices are what `assign` refers to. A video works too
 (`-w my-loop.mp4`): its families are measured on frames across it,
-through ffmpeg (`$REHUE_FFMPEG`, else your `PATH`).
+through ffmpeg (`$REHUE_FFMPEG`, else your `PATH`; see
+[video.md](video.md)).
 
 <!-- gen:run:inspect-butterfly -->
 ```sh

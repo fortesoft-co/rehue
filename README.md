@@ -212,9 +212,6 @@ rehue wal -i my-photo.jpg -s gruvbox-light -H 1 --reach 90       # wash more of 
 rehue wal -i my-photo.jpg -s gruvbox-light -H 1 -p base0D,base0E # only these two colors
 ```
 
-A video wallpaper (`-i my-loop.mp4`, `.webm`, `.mkv` or `.mov`) is
-graded frame by frame through ffmpeg: see [video](docs/wal.md#video).
-
 More: [docs/wal.md](docs/wal.md), every option with examples, and
 LUT export for other tools and video.
 
@@ -231,6 +228,20 @@ rehue wal -i my-photo.jpg -s gruvbox-light -l newsprint           # two inks in 
 ```
 
 More: [docs/dither.md](docs/dither.md), every style and setting.
+
+## Video
+
+Give `wal -i` a video (`.mp4`, `.webm`, `.mkv` or `.mov`) and every
+frame goes through the grade, through ffmpeg:
+
+```sh
+rehue wal -i my-loop.mp4 -s tokyo-night-storm -l pop -o graded
+rehue wal -i my-loop.mp4 -s gruvbox-dark -H 1 --deband --grain   # smooth what the grade makes visible
+rehue wal -i my-loop.mp4 -s gruvbox-light --dither               # dithered, frame by frame
+```
+
+More: [docs/video.md](docs/video.md): what it needs and writes,
+banding, dithering a video and encoding, with examples.
 
 ## icons
 
@@ -345,6 +356,7 @@ setup.
 | [scheme](docs/scheme.md) | `rehue scheme`: every option, with examples |
 | [wal](docs/wal.md) | `rehue wal`: every option, with examples; LUT export |
 | [dither](docs/dither.md) | `wal --dither`: every style and setting, with examples |
+| [video](docs/video.md) | `wal` on a video: banding, dithering, encoding |
 | [icons](docs/icons.md) | `rehue icons`: folder colors, chosen-color packs, looks, dithering |
 | [inspect](docs/inspect.md) | `rehue inspect`; choosing a scheme |
 | [enhance](docs/enhance.md) | `rehue enhance`: Lanczos and super-resolution upscaling |

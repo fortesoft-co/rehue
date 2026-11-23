@@ -10,5 +10,7 @@
 - CC BY 3.0 - HoneyWorks OFFICIAL - https://commons.wikimedia.org/wiki/File:Anime_video_frame.png (https://www.youtube.com/user/HoneyWorks56410)
 **Chongqing at twilight** (`xiang-qi-chongqing-twilight.mp4`: scaled to 960x540, sped up 4x, 12 fps, no audio)
 - Pexels License - xiang qi - https://www.pexels.com/video/chongqing-cityscape-at-twilight-34766468/ (https://www.pexels.com/@xiang-qi-346904928/)
+**Plant in the rain** (`nothing-ahead-plant-in-rain.mp4`: 4 s from 0:05, scaled to 960x540, no audio)
+- Pexels License - Nothing Ahead - https://www.pexels.com/video/a-close-up-of-a-plant-with-leaves-27865909/ (https://www.pexels.com/@ian-panelo/)
 **Papirus icon theme** (in the icons images under `assets/examples/`, original and recolored; the theme itself is not in the repo)
 - GPL-3.0 - Papirus Development Team - https://github.com/PapirusDevelopmentTeam/papirus-icon-theme

@@ -15,19 +15,30 @@ versions may break).
   32 frames across the video, so it holds steady from start to end;
   the output keeps the input's container (H.264, or VP9 for WebM) and
   its audio. `compare.png` shows the first frame, `report.json` counts
-  every frame, and `preview.html` plays it. No `--dither` on video yet.
+  every frame, and `preview.html` plays it. `docs/video.md` covers it
+  all.
 - `wal --deband` (video) and `wal --grain [AMOUNT]`, for banding a
   grade makes visible: deband runs ffmpeg's deband filter on the frames
   before grading; grain adds fine monochrome grain after it (4 levels by
   default), the same every run and moving frame to frame on a video.
-  The Video docs say which to try for what.
+  The video docs say which to try for what.
 - `wal --ffmpeg-args "..."`: your own ffmpeg encoding flags for a
   video, in place of rehue's codec settings (HEVC, AV1, `-pix_fmt
   yuv444p`, audio flags, ...). Flags that would change the input,
   mapping, filters, length or container are refused.
+- `wal --dither` on a video: every frame drawn with the scheme's
+  colors. Checker, halftone and pattern hold still while the picture
+  moves; diffuse runs with a warning that it shimmers. A dithered video
+  is encoded in 4:4:4, so the dots keep their colors: H.264 (VP9 for
+  WebM), or AV1 if ffmpeg lacks those; `--ffmpeg-args` picks something
+  else. The docs show a plant in the rain in halftone, the encodings
+  to pick from for size, speed and playback, and what to do on a
+  laptop.
+- A video's frame count, speed and time left show on the terminal
+  while it's graded.
 - `scheme -w` and `inspect -w` take a video too, its hue families
   measured on frames across it. `inspect -s NAME -o DIR` also writes
-  `inspect.png`, the scheme's 16 slots as swatches. The Video docs show
+  `inspect.png`, the scheme's 16 slots as swatches. The video docs show
   a skyline from dusk to night before and after, with its hue families
   and the scheme.
 - `--grays keep|tint` (config `grays`): with `tint`, gray pixels take

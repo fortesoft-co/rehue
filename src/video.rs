@@ -409,6 +409,79 @@ impl EncodeArgs {
     }
 }
 
+/// How a dithered video is encoded when `--ffmpeg-args` doesn't say:
+/// 4:4:4, so the dots keep their colors (4:2:0 halves the color
+/// resolution and smears them), with the first encoder this ffmpeg
+/// has that the container takes.  H.264 first: it plays back on far
+/// less CPU than AV1 (graphics hardware doesn't decode 4:4:4, so the
+/// player's CPU does) and encodes about five times faster, at nearly
+/// the same dots.  `(encoder, settings)`.
+const DITHER_LADDER: [(&str, &str); 3] = [
+    ("libx264", "-c:v libx264 -preset slow -crf 16"),
+    ("libvpx-vp9", "-c:v libvpx-vp9 -crf 20 -b:v 0 -row-mt 1"),
+    (
+        "libaom-av1",
+        "-c:v libaom-av1 -cpu-used 6 -row-mt 1 -crf 20 -b:v 0",
+    ),
+];
+
+/// The encoders `ffmpeg` was built with.
+pub fn encoders(ffmpeg: &Path) -> Result<Vec<String>, String> {
+    let out = output(
+        Command::new(ffmpeg).args(["-hide_banner", "-encoders"]),
+        "ffmpeg (listing encoders)",
+    )?;
+    Ok(String::from_utf8_lossy(&out)
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            let flags = words.next()?;
+            // " V....D libx264 ..." rows; the legend's rows have "="
+            (flags.starts_with('V') && !line.contains('=')).then(|| words.next())?
+        })
+        .map(str::to_string)
+        .collect())
+}
+
+/// The encoding for a dithered video written to `out`: the first rung
+/// of [`DITHER_LADDER`] that `available` has and `out`'s container
+/// takes (x264 doesn't go in .webm, VP9 only goes there, AV1 not in
+/// .mov), and the rungs passed over for lack of an encoder.
+pub fn dither_encoding(
+    out: &Path,
+    available: &[String],
+) -> (EncodeArgs, String, Vec<&'static str>) {
+    let ext = out
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    let fits = |encoder: &str| match encoder {
+        "libaom-av1" => ext != "mov",
+        "libx264" => ext != "webm",
+        _ => ext == "webm",
+    };
+    let mut missing = Vec::new();
+    let mut fallback = None;
+    for (encoder, settings) in DITHER_LADDER.iter().filter(|(e, _)| fits(e)) {
+        fallback.get_or_insert((encoder, settings));
+        if available.iter().any(|a| a == encoder) {
+            return (dither_args(settings), encoder.to_string(), missing);
+        }
+        missing.push(*encoder);
+    }
+    // none found: the best one, so ffmpeg says what's missing
+    let (encoder, settings) = fallback.expect("every container has a rung");
+    (dither_args(settings), encoder.to_string(), missing)
+}
+
+fn dither_args(settings: &str) -> EncodeArgs {
+    EncodeArgs {
+        pix_fmt: Some("yuv444p".to_string()),
+        args: split_args(settings).expect("ladder settings split"),
+    }
+}
+
 /// Split `text` into words the way a shell would: on whitespace, with
 /// 'single' quotes taken literally, "double" quotes and backslashes
 /// escaping.

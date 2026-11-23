@@ -39,7 +39,8 @@ painted with.
 
 The wallpaper can be a video too (`-w my-loop.mp4`, `.webm`, `.mkv` or
 `.mov`): its hues are measured on frames across it, through ffmpeg
-(`$REHUE_FFMPEG`, else your `PATH`), so the scheme fits the whole clip.
+(`$REHUE_FFMPEG`, else your `PATH`; see [video.md](video.md)), so the
+scheme fits the whole clip.
 
 A run writes:
 

@@ -623,8 +623,13 @@ fn run_wal(
     // A video is graded from frames sampled across it, so the grade holds
     // still from start to end; its frames go through ffmpeg below.
     let video = if video::is_video(wallpaper) {
-        if config.dither.is_some() {
-            return Err("--dither doesn't take a video yet; grade it without".to_string());
+        if config
+            .dither
+            .is_some_and(|d| d.style == rehue::dither::Style::Diffuse)
+        {
+            eprintln!(
+                "rehue wal: warning: diffuse dithers each frame on its own, so its pattern shimmers on a video; checker, halftone and pattern hold still"
+            );
         }
         let tool = video::resolve_ffmpeg(ffmpeg)?;
         let probe = video::probe(&tool, wallpaper)?;
@@ -672,6 +677,8 @@ fn run_wal(
     let mut arranged_hexes: Option<Vec<String>> = None;
     // the palette and settings a video's frames are graded with
     let mut grade_inputs: Option<(Vec<grade_wal::SlotPalette>, Vec<grade_wal::SlotOptions>)> = None;
+    // the colors a video's frames are dithered with
+    let mut video_inks: Option<Vec<rehue::dither::Ink>> = None;
     let (remapped_rgb, coverage) = if passive {
         // Contract: output is always wallpaper.png (here = input,
         // re-encoded, or dithered as it is when a dither is set).
@@ -681,17 +688,23 @@ fn run_wal(
                 println!("rehue wal: dither {}", d.describe());
                 arranged_hexes = Some(slot_hexes.clone());
                 let options = grade_wal::slot_options(&regs, &config)?;
-                let (px, counts) = grade_wal::dither_stage(
-                    source.as_raw(),
-                    source.width(),
-                    source.height(),
-                    &slots,
-                    &options,
-                    d,
-                );
-                let pixels = image::RgbImage::from_raw(source.width(), source.height(), px)
-                    .expect("dithering preserves the pixel-buffer size");
-                (pixels, counts)
+                if video.is_some() {
+                    // dithered frame by frame below
+                    video_inks = Some(grade_wal::palette_inks(&slots, &options));
+                    (source.clone(), vec![0u64; 16])
+                } else {
+                    let (px, counts) = grade_wal::dither_stage(
+                        source.as_raw(),
+                        source.width(),
+                        source.height(),
+                        &slots,
+                        &options,
+                        d,
+                    );
+                    let pixels = image::RgbImage::from_raw(source.width(), source.height(), px)
+                        .expect("dithering preserves the pixel-buffer size");
+                    (pixels, counts)
+                }
             }
         }
     } else {
@@ -747,6 +760,9 @@ fn run_wal(
         let options = grade_wal::slot_options(&regs, &config)?;
         if video.is_some() {
             // graded frame by frame below
+            if config.dither.is_some() {
+                video_inks = Some(grade_wal::palette_inks(&arranged, &options));
+            }
             grade_inputs = Some((arranged, options));
             (source.clone(), vec![0u64; 16])
         } else {
@@ -794,6 +810,23 @@ fn run_wal(
                     .with_vivid(vivid);
                 grade_wal::ColorTable::new(&map, arranged.len())
             });
+            let mut encoder = None;
+            let encode = match (&config.dither, ffmpeg_args) {
+                (Some(_), None) => {
+                    let (args, name, missing) =
+                        video::dither_encoding(&out.join(&file), &video::encoders(tool)?);
+                    if !missing.is_empty() && !missing.contains(&name.as_str()) {
+                        eprintln!(
+                            "rehue wal: note: this ffmpeg has no {}; encoding with {name} instead",
+                            missing.join(" or ")
+                        );
+                    }
+                    println!("rehue wal: encoding the dither with {name}, 4:4:4");
+                    encoder = Some(name);
+                    args
+                }
+                _ => encode.clone(),
+            };
             let graded = grade_video(
                 tool,
                 wallpaper,
@@ -804,6 +837,7 @@ fn run_wal(
                     deband,
                     grain,
                     encode: &encode,
+                    dither: config.dither.as_ref().zip(video_inks.as_deref()),
                 },
             )?;
             println!("rehue wal: {} frames through the grade", graded.frames);
@@ -814,6 +848,7 @@ fn run_wal(
                 "fps": probe.fps,
                 "sampled_frames": source.height() / video::sample_size(probe).1,
                 "ffmpeg_args": ffmpeg_args,
+                "encoder": encoder,
             });
             (
                 graded.first,
@@ -960,6 +995,68 @@ struct FrameSteps<'a> {
     grain: Option<f64>,
     /// How the result is encoded.
     encode: &'a video::EncodeArgs,
+    /// Dither the graded frames with these colors.
+    dither: Option<(&'a rehue::dither::Dither, &'a [rehue::dither::Ink])>,
+}
+
+/// A frame count on stderr while a video is graded, when stderr is a
+/// terminal.  ffmpeg reads frames as fast as it encodes them, so the
+/// count follows the encoder.
+struct Progress {
+    total: u64,
+    start: std::time::Instant,
+    last: std::time::Instant,
+    shown: bool,
+    drawn: bool,
+}
+
+impl Progress {
+    fn new(probe: &video::Probe) -> Self {
+        use std::io::IsTerminal;
+        let start = std::time::Instant::now();
+        Progress {
+            total: (probe.duration * probe.fps_value()).round() as u64,
+            start,
+            // the first count a moment in, when the rate means something
+            last: start,
+            drawn: false,
+            shown: std::io::stderr().is_terminal(),
+        }
+    }
+
+    fn tick(&mut self, frames: u64) {
+        if !self.shown {
+            return;
+        }
+        let now = std::time::Instant::now();
+        if now.duration_since(self.last).as_millis() < 250 {
+            return;
+        }
+        self.last = now;
+        let elapsed = now.duration_since(self.start).as_secs_f64();
+        let rate = frames as f64 / elapsed.max(1e-3);
+        let mut line = format!("rehue wal: frame {frames}");
+        if self.total > 0 {
+            let total = self.total.max(frames);
+            let left = (total - frames) as f64 / rate.max(1e-3);
+            line += &format!(
+                "/{total} ({}%), {rate:.1} fps, about {}s left",
+                frames * 100 / total,
+                left.ceil() as u64
+            );
+        }
+        eprint!("\r\x1b[K{line}");
+        self.drawn = true;
+    }
+}
+
+impl Drop for Progress {
+    /// Clear the line, on an error too.
+    fn drop(&mut self) {
+        if self.drawn {
+            eprint!("\r\x1b[K");
+        }
+    }
 }
 
 /// Every frame of `input` through `table` (unchanged without one), with
@@ -976,7 +1073,10 @@ fn grade_video(
         deband,
         grain,
         encode,
+        dither,
     } = steps;
+    // with a dither, coverage counts its pixels, not the grade's
+    let mut graded_coverage = vec![0u64; BASE_SLOTS.len()];
     let mut decoder = video::Decoder::open(tool, input, probe, deband)?;
     let mut encoder = video::Encoder::open(tool, input, output, probe, encode)?;
     let mut frame = Vec::new();
@@ -984,22 +1084,42 @@ fn grade_video(
     let mut coverage = vec![0u64; BASE_SLOTS.len()];
     let mut frames = 0u64;
     let mut first = None;
+    let mut dithered: Vec<u8>;
+    let mut progress = Progress::new(probe);
     while decoder.next(&mut frame)? {
+        let counts = if dither.is_some() {
+            &mut graded_coverage
+        } else {
+            &mut coverage
+        };
         match table {
-            Some(table) => table.apply(&frame, &mut graded, &mut coverage),
+            Some(table) => table.apply(&frame, &mut graded, counts),
             None => graded.copy_from_slice(&frame),
         }
         if let Some(amount) = grain {
             rehue::grain::apply(&mut graded, probe.width, frames, amount);
         }
-        let out: &[u8] = &graded;
+        let out: &[u8] = match dither {
+            Some((d, inks)) => {
+                let per_ink;
+                (dithered, per_ink) =
+                    rehue::dither::dither(&graded, probe.width, probe.height, inks, d);
+                for (ink, n) in inks.iter().zip(per_ink) {
+                    coverage[ink.slot] += n;
+                }
+                &dithered
+            }
+            None => &graded,
+        };
         encoder.write(out)?;
         if first.is_none() {
             first = Some((frame.clone(), out.to_vec()));
         }
         frames += 1;
+        progress.tick(frames);
     }
     encoder.finish()?;
+    drop(progress);
     let (before, after) = first.ok_or_else(|| format!("{}: no frames", input.display()))?;
     let image = |px: Vec<u8>| {
         image::RgbImage::from_raw(probe.width, probe.height, px).expect("frame is the probed size")

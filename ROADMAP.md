@@ -27,9 +27,6 @@ shipped.
   wallpaper, so `rehue scheme` works without a reference scheme at all.
 - **Look book**: a docs page showcasing standout results, each with
   the images and the recipe that made it.
-- **Dithered video**: `--dither` on a video wallpaper (ordered styles;
-  diffuse with a warning that it shimmers). Which codec settings keep
-  a dither pattern intact is under test.
 - **Seamless loops**: `--loop SECONDS` crossfades a video's last
   seconds into its first, so the end flows into the beginning (the
   output is that much shorter), done by ffmpeg (`xfade`, `acrossfade`

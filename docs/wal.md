@@ -25,7 +25,7 @@ inside the scheme's.
 
 It reads PNG, JPEG, WebP, GIF (the first frame), TIFF, BMP and QOI,
 and video: MP4, WebM, MKV and MOV, graded frame by frame through
-ffmpeg (see [Video](#video)). A run writes:
+ffmpeg (see [video.md](video.md)). A run writes:
 
 - `wallpaper.png`, the repainted image (`wallpaper.mp4` and so on for
   a video)
@@ -357,6 +357,20 @@ rehue wal --harmonize 1 --lightness foreground 0.15
 ```
 <!-- /gen:ladder:wal-role-grades -->
 
+## Grain
+
+A strong grade can turn a smooth gradient, such as a sky, into visible
+steps. `--grain` lays fine grain over the result, which hides them:
+
+```sh
+rehue wal -i sky.jpg -s gruvbox-dark -H 1 --grain      # 4 levels, the default
+rehue wal -i sky.jpg -s gruvbox-dark -H 1 --grain 2    # subtler
+```
+
+It takes 1 to 32 levels of 255, is the same every run, and doesn't go
+with `--dither`, which draws with the scheme's colors only. On a video
+it moves frame to frame like film grain.
+
 ## Dithering
 
 `--dither` draws the result with the scheme's colors only, as a
@@ -372,113 +386,8 @@ rehue wal -i wall.png -s gruvbox-light -l pc98       # harmonize, then dither
 
 ## Video
 
-Give `-i` a video (`.mp4`, `.webm`, `.mkv` or `.mov`) and every frame
-goes through the grade. It needs
-[ffmpeg](https://ffmpeg.org/download.html) and ffprobe: on your `PATH`,
-named by `$REHUE_FFMPEG`, or given with `--ffmpeg` (ffprobe is looked
-for beside it).
-
-```sh
-rehue wal -i clip.mp4 -s tokyo-night-storm -l pop -o graded
-```
-
-- The output keeps the input's container: `wallpaper.mp4` (H.264, as
-  are `.mkv` and `.mov`) or `wallpaper.webm` (VP9). The audio comes
-  across unchanged (to Opus for WebM, unless it is already).
-- The grade is measured on 32 frames spread across the whole video and
-  then applied to every frame the same way, so the colors hold steady
-  when the light changes.
-- `compare.png` shows the first frame, `report.json` counts coverage
-  over every frame and adds a `video` section, and `preview.html`
-  plays the result.
-- The frames rehue hands ffmpeg are the same bytes every run; the
-  encoded file also depends on your ffmpeg build.
-- `--dither` doesn't take a video yet.
-
-Play the result with any video wallpaper player, such as mpvpaper.
-
-A skyline from dusk to night in Dawnfox, its sky kept clean with the
-[banding](#banding-or-blotches) flags:
-
-<!-- gen:run:wal-video -->
-```sh
-rehue wal \
-  -i assets/xiang-qi-chongqing-twilight.mp4 \
-  -s dawnfox \
-  -H 1 \
-  --match-lightness 0.3 \
-  --chroma 0.8 \
-  --grays tint \
-  --deband \
-  --grain \
-  -o graded
-```
-<!-- /gen:run:wal-video -->
-
-| | |
-| --- | --- |
-| ![the Chongqing skyline from dusk to night, as shot](../assets/examples/wal-video-before.webp) | ![the clip's hue families](../assets/examples/wal-video-families.png)<br>the clip's hue families |
-| ![the same clip graded with dawnfox](../assets/examples/wal-video-after.webp) | ![dawnfox's 16 slots](../assets/examples/wal-video-dawnfox.png)<br>dawnfox |
-
-[`rehue inspect -w`](inspect.md) and [`rehue scheme -w`](scheme.md)
-take a video too, its hues measured on frames across it.
-
-### Banding or blotches
-
-A grade can make what a video's compression left behind easier to see.
-Each fix is opt-in; try them by what you see:
-
-- **Patches of color in a dark or gray sky** (olive here, pink there,
-  where the original was plain gray): `--grays tint`. The grays take
-  the scheme's tint instead of their own faint, noisy hue.
-- **Blocky steps in skies and gradients**: `--deband`. ffmpeg smooths
-  the compression's steps before the grade.
-- **Steps that are still there**: `--grain`, fine grain over the
-  result, which hides them (`--grain 2` for less, `--grain 6` for
-  more; 4 by default). It moves frame to frame like film grain, and
-  works on a still too.
-
-```sh
-rehue wal -i night.mp4 -s rose-pine-moon -H 1 --grays tint --deband --grain
-rehue wal -i sunset.mp4 -s gruvbox-dark -H 1 --deband --grain 3
-```
-
-<!-- gen:flags:wal:banding -->
-| flag | value | what it does |
-| --- | --- | --- |
-| `--deband` |  | Smooth a video's compression banding before grading: ffmpeg's deband filter, for blocky steps in skies and gradients |
-| `--grain` | `AMOUNT` | Add fine grain after grading, AMOUNT levels of 255 (1..32, default 4), to hide what banding is left |
-<!-- /gen:flags:wal:banding -->
-
-### Encoding
-
-`--ffmpeg-args` hands ffmpeg your own encoding flags, quoted as one
-argument, in place of rehue's codec settings (H.264 at crf 16, or VP9
-at crf 20 for WebM):
-
-```sh
-# HEVC, smaller (hvc1 so QuickTime and Apple players take it)
-rehue wal -i clip.mp4 -s nord -H 1 --ffmpeg-args "-c:v libx265 -crf 20 -preset slow -tag:v hvc1"
-# AV1, about a third of the default's size
-rehue wal -i clip.mp4 -s nord -H 1 --ffmpeg-args "-c:v libsvtav1 -crf 30"
-# full-resolution color, for sharp color edges
-rehue wal -i clip.mp4 -s nord -H 1 --ffmpeg-args "-pix_fmt yuv444p"
-```
-
-- rehue keeps the input, the stream mapping, the filters, the length
-  and the container, so `-i`, `-map`, `-vf`, `-filter_complex`, `-t`,
-  `-ss`, `-f` and the like are refused. The container still follows
-  the input (`.mkv` takes the most codecs).
-- `-pix_fmt` sets the pixel format rehue converts the frames to.
-- Audio flags (`-c:a`, `-b:a`, `-an`) override rehue's audio choice.
-- The flags are recorded in `report.json`'s `video` section.
-
-<!-- gen:flags:wal:video -->
-| flag | value | what it does |
-| --- | --- | --- |
-| `--ffmpeg` | `FFMPEG` | Path to ffmpeg, for a video wallpaper (-i clip.mp4, .webm, .mkv or .mov); else $REHUE_FFMPEG / $PATH |
-| `--ffmpeg-args` | `ARGS` | Encoding flags for ffmpeg, in place of rehue's codec defaults (H.264 crf 16, or VP9 crf 20 for WebM) |
-<!-- /gen:flags:wal:video -->
+`rehue wal` repaints a video too (`-i clip.mp4`), every frame through
+the grade: see [video.md](video.md) for more.
 
 ## LUT export
 

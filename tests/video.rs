@@ -185,9 +185,23 @@ fn inspect_and_scheme_take_a_video() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The scheme's colors as RGB.
+fn scheme_colors(scheme: &Path) -> std::collections::BTreeSet<[u8; 3]> {
+    rehue::scheme::Scheme::parse_file(scheme)
+        .unwrap()
+        .slot_hexes()
+        .unwrap()
+        .iter()
+        .map(|h| {
+            let v = u32::from_str_radix(h.trim_start_matches('#'), 16).unwrap();
+            [(v >> 16) as u8, (v >> 8) as u8, v as u8]
+        })
+        .collect()
+}
+
 #[test]
-fn a_video_takes_no_dither_yet() {
-    let Some((ffmpeg, _)) = tools() else {
+fn a_video_is_dithered_with_the_schemes_colors() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
         eprintln!("ffmpeg / ffprobe not found: skipping");
         return;
     };
@@ -195,18 +209,127 @@ fn a_video_takes_no_dither_yet() {
     let input = dir.join("clip.mp4");
     clip(&ffmpeg, &input);
     let scheme = fixture("solarized-dark.yaml");
-    let run = wal(&[
-        "-i",
-        input.to_str().unwrap(),
-        "-s",
-        scheme.to_str().unwrap(),
-        "--dither",
-        "-o",
-        dir.join("out").to_str().unwrap(),
-    ]);
-    assert!(!run.status.success());
-    assert!(String::from_utf8_lossy(&run.stderr).contains("--dither doesn't take a video"));
+    let run = |out: &str, extra: &[&str]| {
+        let out = dir.join(out);
+        let mut args = vec![
+            "-i",
+            input.to_str().unwrap(),
+            "-s",
+            scheme.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+        ];
+        args.extend(extra);
+        let run = wal(&args);
+        assert!(
+            run.status.success(),
+            "{extra:?}: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let report: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(out.join("report.json")).unwrap()).unwrap();
+        (out.join("wallpaper.mp4"), report, run)
+    };
+
+    // lossless, so every pixel of every frame is one of the scheme's
+    let (video, report, _) = run(
+        "lossless",
+        &[
+            "--dither",
+            "checker",
+            "--ffmpeg-args",
+            "-c:v libx264rgb -preset ultrafast -crf 0 -pix_fmt rgb24",
+        ],
+    );
+    let frames = Command::new(&ffmpeg)
+        .args(["-v", "error", "-i"])
+        .arg(&video)
+        .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .output()
+        .unwrap()
+        .stdout;
+    assert_eq!(frames.len(), 12 * 96 * 54 * 3);
+    let colors: std::collections::BTreeSet<[u8; 3]> =
+        frames.as_chunks::<3>().0.iter().copied().collect();
+    assert!(colors.len() > 1);
+    assert!(
+        colors.is_subset(&scheme_colors(&scheme)),
+        "scheme colors only"
+    );
+    let covered: u64 = report["slot_coverage"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|v| v.as_u64().unwrap())
+        .sum();
+    assert_eq!(covered, 12 * 96 * 54, "every pixel is a slot's");
+    assert!(report["video"]["encoder"].is_null());
+
+    // left to rehue: 4:4:4, with the best encoder this ffmpeg has
+    let (video, report, out) = run("default", &["--dither", "halftone"]);
+    let encoder = report["video"]["encoder"].as_str().unwrap().to_string();
+    let codec = match encoder.as_str() {
+        "libaom-av1" => "av1",
+        "libx264" => "h264",
+        other => panic!("{other}"),
+    };
+    assert!(
+        String::from_utf8_lossy(&out.stdout)
+            .contains(&format!("encoding the dither with {encoder}"))
+    );
+    let streams = probe(
+        &ffprobe,
+        &video,
+        "stream=codec_type,codec_name,pix_fmt,nb_read_frames",
+    );
+    assert_eq!(
+        streams.lines().next(),
+        Some(format!("{codec},video,yuv444p,12").as_str())
+    );
+
+    // diffuse runs, with a warning
+    let (_, _, out) = run(
+        "diffuse",
+        &[
+            "--dither",
+            "diffuse",
+            "--ffmpeg-args",
+            "-c:v libx264 -preset ultrafast",
+        ],
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("shimmers"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_dithered_video_takes_the_best_encoder_there_is() {
+    use rehue::video::dither_encoding;
+    let have = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+    let all = have(&["libaom-av1", "libx264", "libvpx-vp9"]);
+    let pick = |out: &str, available: &[String]| {
+        let (args, name, missing) = dither_encoding(Path::new(out), available);
+        assert_eq!(args.pix_fmt.as_deref(), Some("yuv444p"));
+        assert_eq!(args.args[..2], ["-c:v".to_string(), name.clone()]);
+        (name, missing)
+    };
+    assert_eq!(pick("w.mp4", &all), ("libx264".into(), vec![]));
+    assert_eq!(pick("w.mkv", &all).0, "libx264");
+    assert_eq!(pick("w.mov", &all).0, "libx264");
+    assert_eq!(pick("w.webm", &all).0, "libvpx-vp9");
+    let av1_only = have(&["libaom-av1"]);
+    assert_eq!(
+        pick("w.mp4", &av1_only),
+        ("libaom-av1".into(), vec!["libx264"])
+    );
+    assert_eq!(
+        pick("w.webm", &av1_only),
+        ("libaom-av1".into(), vec!["libvpx-vp9"])
+    );
+    // nothing at all: the best one, for ffmpeg to name
+    assert_eq!(
+        pick("w.mp4", &[]),
+        ("libx264".into(), vec!["libx264", "libaom-av1"])
+    );
 }
 
 #[test]

@@ -241,11 +241,13 @@ pub enum Commands {
         #[arg(long, help_heading = "Video", value_name = "FFMPEG")]
         ffmpeg: Option<PathBuf>,
         /// Encoding flags for ffmpeg, in place of rehue's codec defaults
-        /// (H.264 crf 16, or VP9 crf 20 for WebM).
+        /// (H.264 crf 16, or VP9 crf 20 for WebM; 4:4:4 with
+        /// --dither).
         ///
         /// Quoted as one argument; rehue keeps the input, mapping,
         /// filters, length and container.  -pix_fmt sets the output's
-        /// pixel format.  e.g. --ffmpeg-args "-c:v libx265 -crf 20 -preset slow"
+        /// pixel format (yuv420p if not given).  e.g. --ffmpeg-args
+        /// "-c:v libx265 -crf 20 -preset slow"
         #[arg(
             long,
             help_heading = "Video",
