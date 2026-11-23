@@ -1,10 +1,10 @@
-//! `rehue wal`: modes, dither kernels, arrangement, blend dials.
+//! `rehue wal`: modes, arrangement, blend dials.
 //!
-//! wal: the per-pixel engine — mode, dither kernels,
+//! wal: the per-pixel engine — mode,
 //! arrangement, blend-dial resolution.
 
 use rehue::color::{Lch, circ_dist, oklch_to_rgb};
-use rehue::grade_wal::{DitherMode, Mode, SlotPalette, WalConfig, WalRoleConfig};
+use rehue::grade_wal::{Mode, SlotPalette, WalConfig, WalRoleConfig};
 use rehue::role::Assign;
 use rehue::scheme::BASE_SLOTS;
 
@@ -151,76 +151,6 @@ fn blend_dial_resolution() {
     .unwrap();
     assert!((options_strict[1].match_hue - 1.0).abs() < 1e-9);
     assert!((options_strict[8].match_hue - 1.0).abs() < 1e-9);
-}
-
-#[test]
-fn dithering_varies_full_blend_and_is_deterministic() {
-    let (_, slots) = solarized();
-    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
-    let image = gradient_image((64, 64));
-    let rgb = image.to_rgb8();
-    let mut config = WalConfig {
-        harmonize: 1.0,
-        ..Default::default()
-    };
-    let regs = rehue::grade_wal::resolved_roles(&config).expect("valid config");
-    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
-
-    config.dithering = 0.0;
-    let plain = rehue::grade_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
-    config.dithering = 1.0;
-    let first = rehue::grade_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
-    let second = rehue::grade_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
-    assert_eq!(first.pixels, second.pixels);
-    assert!(
-        first.pixels != plain.pixels,
-        "dithering must change the output"
-    );
-}
-
-#[test]
-fn dither_modes_differ_and_each_is_deterministic() {
-    let (_, slots) = solarized();
-    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
-    let image = gradient_image((64, 64));
-    let rgb = image.to_rgb8();
-    // Partial adoption is what separates the kernels: at full strength
-    // l2/c2 are the adopted targets themselves - independent of the
-    // diffused residual - so every diffusion kernel would emit identical
-    // pixels (and in blend mode the weighted-mean target absorbs the
-    // residual entirely).  Full hue with half L/C keeps a residual field
-    // the kernels actually fight over.
-    let mut config = WalConfig {
-        match_hue: Some(1.0),
-        match_lightness: 0.5,
-        match_chroma: Some(0.5),
-        dithering: 1.0,
-        mode: Some(Mode::Snap),
-        ..Default::default()
-    };
-    let regs = rehue::grade_wal::resolved_roles(&config).expect("valid config");
-    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
-    let mut run = |mode: DitherMode| {
-        config.dithering_mode = Some(mode);
-        let first =
-            rehue::grade_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
-        let second =
-            rehue::grade_wal::apply(rgb.as_raw(), 64, 64, &slots, &neutral, &options, &config);
-        assert_eq!(
-            first.pixels,
-            second.pixels,
-            "{} deterministic",
-            mode.describe()
-        );
-        first.pixels
-    };
-    let blue = run(DitherMode::BlueNoise);
-    let bayer = run(DitherMode::Bayer);
-    let fs = run(DitherMode::FloydSteinberg);
-    let atkinson = run(DitherMode::Atkinson);
-    assert_ne!(bayer, blue, "distinct masks give distinct dithers");
-    assert_ne!(fs, blue, "diffusion differs from ordered");
-    assert_ne!(fs, atkinson, "kernels differ");
 }
 
 #[test]

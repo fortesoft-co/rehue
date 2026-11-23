@@ -23,7 +23,7 @@ use crate::grade_scheme::SchemeConfig;
 use crate::grade_wal::WalConfig;
 
 /// The built-in looks: (name, file text).
-pub const BUILTIN: [(&str, &str); 7] = [
+pub const BUILTIN: [(&str, &str); 11] = [
     ("soft", include_str!("looks/soft.toml")),
     ("tight", include_str!("looks/tight.toml")),
     ("pop", include_str!("looks/pop.toml")),
@@ -31,6 +31,10 @@ pub const BUILTIN: [(&str, &str); 7] = [
     ("wash", include_str!("looks/wash.toml")),
     ("snap", include_str!("looks/snap.toml")),
     ("vivid", include_str!("looks/vivid.toml")),
+    ("pc98", include_str!("looks/pc98.toml")),
+    ("newsprint", include_str!("looks/newsprint.toml")),
+    ("onebit", include_str!("looks/onebit.toml")),
+    ("hatch", include_str!("looks/hatch.toml")),
 ];
 
 /// The command a look section grades for.
@@ -137,13 +141,21 @@ impl Look {
     }
 
     /// The section for `target`, if the look has one.
-    pub fn section(&self, target: Target) -> Option<&Value> {
+    pub fn section(&self, target: Target) -> Option<Value> {
         match target {
-            Target::Wal => self.wal.as_ref(),
-            Target::Scheme => self.scheme.as_ref(),
+            Target::Wal => self.wal.clone(),
+            Target::Scheme => self.scheme.clone(),
             // icons are graded by the wal engine: a look without an
-            // [icons] section lends its [wal] one
-            Target::Icons => self.icons.as_ref().or(self.wal.as_ref()),
+            // [icons] section lends its [wal] one, minus its dither
+            // (dithering icons is only ever asked for explicitly)
+            Target::Icons => self.icons.clone().or_else(|| {
+                self.wal.clone().map(|mut v| {
+                    if let Value::Object(m) = &mut v {
+                        m.remove("dither");
+                    }
+                    v
+                })
+            }),
         }
     }
 
@@ -314,7 +326,7 @@ pub fn layer(looks: &[Look], target: Target) -> Result<Value, String> {
                 look.targets()
             )
         })?;
-        layer_config(&mut out, section.clone());
+        layer_config(&mut out, section);
     }
     Ok(out)
 }

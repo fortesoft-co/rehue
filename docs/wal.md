@@ -70,7 +70,7 @@ rehue wal --harmonize 1
 | | |
 | --- | --- |
 | `blend` | every pixel's target is a weighted mean under a smooth influence field (a Gaussian falloff on circular hue distance, lightness distance for gray pixels). Hue comes from the accents (base08-0F), so the scheme's grays never steer a color; chroma follows how colorful the pixel is within the image (see [match-chroma](#match-chroma--01-default-0-set-by-harmonize)). Slot boundaries become smooth crossings; the flat-constant posterize look disappears by construction. |
-| `snap` | nearest-slot snapping: pixels adopt exact palette colors and flat constants, the stylized, dithering-as-art mode. Colorful pixels snap to the accents, gray ones to the grays (see [neutrals](#neutrals--floor-default--mix)). The match dials cut off at `reach`. |
+| `snap` | nearest-slot snapping: pixels adopt exact palette colors and flat constants, the stylized mode. Colorful pixels snap to the accents, gray ones to the grays (see [neutrals](#neutrals--floor-default--mix)). The match dials cut off at `reach`. |
 
 ![original / blend, harmonize 1 / snap, harmonize 1](../assets/examples/options/wal-mode.webp)
 
@@ -329,44 +329,18 @@ rehue wal --harmonize 1 --lightness foreground 0.15
 ```
 <!-- /gen:ladder:wal-role-grades -->
 
-### dithering — `0..1`, default `0`
+## Dithering
 
-Strength of the dither. Inert at zero adoption (no residual to spread)
-and at full adoption (the target swallows the residual) — it exists
-for the partial-adopt and snap looks. Companion declared: snap mode
-with full match-hue and partial match-lightness / match-chroma.
-Dithering is texture, so the cells show a 3× crop.
+`--dither` draws the result with the scheme's colors only, as a
+visible pattern: checkerboards, halftone dots, hatching or diffusion.
+It runs last, after everything above.
 
-![original / dithering 0, 0.5, 1 (snap + partial match), 3× crop](../assets/examples/options/wal-dithering.webp)
-
-<!-- gen:ladder:wal-dithering -->
 ```sh
-# inputs: rehue wal -i assets/bango-renders-3d-abstract.webp -s gruvbox-light -o out
-rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 0
-rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 0.5
-rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1
+rehue wal -i wall.png -s gruvbox-light --dither      # checker, the 16-color game look
+rehue wal -i wall.png -s gruvbox-light -l pc98       # harmonize, then dither
 ```
-<!-- /gen:ladder:wal-dithering -->
 
-### dithering-mode — `blue-noise` (default) | `bayer` | `floyd-steinberg` | `atkinson` | `none`
-
-The kernel the strength applies to: two ordered masks (void-and-cluster
-blue noise, classic 8×8 Bayer) and two error-diffusion kernels
-(serpentine scan, fixed order — no RNG). Floyd-Steinberg propagates
-everything; Atkinson drops 2/8, which reads gentler (the two are close
-cousins and look alike at a glance).
-
-![original + four dithering kernels, 3× crop](../assets/examples/options/wal-dithering-mode.webp)
-
-<!-- gen:ladder:wal-dithering-mode -->
-```sh
-# inputs: rehue wal -i assets/bango-renders-3d-abstract.webp -s gruvbox-light -o out
-rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1 --dithering-mode blue-noise
-rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1 --dithering-mode bayer
-rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1 --dithering-mode floyd-steinberg
-rehue wal --mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1 --dithering-mode atkinson
-```
-<!-- /gen:ladder:wal-dithering-mode -->
+[dither.md](dither.md) covers every style and setting, with examples.
 
 ## LUT export
 
@@ -385,9 +359,9 @@ ffmpeg -i clip.mp4 -i graded/lut.png -filter_complex '[0][1]haldclut' out.mp4   
 `--lut-level` sets the resolution (default 8, i.e. 64 points per
 channel; `.cube` goes up to 8). At level 16 the Hald LUT covers every
 8-bit color, and ImageMagick reproduces rehue's own output pixel for
-pixel; lower levels are interpolated by the tool applying them. Needs
-`dithering` 0, because a dithered pixel depends on its position, not
-just its color.
+pixel; lower levels are interpolated by the tool applying them. It
+doesn't go with `--dither`, because a dithered pixel depends on its
+position, not just its color.
 
 <!-- gen:flags:wal:lut-export -->
 | flag | value | what it does |
@@ -414,8 +388,6 @@ just its color.
 | `--lightness` | `[ROLE] L` | Lightness shift (added). Bare: the whole-image grade, applied last; with a role: that role's grade |
 | `--chroma` | `[ROLE] C` | Chroma scale (multiplied). Bare: the whole-image grade, applied last; with a role: that role's grade |
 | `--assign` | `[ROLE] VAL` | Before painting, give a role's slots hues taken from the wallpaper's families: `auto` = spread the heaviest across, `3` = all from family 3, `0,2,5` = these families across the slots |
-| `--dithering` | `0..1` | Dithering strength 0..1 (0 = off) |
-| `--dithering-mode` | `blue-noise \| bayer \| floyd-steinberg \| atkinson \| none` | Dithering pattern (default blue-noise) |
 <!-- /gen:flags:wal:grading -->
 
 The same settings go in a `--config` file; [config.md](config.md)

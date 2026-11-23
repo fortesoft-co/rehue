@@ -1,0 +1,5 @@
+description = "print: two inks, the scheme's background and text colors, in halftone dots"
+
+[wal]
+palette = { base00 = 1, base05 = 1 }
+dither = { style = "halftone", size = 12 }

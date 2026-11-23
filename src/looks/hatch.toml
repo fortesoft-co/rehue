@@ -1,0 +1,5 @@
+description = "drawn hatching: the scheme's colors in diagonal and crossing lines"
+
+[wal]
+harmonize = 1
+dither = { style = "pattern", tiles = "hatch" }

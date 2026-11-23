@@ -5,10 +5,10 @@
 //! Licensed AGPL-3.0-or-later.
 
 pub mod apply;
-pub mod bluenoise;
 pub mod cli;
 pub mod color;
 pub mod config;
+pub mod dither;
 pub mod enhance;
 pub mod extract;
 pub mod grade_scheme;

@@ -1,4 +1,4 @@
-//! `rehue wal`: the per-color remap (`ColorMap`), its modes and dithering.
+//! `rehue wal`: the per-color remap (`ColorMap`), its modes, and the dither stage.
 //!
 //! Per-pixel palette remap: arrange (assign + cycle), then blend
 //! toward the palette (hue, light and chroma channel fidelity), then
@@ -8,73 +8,22 @@
 //! The `harmonize` facade is the one-dial surface: it seeds `match-hue`
 //! and `match-chroma` wherever they are left unset, while explicit dials
 //! win and `match-lightness` stays decoupled (default 0 - photographic
-//! lightness, since adopting lightness flattens contrast).  The adopted
-//! lightness/chroma share can be dithered so full-strength adoption
-//! doesn't band: `dithering` scales an ordered-dither threshold
-//! (blue-noise or Bayer mask) in ordered modes, and the fraction of
-//! residual actually diffused in the error-diffusion modes
-//! (Floyd-Steinberg, Atkinson; serpentine scan, fixed order - no RNG).
-//! Anchoring always happens on the raw pixel, so slot membership - the
-//! territories - is independent of the dither; diffusion only feeds the
-//! mix, not the anchor.  Dithering is inert at zero adoption.
+//! lightness, since adopting lightness flattens contrast).  An optional
+//! last stage, `dither` ([`crate::dither`]), draws the graded image with
+//! the palette's colors only, as a pattern.
 
 use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::bluenoise::BLUE_NOISE64;
 use crate::color::{Lch, circ_dist, circ_lerp, oklch_to_rgb, rgb_to_oklch, weighted_circ_mean};
+use crate::dither::{Dither, Ink};
 use crate::extract::{Cluster, ExtractionParams};
 use crate::role::{
     Assign, AssignState, ROLE_NAMES, assign_hues, family_indices, resolve_assign, role_of_slot,
     role_slots, slot_index,
 };
 use crate::scheme::BASE_SLOTS;
-
-/// Classic 8x8 ordered-dithering threshold matrix (Bayer); threshold
-/// scalar `(v + 0.5) / 64` in [0, 1), read at (x mod 8, y mod 8).
-const BAYER8: [[u8; 8]; 8] = [
-    [0, 32, 8, 40, 2, 34, 10, 42],
-    [48, 16, 56, 24, 50, 18, 58, 26],
-    [12, 44, 4, 36, 14, 46, 6, 38],
-    [60, 28, 52, 20, 62, 30, 54, 22],
-    [3, 35, 11, 43, 1, 33, 9, 41],
-    [51, 19, 59, 27, 49, 17, 57, 25],
-    [15, 47, 7, 39, 13, 45, 5, 37],
-    [63, 31, 55, 23, 61, 29, 53, 21],
-];
-
-/// The `dithering-mode` option.  Ordered modes threshold the adopted share
-/// with a pixel mask; diffusion modes propagate the mix residual to
-/// neighbouring pixels (serpentine scan order, fully deterministic).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
-#[serde(rename_all = "kebab-case")]
-pub enum DitherMode {
-    /// 64x64 tileable void-and-cluster mask (the default; pattern is
-    /// visually invisible).
-    BlueNoise,
-    /// 8x8 Bayer matrix (classic crosshatch look).
-    Bayer,
-    /// Classic serpentine error diffusion; best tonal fidelity, can
-    /// "worm" in flat regions.
-    FloydSteinberg,
-    /// Gentler diffusion (6/8 of the error propagated, 2/8 dropped).
-    Atkinson,
-    /// Explicitly off (same as dithering strength 0).
-    None,
-}
-
-impl DitherMode {
-    pub fn describe(&self) -> &'static str {
-        match self {
-            Self::BlueNoise => "blue-noise",
-            Self::Bayer => "bayer",
-            Self::FloydSteinberg => "floyd-steinberg",
-            Self::Atkinson => "atkinson",
-            Self::None => "none",
-        }
-    }
-}
 
 /// The `mode` option: how pixels relate to the palette.
 ///
@@ -169,11 +118,9 @@ pub struct WalConfig {
     /// Lightness adoption is decoupled from the facade and defaults to 0
     /// (photographic lightness).
     pub match_lightness: f64,
-    /// Dithering strength (0 off; scales the mask offsets, resp. the
-    /// diffusion).
-    pub dithering: f64,
-    /// Which ordered mask / diffusion kernel the strength applies to.
-    pub dithering_mode: Option<DitherMode>,
+    /// The last stage: draw the graded image with palette colors only,
+    /// as a pattern (unset = no dithering).
+    pub dither: Option<Dither>,
     /// How pixels find their palette color: `blend` (weighted mixing,
     /// the default) or `snap` (nearest slot).
     pub mode: Option<Mode>,
@@ -200,8 +147,7 @@ impl Default for WalConfig {
             match_hue: None,
             match_chroma: None,
             match_lightness: 0.0,
-            dithering: 0.0,
-            dithering_mode: None,
+            dither: None,
             mode: None,
             neutrals: Neutrals::Floor,
             max_gray_chroma: 0.02,
@@ -336,9 +282,6 @@ pub fn parse_palette(text: &str) -> Result<HashMap<String, f64>, String> {
 pub fn resolved_roles(
     config: &WalConfig,
 ) -> Result<BTreeMap<&'static str, WalRoleSettings>, String> {
-    if !(0.0..=1.0).contains(&config.dithering) {
-        return Err("dithering must be within [0, 1]".to_string());
-    }
     let mode = config.mode.unwrap_or(Mode::Blend);
     if mode == Mode::Blend && config.reach <= 0.0 {
         return Err("mode 'blend' needs a positive reach".to_string());
@@ -491,8 +434,8 @@ pub struct WalOutput {
 
 /// True when no option is active anywhere: the output is then a re-encoded
 /// passthrough of the input (matching the documented contract).  Decided
-/// on the resolved values only - dithering is inert at zero adoption and
-/// does not decide passivity.
+/// on the grading values only; a `dither` stage still runs on a passive
+/// grade (the caller checks it).
 pub fn is_passive(
     regs: &BTreeMap<&'static str, WalRoleSettings>,
     image_light: f64,
@@ -511,16 +454,11 @@ pub fn is_passive(
         })
 }
 
-/// Shared per-pixel core.  Anchoring happens on the raw pixel, so slot
-/// membership is independent of the dither; the mix runs on the effective
-/// input (`l_in`/`c_in` = raw + accumulated dither), `jitter` scales the
-/// adopted lightness/chroma share (the ordered-dither threshold; 1.0 in
-/// diffusion mode, where error diffusion plays the dither).
-/// The per-colour remap: one palette, one set of dials.  With
-/// dithering off the result depends only on the input colour (`map_rgb`),
-/// which is what lets the same grade be baked into a LUT or applied to
-/// anything else made of colours.  `apply` drives it per pixel, adding
-/// the position-dependent dither on top.
+/// The per-colour remap: one palette, one set of dials.  The result
+/// depends only on the input colour (`map_rgb`), which is what lets the
+/// same grade be baked into a LUT or applied to anything else made of
+/// colours.  `apply` drives it per pixel, then runs the optional dither
+/// stage, which depends on position.
 pub struct ColorMap<'a> {
     slots: &'a [SlotPalette],
     neutral_slots: &'a [usize],
@@ -590,11 +528,11 @@ impl<'a> ColorMap<'a> {
         self
     }
 
-    /// One colour through the remap, undithered: exactly what `apply`
-    /// produces for a pixel of this colour at `dithering = 0`.
+    /// One colour through the remap: exactly what `apply` produces for a
+    /// pixel of this colour without a dither stage.
     pub fn map_rgb(&self, rgb: &[u8; 3]) -> [u8; 3] {
         let raw = rgb_to_oklch(rgb);
-        let (l, c, h, _) = self.run(raw, raw.l, raw.c, 1.0);
+        let (l, c, h, _) = self.run(raw);
         oklch_to_rgb(&Lch { l, c, h })
     }
 
@@ -607,7 +545,8 @@ impl<'a> ColorMap<'a> {
     /// twice as wide when picking the nearest slot.  The snap-mode reach
     /// gate still measures the real distance.  Weight 0 slots take no
     /// part at all.
-    fn run(&self, raw: Lch, l_in: f64, c_in: f64, jitter: f64) -> (f64, f64, f64, Option<usize>) {
+    fn run(&self, raw: Lch) -> (f64, f64, f64, Option<usize>) {
+        let (l_in, c_in) = (raw.l, raw.c);
         let reach = self.config.reach;
         let gray_floor = self.config.max_gray_chroma;
         let weight = |idx: usize| self.options[idx].weight;
@@ -666,10 +605,10 @@ impl<'a> ColorMap<'a> {
             };
             l2 = l_in;
             if n.match_lightness > 0.0 {
-                l2 = l_in + (target_l - l_in) * n.match_lightness * jitter;
+                l2 = l_in + (target_l - l_in) * n.match_lightness;
             }
             if n.match_chroma > 0.0 {
-                c2 = (c_in + (target_c - c_in) * n.match_chroma * jitter).max(0.0);
+                c2 = (c_in + (target_c - c_in) * n.match_chroma).max(0.0);
             } else {
                 c2 = c_in;
             }
@@ -784,8 +723,8 @@ impl<'a> ColorMap<'a> {
             if (n.match_lightness > 0.0 || n.match_chroma > 0.0)
                 && (self.mode == Mode::Blend || best_d <= reach)
             {
-                l2 = l_in + (l_t - l_in) * n.match_lightness * jitter;
-                c2 = (c_in + (c_t - c_in) * n.match_chroma * jitter).max(0.0);
+                l2 = l_in + (l_t - l_in) * n.match_lightness;
+                c2 = (c_in + (c_t - c_in) * n.match_chroma).max(0.0);
             } else {
                 l2 = l_in;
                 c2 = c_in;
@@ -807,32 +746,6 @@ fn image_grade(config: &WalConfig, l: f64, c: f64) -> (f64, f64) {
         (c * config.chroma).max(0.0),
     )
 }
-
-fn ordered_jitter(mode: DitherMode, x: usize, y: usize, dither: f64) -> f64 {
-    let mask = match mode {
-        DitherMode::BlueNoise => (f64::from(BLUE_NOISE64[y % 64][x % 64]) + 0.5) / 256.0,
-        DitherMode::Bayer => (f64::from(BAYER8[y % 8][x % 8]) + 0.5) / 64.0,
-        _ => 0.5,
-    };
-    1.0 + (mask - 0.5) * dither
-}
-
-/// Error-diffusion kernel: (dx, dy, weight); weights sum to 1 for
-/// Floyd-Steinberg and 3/4 for Atkinson (the dropped 2/8 is the point).
-const FS_KERNEL: [(i64, i64, f64); 4] = [
-    (1, 0, 7.0 / 16.0),
-    (-1, 1, 3.0 / 16.0),
-    (0, 1, 5.0 / 16.0),
-    (1, 1, 1.0 / 16.0),
-];
-const ATKINSON_KERNEL: [(i64, i64, f64); 6] = [
-    (1, 0, 1.0 / 8.0),
-    (2, 0, 1.0 / 8.0),
-    (-1, 1, 1.0 / 8.0),
-    (0, 1, 1.0 / 8.0),
-    (1, 1, 1.0 / 8.0),
-    (0, 2, 1.0 / 8.0),
-];
 
 /// The full pipeline.  `pixels` is a flat rgb8 buffer of a
 /// `width x height` image; `slots` the 16 palette slot colours in
@@ -857,104 +770,58 @@ pub fn apply(
     );
     let core =
         ColorMap::new(slots, neutral_slots, options, config).with_vivid(vivid_chroma(pixels));
-    let dither = config.dithering.clamp(0.0, 1.0);
-    let mode = config.dithering_mode.unwrap_or(DitherMode::BlueNoise);
-
     let mut out = vec![0u8; pixels.len()];
     let mut counts = vec![0u64; slots.len()];
-
-    match mode {
-        DitherMode::BlueNoise | DitherMode::Bayer | DitherMode::None => {
-            for y in 0..height as usize {
-                for x in 0..width as usize {
-                    let i = (y * width as usize + x) * 3;
-                    let raw = rgb_to_oklch(&[pixels[i], pixels[i + 1], pixels[i + 2]]);
-                    let jitter = if mode == DitherMode::None || dither == 0.0 {
-                        1.0
-                    } else {
-                        ordered_jitter(mode, x, y, dither)
-                    };
-                    let (l2, c2, h2, slot) = core.run(raw, raw.l, raw.c, jitter);
-                    let back = oklch_to_rgb(&Lch {
-                        l: l2,
-                        c: c2,
-                        h: h2,
-                    });
-                    out[i] = back[0];
-                    out[i + 1] = back[1];
-                    out[i + 2] = back[2];
-                    if let Some(slot) = slot {
-                        counts[slot] += 1;
-                    }
-                }
-            }
-        }
-        DitherMode::FloydSteinberg | DitherMode::Atkinson => {
-            let kernel: &[(i64, i64, f64)] = match mode {
-                DitherMode::FloydSteinberg => &FS_KERNEL,
-                _ => &ATKINSON_KERNEL,
-            };
-            let w = width as usize;
-            // Pending error for the current row (arrives from the row
-            // above) and for the next one; serpentine scan flips the
-            // kernel horizontally on left-to-right -> right-to-left rows.
-            let mut row_err_l = vec![0.0f64; w];
-            let mut row_err_c = vec![0.0f64; w];
-            let mut next_err_l = vec![0.0f64; w];
-            let mut next_err_c = vec![0.0f64; w];
-            for y in 0..height as usize {
-                let dir: i64 = if y % 2 == 0 { 1 } else { -1 };
-                let mut x_it: i64 = if dir == 1 { 0 } else { w as i64 - 1 };
-                for _ in 0..w {
-                    let x = x_it as usize;
-                    let i = (y * w + x) * 3;
-                    let raw = rgb_to_oklch(&[pixels[i], pixels[i + 1], pixels[i + 2]]);
-                    let l_in = (raw.l + row_err_l[x]).clamp(0.0, 1.0);
-                    let c_in = (raw.c + row_err_c[x]).clamp(0.0, f64::MAX);
-                    let (l2, c2, h2, slot) = core.run(raw, l_in, c_in, 1.0);
-                    let res_l = l2 - l_in;
-                    let res_c = c2 - c_in;
-                    for &(dx, dy, weight) in kernel {
-                        let tx_i = x_it + dx * dir;
-                        if tx_i < 0 || tx_i >= w as i64 {
-                            continue;
-                        }
-                        let ty = y + dy as usize;
-                        if ty >= height as usize {
-                            continue;
-                        }
-                        let tx = tx_i as usize;
-                        if dy == 0 {
-                            row_err_l[tx] += res_l * weight * dither;
-                            row_err_c[tx] += res_c * weight * dither;
-                        } else {
-                            next_err_l[tx] += res_l * weight * dither;
-                            next_err_c[tx] += res_c * weight * dither;
-                        }
-                    }
-                    let back = oklch_to_rgb(&Lch {
-                        l: l2,
-                        c: c2,
-                        h: h2,
-                    });
-                    out[i] = back[0];
-                    out[i + 1] = back[1];
-                    out[i + 2] = back[2];
-                    if let Some(slot) = slot {
-                        counts[slot] += 1;
-                    }
-                    x_it += dir;
-                }
-                std::mem::swap(&mut row_err_l, &mut next_err_l);
-                std::mem::swap(&mut row_err_c, &mut next_err_c);
-                next_err_l.iter_mut().for_each(|v| *v = 0.0);
-                next_err_c.iter_mut().for_each(|v| *v = 0.0);
-            }
+    for (src, dst) in pixels
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .zip(out.as_chunks_mut::<3>().0.iter_mut())
+    {
+        let raw = rgb_to_oklch(src);
+        let (l, c, h, slot) = core.run(raw);
+        *dst = oklch_to_rgb(&Lch { l, c, h });
+        if let Some(slot) = slot {
+            counts[slot] += 1;
         }
     }
-
+    if let Some(d) = &config.dither {
+        (out, counts) = dither_stage(&out, width, height, slots, options, d);
+    }
     WalOutput {
         pixels: out,
         coverage: counts,
     }
+}
+
+/// The dither stage over a graded image: the palette's colors (the slots
+/// the palette keeps) drawn as a pattern.  Coverage counts each slot's
+/// pixels exactly, since every pixel is one of them.
+pub fn dither_stage(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    slots: &[SlotPalette],
+    options: &[SlotOptions],
+    d: &Dither,
+) -> (Vec<u8>, Vec<u64>) {
+    let mut inks: Vec<Ink> = slots
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| options[*i].weight > 0.0)
+        .map(|(i, s)| Ink::new(i, oklch_to_rgb(&s.lch)))
+        .collect();
+    if inks.is_empty() {
+        inks = slots
+            .iter()
+            .enumerate()
+            .map(|(i, s)| Ink::new(i, oklch_to_rgb(&s.lch)))
+            .collect();
+    }
+    let (out, per_ink) = crate::dither::dither(pixels, width, height, &inks, d);
+    let mut counts = vec![0u64; slots.len()];
+    for (ink, n) in inks.iter().zip(per_ink) {
+        counts[ink.slot] += n;
+    }
+    (out, counts)
 }

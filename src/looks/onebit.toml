@@ -1,0 +1,5 @@
+description = "the early-Mac look: two colors, the scheme's darkest and lightest, in Atkinson dithering"
+
+[wal]
+palette = { base00 = 1, base07 = 1 }
+dither = { style = "diffuse", kernel = "atkinson" }

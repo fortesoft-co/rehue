@@ -1,0 +1,5 @@
+description = "the 16-color game look: the scheme's colors in checkerboard patterns, in chunky pixels"
+
+[wal]
+harmonize = 1
+dither = "checker"

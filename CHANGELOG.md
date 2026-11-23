@@ -9,10 +9,35 @@ versions may break).
 
 ### Added
 
+- `wal --dither [STYLE,key=value...]`: draw the result with the
+  scheme's colors only, as a visible pattern. It runs last, after any
+  grade; every pixel of the result is a scheme color, so
+  `report.json`'s coverage is exact. Styles: `checker` (the default,
+  dispersed dots from a 2x2, 4x4 or 8x8 Bayer grid: 16-color games),
+  `halftone` (round dots on an angled grid: print), `pattern` (drawn
+  tiles, `hatch` or `lines`) and `diffuse` (error diffusion,
+  Floyd-Steinberg or Atkinson). Settings `scale` (pattern pixel size,
+  `auto` = about 640 across), `sample` (`block` averages each pattern
+  pixel's block, `pixel` keeps edges sharp), `flat` (how much stays
+  solid), and each style's own. In configs, `dither = "checker"` or a
+  `[dither]` table. With `--lut`, the LUT holds the grade before
+  dithering. Not for icons yet (a look's `[wal]` dither doesn't carry
+  over to icons).
+- Looks `pc98` (harmonize, then checker), `newsprint` (two inks in
+  halftone), `onebit` (darkest and lightest in Atkinson) and `hatch`.
+- Docs pages for dithering and `enhance`; enhance's flags sit under an
+  Upscaling heading in `--help`.
 - Looks in YAML or JSON as well as TOML, like configs: a user look is
   `NAME.toml`, `NAME.yaml`, `NAME.yml` or `NAME.json`, and a look given
   by path is read by its extension. Two files for one name are an
   error rather than a silent pick.
+
+### Changed (breaking)
+
+- `--dithering` and `--dithering-mode` are gone, replaced by
+  `--dither`. They varied how far each pixel moved toward its color
+  rather than choosing between palette colors, so they never gave a
+  visible dither; `--dither` does.
 
 ## [0.3.0] - 2026-11-22
 

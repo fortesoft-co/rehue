@@ -167,8 +167,14 @@ Flakes only see files git tracks: `git add` new files before
   the picture; either rework the example or say in the text why the
   effect is subtle.
 - Use in-repo assets for inputs. Anything else (the Papirus icons) is
-  pinned in the `examples` devshell and credited in
-  `assets/attribution.md`.
+  pinned in the `examples` devshell.
+- Every input is credited in `assets/attribution.md` with its license,
+  author and source, even when the license doesn't require it. Pick
+  licenses that allow reuse and modification (CC0 and CC BY are the
+  usual ones); leave out ShareAlike and NonCommercial sources, whose
+  terms would follow the docs images made from them.
+- Choose inputs for what the option shows: flat colors and outlines
+  for `checker`, smooth shading for `halftone`, `flat` and diffusion.
 
 ## Source files
 
@@ -176,14 +182,14 @@ Flakes only see files git tracks: `git add` new files before
 | file | what it is |
 | --- | --- |
 | `src/apply.rs` | `rehue apply`: run a pipeline file and hand the result to the desktop. |
-| `src/bluenoise.rs` | 64x64 tileable blue-noise dither array (LDR, single channel, 8-bit). |
 | `src/cli.rs` | The CLI's commands, flags and help, as data (the docs render from it). |
 | `src/color.rs` | sRGB, OKLab and OKLCH conversions, and circular-hue math. |
 | `src/config.rs` | Config layering, file reading and the unknown-key check. |
+| `src/dither.rs` | The dither stage: draw an image with palette colors only, as a pattern. |
 | `src/enhance.rs` | `rehue enhance`: Lanczos upscaling and Vulkan super-resolution. |
 | `src/extract.rs` | Hue extraction: a chroma²-weighted hue histogram and a deterministic circular k-means. |
 | `src/grade_scheme.rs` | `rehue scheme`: the per-role pipeline and its options. |
-| `src/grade_wal.rs` | `rehue wal`: the per-color remap (`ColorMap`), its modes and dithering. |
+| `src/grade_wal.rs` | `rehue wal`: the per-color remap (`ColorMap`), its modes, and the dither stage. |
 | `src/icons.rs` | `rehue icons`: SVG and PNG recoloring, theme layout, folders, the preview. |
 | `src/lib.rs` | rehue: paint base16 color schemes and wallpapers with each other's colors. |
 | `src/look.rs` | Looks: saved grades, selectable by name (`-l pop`). |
@@ -198,11 +204,12 @@ Flakes only see files git tracks: `git add` new files before
 | `tests/apply.rs` | `rehue apply`: pipeline files, the tinty handoff, the wallpaper command. |
 | `tests/cli.rs` | Cross-command CLI behaviour (the shared flags). |
 | `tests/config.rs` | Config files: JSON, TOML and YAML, picked by extension. |
+| `tests/dither.rs` | The dither stage: palette colors only, drawn as a pattern. |
 | `tests/docs.rs` | The docs: generated regions, the drift check, links, example images. |
 | `tests/enhance.rs` | `rehue enhance`: the model table, parameter checks, scaling. |
 | `tests/extraction.rs` | Extraction: determinism on a synthetic gradient. |
 | `tests/grade_scheme.rs` | `rehue scheme`: the role pipeline, assign and cycle. |
-| `tests/grade_wal.rs` | `rehue wal`: modes, dither kernels, arrangement, blend dials. |
+| `tests/grade_wal.rs` | `rehue wal`: modes, arrangement, blend dials. |
 | `tests/icons.rs` | `rehue icons`: colour rewriting, theme layout, folders. |
 | `tests/look.rs` | Looks: saved grades layered under the config and the flags. |
 | `tests/lut.rs` | LUT export and the per-color remap it bakes. |

@@ -214,6 +214,20 @@ rehue wal -i my-photo.jpg -s gruvbox-light -H 1 -p base0D,base0E # only these tw
 More: [docs/wal.md](docs/wal.md), every option with examples, and
 LUT export for other tools and video.
 
+## Dithering
+
+`wal --dither` draws the result with the scheme's colors only, as a
+visible pattern: the checkerboards of 16-color games, halftone dots,
+hatching, or the speckle of early-Mac pictures.
+
+```sh
+rehue wal -i my-photo.jpg -s gruvbox-light --dither               # checkerboards
+rehue wal -i my-photo.jpg -s gruvbox-light -l pc98                # the 16-color game look
+rehue wal -i my-photo.jpg -s gruvbox-light -l newsprint           # two inks in halftone dots
+```
+
+More: [docs/dither.md](docs/dither.md), every style and setting.
+
 ## icons
 
 `rehue icons` recolors an icon theme with the same grade `wal` gives a
@@ -253,9 +267,22 @@ rehue scheme -i nord -w my-photo.jpg -l soft
 rehue inspect --looks                 # list them
 ```
 
-The built-ins are <!-- gen:look-names -->`soft`, `tight`, `pop`, `muted`, `wash`, `snap` and `vivid`<!-- /gen:look-names -->. More:
+The built-ins are <!-- gen:look-names -->`soft`, `tight`, `pop`, `muted`, `wash`, `snap`, `vivid`, `pc98`, `newsprint`, `onebit` and `hatch`<!-- /gen:look-names -->. More:
 [docs/looks.md](docs/looks.md), each one shown, and how to write your
 own.
+
+## enhance
+
+`rehue enhance` upscales a wallpaper that's smaller than your screen:
+Lanczos built in, or AI super-resolution with Real-ESRGAN. Upscale
+first, then grade the result.
+
+```sh
+rehue enhance -i wall.webp -o up --upscale 4 --sr
+rehue wal -i up/wall.png -s gruvbox-light -H 1
+```
+
+More: [docs/enhance.md](docs/enhance.md).
 
 ## Grading and config
 
@@ -312,8 +339,10 @@ setup.
 | --- | --- |
 | [scheme](docs/scheme.md) | `rehue scheme`: every option, with examples |
 | [wal](docs/wal.md) | `rehue wal`: every option, with examples; LUT export |
+| [dither](docs/dither.md) | `wal --dither`: every style and setting, with examples |
 | [icons](docs/icons.md) | `rehue icons`: folder colors, chosen-color packs, looks |
 | [inspect](docs/inspect.md) | `rehue inspect`; choosing a scheme |
+| [enhance](docs/enhance.md) | `rehue enhance`: Lanczos and super-resolution upscaling |
 | [looks](docs/looks.md) | the built-in looks, shown; writing your own |
 | [grading](docs/grading.md) | roles and extraction, shared by both directions |
 | [config](docs/config.md) | config files, and how looks, configs and flags combine |

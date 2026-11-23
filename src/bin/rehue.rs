@@ -234,8 +234,7 @@ struct WalOverrides {
     reach: Option<f64>,
     palette: Option<String>,
     max_gray_chroma: Option<f64>,
-    dithering: Option<f64>,
-    dithering_mode: Option<grade_wal::DitherMode>,
+    dither: Option<String>,
     assign: Vec<String>,
     cycle: Vec<String>,
     lightness: Vec<String>,
@@ -244,12 +243,7 @@ struct WalOverrides {
 
 impl WalOverrides {
     /// The shared grading flags, plus wal's own (absent for icons).
-    fn from_grade(
-        g: rehue::cli::GradeArgs,
-        dithering: Option<f64>,
-        dithering_mode: Option<grade_wal::DitherMode>,
-        assign: Vec<String>,
-    ) -> Self {
+    fn from_grade(g: rehue::cli::GradeArgs, dither: Option<String>, assign: Vec<String>) -> Self {
         WalOverrides {
             mode: g.mode,
             neutrals: g.neutrals,
@@ -260,8 +254,7 @@ impl WalOverrides {
             reach: g.reach,
             palette: g.palette,
             max_gray_chroma: g.max_gray_chroma,
-            dithering,
-            dithering_mode,
+            dither,
             assign,
             cycle: g.cycle,
             lightness: g.lightness,
@@ -275,9 +268,6 @@ impl WalOverrides {
         }
         if let Some(n) = self.neutrals {
             config.neutrals = n;
-        }
-        if self.dithering_mode.is_some() {
-            config.dithering_mode = self.dithering_mode;
         }
         if let Some(v) = self.harmonize {
             config.harmonize = v;
@@ -294,8 +284,10 @@ impl WalOverrides {
         if let Some(v) = self.max_gray_chroma {
             config.max_gray_chroma = v;
         }
-        if let Some(v) = self.dithering {
-            config.dithering = v;
+        if let Some(text) = self.dither {
+            // replaces the config's dither whole, like --palette
+            config.dither =
+                Some(rehue::dither::Dither::parse(&text).map_err(|e| format!("--dither: {e}"))?);
         }
         for tokens in self.match_hue.chunks(2) {
             let (target, value) = dial_arg("match-hue", tokens)?;
@@ -551,14 +543,6 @@ fn run_wal(
                 rehue::lut::CUBE_MAX_LEVEL
             ));
         }
-        let dithered =
-            config.dithering > 0.0 && config.dithering_mode != Some(grade_wal::DitherMode::None);
-        if dithered {
-            return Err(
-                "--lut needs dithering 0: a dithered pixel depends on its position, not just its colour"
-                    .to_string(),
-            );
-        }
     }
     let slot_hexes = parsed.slot_hexes()?;
     println!(
@@ -610,14 +594,33 @@ fn run_wal(
     let passive = grade_wal::is_passive(&regs, config.lightness, config.chroma);
     let mut arranged_hexes: Option<Vec<String>> = None;
     let (remapped_rgb, coverage) = if passive {
-        // Contract: output is always wallpaper.png (here = input, re-encoded).
-        (source.clone(), vec![0u64; 16])
+        // Contract: output is always wallpaper.png (here = input,
+        // re-encoded, or dithered as it is when a dither is set).
+        match &config.dither {
+            None => (source.clone(), vec![0u64; 16]),
+            Some(d) => {
+                println!("rehue wal: dither {}", d.describe());
+                arranged_hexes = Some(slot_hexes.clone());
+                let options = grade_wal::slot_options(&regs, &config)?;
+                let (px, counts) = grade_wal::dither_stage(
+                    source.as_raw(),
+                    source.width(),
+                    source.height(),
+                    &slots,
+                    &options,
+                    d,
+                );
+                let pixels = image::RgbImage::from_raw(source.width(), source.height(), px)
+                    .expect("dithering preserves the pixel-buffer size");
+                (pixels, counts)
+            }
+        }
     } else {
         let clusters = wal_clusters(&regs, &dynamic, &config);
 
         let (seed_hue, seed_light, seed_chroma) = grade_wal::facade_defaults(&config);
         println!(
-            "rehue wal: mode {}  neutrals {}  harmonize {:.2}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  reach {}  dithering {:.2} ({})  lightness {:+.3}  chroma {:.2}",
+            "rehue wal: mode {}  neutrals {}  harmonize {:.2}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  reach {}  lightness {:+.3}  chroma {:.2}",
             config.mode.unwrap_or(grade_wal::Mode::Blend).describe(),
             config.neutrals.describe(),
             config.harmonize,
@@ -625,16 +628,14 @@ fn run_wal(
             seed_light,
             seed_chroma,
             config.reach,
-            config.dithering,
-            config
-                .dithering_mode
-                .unwrap_or(grade_wal::DitherMode::BlueNoise)
-                .describe(),
             config.lightness,
             config.chroma
         );
         if config.palette.is_some() {
             println!("  {}", palette_summary(&weights));
+        }
+        if let Some(d) = &config.dither {
+            println!("  dither {}", d.describe());
         }
         for name in role::ROLE_NAMES {
             let s = &regs[name];
@@ -697,6 +698,11 @@ fn run_wal(
             })?
         };
         println!("rehue wal: wrote {lut_file} (hald level {level})");
+        if config.dither.is_some() {
+            println!(
+                "  the lut holds the grade before dithering (a dither depends on position, so no lut can hold it)"
+            );
+        }
     }
 
     let coverage_map: BTreeMap<String, u64> = BASE_SLOTS
@@ -705,10 +711,12 @@ fn run_wal(
         .zip(&coverage)
         .map(|(slot, count)| (slot.to_string(), *count))
         .collect();
+    // a dither stage changes every pixel even on a passive grade
+    let passthrough = passive && config.dither.is_none();
     let report = serde_json::json!({
         "params": config,
         "vivid_chroma": vivid,
-        "passthrough": passive,
+        "passthrough": passthrough,
         "slot_coverage": coverage_map,
     });
     write_json_file(&out.join("report.json"), &report)?;
@@ -729,7 +737,7 @@ fn run_wal(
             .map_err(|e| format!("can't write preview.html: {}", e))?;
     }
 
-    if passive {
+    if passthrough {
         println!("rehue wal: passthrough (no options active)");
     } else {
         let total: u64 = coverage.iter().sum();
@@ -760,7 +768,7 @@ fn run_wal(
         println!("rehue wal: palette - arranged (what painted the wallpaper)");
         println!("{}", scheme_strip(strip_hexes));
     }
-    if passive {
+    if arranged_hexes.is_none() {
         println!("rehue wal: wrote wallpaper.png, compare.png, report.json");
     } else {
         println!("rehue wal: wrote wallpaper.png, compare.png, preview.html, report.json");
@@ -904,6 +912,9 @@ fn run_icons(
     dry_run: bool,
 ) -> Result<(), String> {
     use rehue::icons::{self, Input};
+    if config.grade.dither.is_some() {
+        return Err("icons can't be dithered yet (dither is for wal)".into());
+    }
     let source = icons::find_input(input)?;
     let mut folder_grade = config.grade.clone();
     if config.folders.is_some() {
@@ -1382,8 +1393,7 @@ fn run(command: Commands) -> Result<(), String> {
             look,
             dry_run,
             grade,
-            dithering,
-            dithering_mode,
+            dither,
             assign,
             lut,
             lut_level,
@@ -1396,8 +1406,7 @@ fn run(command: Commands) -> Result<(), String> {
                 rehue::look::Target::Wal,
             )?;
             print_looks("wal", &looks);
-            WalOverrides::from_grade(grade, dithering, dithering_mode, assign)
-                .apply(&mut wal_config)?;
+            WalOverrides::from_grade(grade, dither, assign).apply(&mut wal_config)?;
             let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
             run_wal(
                 &input,
@@ -1428,8 +1437,7 @@ fn run(command: Commands) -> Result<(), String> {
                 rehue::look::Target::Icons,
             )?;
             print_looks("icons", &looks);
-            WalOverrides::from_grade(grade, None, None, Vec::new())
-                .apply(&mut icons_config.grade)?;
+            WalOverrides::from_grade(grade, None, Vec::new()).apply(&mut icons_config.grade)?;
             if let Some(text) = folders {
                 icons_config.folders =
                     Some(grade_wal::parse_palette(&text).map_err(|e| format!("--folders: {e}"))?);

@@ -1,7 +1,7 @@
 //! LUT export and the per-color remap it bakes.
 //!
 //! LUT export and the per-colour remap it bakes: `ColorMap::map_rgb` is
-//! exactly what `grade_wal::apply` paints at dithering 0, and the Hald /
+//! exactly what `grade_wal::apply` paints without a dither stage, and the Hald /
 //! .cube grids reproduce it.
 
 mod common;
@@ -127,7 +127,7 @@ fn exported_hald_reproduces_the_wallpaper() {
 }
 
 #[test]
-fn lut_refuses_dithering_and_bad_levels() {
+fn lut_goes_with_dithering_and_refuses_bad_levels() {
     let dir = std::env::temp_dir().join(format!("rehue-lut-bad-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let wall = dir.join("wall.png");
@@ -147,9 +147,10 @@ fn lut_refuses_dithering_and_bad_levels() {
     };
     let err = |o: std::process::Output| String::from_utf8_lossy(&o.stderr).into_owned();
 
-    let dithered = run(&["--lut", "hald", "--dithering", "0.5"]);
-    assert!(!dithered.status.success());
-    assert!(err(dithered).contains("dithering 0"));
+    // with --dither the lut is the grade before the dither
+    let dithered = run(&["--lut", "hald", "--dither"]);
+    assert!(dithered.status.success(), "{}", err(dithered.clone()));
+    assert!(String::from_utf8_lossy(&dithered.stdout).contains("before dithering"));
 
     let level = run(&["--lut", "hald", "--lut-level", "17"]);
     assert!(!level.status.success());

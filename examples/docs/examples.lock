@@ -8,6 +8,8 @@ assets/examples/grading-groups.png abb03f6b9a9c0569
 assets/examples/icons-folders.png 482e8889275b0017
 assets/examples/icons-palette.png ca9619b6fdd84594
 assets/examples/inspect-families.png 0330664e93e25953
+assets/examples/looks-dither-anime.webp 7ac9baee36766720
+assets/examples/looks-dither-bust.webp b065e537a27b8215
 assets/examples/looks-icons.png 07e2919b9292e5e1
 assets/examples/looks-scheme.png de459523e7fcb5c8
 assets/examples/looks-wal.webp 2e3e3d1717dc563e
@@ -19,8 +21,15 @@ assets/examples/options/scheme-match-hue.png da05ea682ce82d4a
 assets/examples/options/scheme-reach.png 08adc73c207a7c30
 assets/examples/options/wal-assign.webp 26f11b8fd48b91db
 assets/examples/options/wal-chroma.webp eb05746bec2b42ea
-assets/examples/options/wal-dithering-mode.webp 27ca736693c08f93
-assets/examples/options/wal-dithering.webp 90d39a7ead67d691
+assets/examples/options/wal-dither-flat.webp 96ca6aed5a8b29e1
+assets/examples/options/wal-dither-halftone.webp e95a2d37d1876091
+assets/examples/options/wal-dither-kernel.webp 24e72bdad1ae349f
+assets/examples/options/wal-dither-sample.webp f01105ecd78a7204
+assets/examples/options/wal-dither-scale.webp 9cf16aa4d1d1b720
+assets/examples/options/wal-dither-size.webp 0200956decb803cd
+assets/examples/options/wal-dither-styles.webp ee1462dacf4703b8
+assets/examples/options/wal-dither-tiles.webp 3f6d2dcf65038737
+assets/examples/options/wal-dither.webp 0fbc9824e96b63d5
 assets/examples/options/wal-harmonize.webp 82547b5c896b4b31
 assets/examples/options/wal-lightness.webp fac27cd533ccf808
 assets/examples/options/wal-match-chroma.webp f9c6a29cbcd842cb

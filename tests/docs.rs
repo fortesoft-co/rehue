@@ -279,6 +279,10 @@ fn commands_table() -> String {
 
 /// The value a flag takes, as shown in a table.
 fn flag_value(arg: &clap::Arg) -> String {
+    // a switch (--sr, --dry-run) takes no value
+    if !arg.get_action().takes_values() {
+        return String::new();
+    }
     let possible: Vec<String> = arg
         .get_possible_values()
         .iter()
@@ -780,6 +784,42 @@ fn known_names() -> BTreeSet<String> {
     keys(serde_json::to_value(rehue::grade_scheme::SchemeRoleConfig::default()).unwrap());
     for (k, _) in rehue::extract::ExtractionParams::KEYS {
         out.insert(k.to_string());
+    }
+    // dither styles, their settings and values, from the code
+    {
+        use rehue::dither::{Dither, Kernel, Sample, Style, Tiles};
+        let mut names = |v: serde_json::Value| match v {
+            serde_json::Value::String(s) => {
+                out.insert(s);
+            }
+            serde_json::Value::Object(m) => {
+                for (k, v) in m {
+                    out.insert(k);
+                    if let serde_json::Value::String(s) = v {
+                        out.insert(s);
+                    }
+                }
+            }
+            _ => {}
+        };
+        for style in [
+            Style::Checker,
+            Style::Halftone,
+            Style::Pattern,
+            Style::Diffuse,
+        ] {
+            names(serde_json::to_value(Dither::for_style(style)).unwrap());
+        }
+        for v in [
+            serde_json::to_value(Kernel::FloydSteinberg).unwrap(),
+            serde_json::to_value(Kernel::Atkinson).unwrap(),
+            serde_json::to_value(Tiles::Hatch).unwrap(),
+            serde_json::to_value(Tiles::Lines).unwrap(),
+            serde_json::to_value(Sample::Block).unwrap(),
+            serde_json::to_value(Sample::Pixel).unwrap(),
+        ] {
+            names(v);
+        }
     }
     // pipeline keys (src/apply.rs; deserialize-only structs)
     for k in [

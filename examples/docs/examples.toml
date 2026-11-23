@@ -13,6 +13,8 @@
 glitter = "assets/vidsplay-rainbow-glitter.webp"
 butterfly = "assets/kelly-ishmael-butterfly-closeup.webp"
 bango = "assets/bango-renders-3d-abstract.webp"
+bust = "assets/tamula-aura-garden-bust.webp"
+anime = "assets/honeyworks-anime-video-frame.webp"
 
 # ---------------------------------------- README and page examples
 
@@ -225,34 +227,152 @@ rungs = [
   { args = "--max-gray-chroma 0.1" },
 ]
 [[ladder]]
-id = "wal-dithering"
-file = "assets/examples/options/wal-dithering.webp"
-base = "wal -i {bango} -s gruvbox-light -o {out}"
+id = "wal-dither"
+file = "assets/examples/options/wal-dither.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
 output = "wallpaper.png"
-original = "{bango}"
-width = 384
-common = "--mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9"
-crop = "128x72+1408+576"
+original = "{bust}"
+width = 640
+crop = "640x360+640+100"
 rungs = [
-  { args = "--dithering 0" },
-  { args = "--dithering 0.5" },
-  { args = "--dithering 1" },
+  { args = "--dither", note = "the image as it is, in the scheme's colors" },
+  { args = "--harmonize 1 --dither", note = "graded first, then dithered (the pc98 look)" },
 ]
 
 [[ladder]]
-id = "wal-dithering-mode"
-file = "assets/examples/options/wal-dithering-mode.webp"
-base = "wal -i {bango} -s gruvbox-light -o {out}"
+id = "wal-dither-scale"
+file = "assets/examples/options/wal-dither-scale.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
 output = "wallpaper.png"
-original = "{bango}"
-width = 384
-common = "--mode snap --match-hue 1 --match-lightness 0.5 --match-chroma 0.9 --dithering 1"
-crop = "128x72+1408+576"
+width = 640
+crop = "640x360+640+100"
 rungs = [
-  { args = "--dithering-mode blue-noise" },
-  { args = "--dithering-mode bayer" },
-  { args = "--dithering-mode floyd-steinberg" },
-  { args = "--dithering-mode atkinson" },
+  { args = "--dither checker,scale=1" },
+  { args = "--dither", note = "scale=auto: 3 on this 1920 px image" },
+  { args = "--dither checker,scale=6" },
+]
+
+[[ladder]]
+id = "wal-dither-sample"
+file = "assets/examples/options/wal-dither-sample.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+original = "{bust}"
+width = 640
+crop = "640x360+640+100"
+rungs = [
+  { args = "--dither checker,scale=4", note = "sample=block, the default" },
+  { args = "--dither checker,scale=4,sample=pixel" },
+]
+
+[[ladder]]
+id = "wal-dither-flat"
+file = "assets/examples/options/wal-dither-flat.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+width = 640
+crop = "640x360+640+100"
+rungs = [
+  { args = "--dither checker,flat=0" },
+  { args = "--dither", note = "flat=0.5, the default" },
+  { args = "--dither checker,flat=0.8" },
+]
+
+[[ladder]]
+id = "wal-dither-size"
+file = "assets/examples/options/wal-dither-size.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+width = 640
+crop = "640x360+640+100"
+rungs = [
+  { args = "--dither", note = "size=2, the default" },
+  { args = "--dither checker,size=4" },
+]
+
+[[ladder]]
+id = "wal-dither-styles"
+file = "assets/examples/options/wal-dither-styles.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+width = 640
+crop = "640x360+640+100"
+common = "--harmonize 1"
+rungs = [
+  { args = "--dither checker" },
+  { args = "--dither halftone" },
+  { args = "--dither pattern" },
+  { args = "--dither diffuse" },
+]
+
+[[ladder]]
+id = "wal-dither-halftone"
+file = "assets/examples/options/wal-dither-halftone.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+width = 640
+crop = "640x360+640+100"
+common = "--harmonize 1"
+rungs = [
+  { args = "--dither halftone", note = "size=8, angle=45, the defaults" },
+  { args = "--dither halftone,size=14" },
+  { args = "--dither halftone,size=14,angle=15" },
+]
+
+[[ladder]]
+id = "wal-dither-tiles"
+file = "assets/examples/options/wal-dither-tiles.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+width = 640
+crop = "640x360+640+100"
+common = "--harmonize 1"
+rungs = [
+  { args = "--dither pattern", note = "tiles=hatch, the default" },
+  { args = "--dither pattern,tiles=lines" },
+]
+
+[[ladder]]
+id = "wal-dither-kernel"
+file = "assets/examples/options/wal-dither-kernel.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+width = 640
+crop = "640x360+640+100"
+common = "--harmonize 1"
+rungs = [
+  { args = "--dither diffuse", note = "kernel=floyd-steinberg, the default" },
+  { args = "--dither diffuse,kernel=atkinson" },
+]
+
+[[ladder]]
+id = "looks-dither-bust"
+file = "assets/examples/looks-dither-bust.webp"
+base = "wal -i {bust} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+original = "{bust}"
+width = 640
+crop = "640x360+640+100"
+rungs = [
+  { args = "-l pc98" },
+  { args = "-l newsprint" },
+  { args = "-l onebit" },
+  { args = "-l hatch" },
+]
+
+[[ladder]]
+id = "looks-dither-anime"
+file = "assets/examples/looks-dither-anime.webp"
+base = "wal -i {anime} -s catppuccin-mocha -o {out}"
+output = "wallpaper.png"
+original = "{anime}"
+width = 640
+crop = "640x360+20+190"
+rungs = [
+  { args = "-l pc98" },
+  { args = "-l newsprint" },
+  { args = "-l onebit" },
+  { args = "-l hatch" },
 ]
 
 [[ladder]]

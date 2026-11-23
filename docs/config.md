@@ -76,9 +76,10 @@ per key:
 
 Only wal's bare `--lightness` / `--chroma` differ by design: they are
 the image-wide grade, not a seed. Extraction options are config-file
-only. Dithering is global-only: role records do not carry it. Role
+only. `dither` is global-only: role records do not carry it. Role
 names take their short forms in config keys too (`"bg"`, `"ac"`).
-`palette` is the one key that replaces instead of merging: a palette
+`palette` is the one key that replaces instead of merging (a
+`--dither` flag likewise replaces the config's `dither`): a palette
 in a later layer replaces the earlier one whole. Unknown keys are
 errors, in configs, looks and pipelines alike.
 

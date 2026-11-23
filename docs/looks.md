@@ -25,6 +25,10 @@ rehue inspect --looks pop                              # what one sets
 | `wash` | wal, icons | the palette washed over the image: everything leans toward the scheme's main accent colors |
 | `snap` | wal, icons | exact accent hues and chroma, the image's own shading kept |
 | `vivid` | wal, icons | accents only, at full strength: bold color, grays left alone |
+| `pc98` | wal, icons | the 16-color game look: the scheme's colors in checkerboard patterns, in chunky pixels |
+| `newsprint` | wal, icons | print: two inks, the scheme's background and text colors, in halftone dots |
+| `onebit` | wal, icons | the early-Mac look: two colors, the scheme's darkest and lightest, in Atkinson dithering |
+| `hatch` | wal, icons | drawn hatching: the scheme's colors in diagonal and crossing lines |
 <!-- /gen:looks -->
 
 Each cell below is one built-in look and nothing else.

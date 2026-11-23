@@ -188,26 +188,33 @@ pub enum Commands {
         /// e.g. --assign accents 0,1,2,3   --assign sf auto
         #[arg(long, help_heading = "Grading", value_name = "[ROLE] VAL", num_args = 1..=2, allow_negative_numbers = true)]
         assign: Vec<String>,
-        /// Dithering strength 0..1 (0 = off).
+        /// Draw the result with the scheme's colors only, as a visible
+        /// pattern: the 16-color game look.  Bare = checker.
         ///
-        /// Breaks up banding where adoption is partial; inert at zero and at
-        /// full adoption, where the target swallows the residual.
+        /// STYLE[,key=value...].  Styles: checker (dispersed dots, the
+        /// default).  Settings: scale (pattern pixel size, auto = about 640
+        /// across), sample (block = each pattern pixel the average of its
+        /// block, the default; pixel = each image pixel's own color),
+        /// flat (0..1: how much of the area where two colors meet stays
+        /// solid, default 0.5; 0 = pattern everywhere, 1 = none), size
+        /// (checker's matrix, 2, 4 or 8).
         ///
-        /// e.g. --dithering 1
-        #[arg(long, help_heading = "Grading", value_name = "0..1")]
-        dithering: Option<f64>,
-        /// Dithering pattern (default blue-noise).
-        ///
-        /// e.g. --dithering-mode floyd-steinberg
-        #[arg(long, help_heading = "Grading", value_enum)]
-        dithering_mode: Option<grade_wal::DitherMode>,
+        /// e.g. --dither   --dither checker,scale=4,flat=0.8
+        #[arg(
+            long,
+            help_heading = "Dithering",
+            value_name = "STYLE[,K=V]",
+            num_args = 0..=1,
+            default_missing_value = "checker"
+        )]
+        dither: Option<String>,
         /// Also bake the grade into a 3D LUT: `lut.png` (Hald CLUT) or
         /// `lut.cube`.
         ///
         /// Apply it elsewhere: `magick in.jpg lut.png
         /// -hald-clut out.jpg`, ffmpeg's haldclut / lut3d filters, GIMP,
-        /// Darktable, Resolve.  Needs dithering 0 (a dithered pixel
-        /// depends on its position, not just its colour).
+        /// Darktable, Resolve.  With --dither, the LUT holds the grade
+        /// before dithering (a dither depends on position, not colour).
         ///
         /// e.g. --lut cube
         #[arg(long, help_heading = "LUT export", value_enum, value_name = "FORMAT")]
@@ -374,8 +381,8 @@ pub enum Commands {
     /// runs at its native 4x and the target factor is reached with the
     /// same Lanczos resampler.
     ///
-    /// Example: rehue enhance --wallpaper pic.webp --out up4 --upscale 4
-    ///          rehue enhance --wallpaper pic.webp --out up4 --upscale 4 --sr
+    /// Example: rehue enhance -i pic.webp -o up4 --upscale 4
+    ///          rehue enhance -i pic.webp -o up4 --upscale 4 --sr
     Enhance {
         /// The picture to scale.
         ///
@@ -393,25 +400,25 @@ pub enum Commands {
         /// restoration).
         ///
         /// e.g. --upscale 4
-        #[arg(long)]
+        #[arg(long, help_heading = "Upscaling")]
         upscale: u32,
         /// AI super-resolution instead of plain Lanczos.  Needs
         /// realesrgan-ncnn-vulkan: on $PATH, as $REHUE_SR_TOOL, or via
         /// --sr-tool.
         ///
         /// e.g. --sr
-        #[arg(long)]
+        #[arg(long, help_heading = "Upscaling")]
         sr: bool,
         /// SR weights (with --sr):
         /// photos = general x4plus, anime = x4plus-anime.
         ///
         /// e.g. --model photos
-        #[arg(long, value_enum, value_name = "MODEL")]
+        #[arg(long, help_heading = "Upscaling", value_enum, value_name = "MODEL")]
         model: Option<SrModel>,
         /// Path to the SR tool (with --sr); else $REHUE_SR_TOOL / $PATH.
         ///
         /// e.g. --sr-tool ~/tools/realesrgan-ncnn-vulkan
-        #[arg(long, value_name = "TOOL")]
+        #[arg(long, help_heading = "Upscaling", value_name = "TOOL")]
         sr_tool: Option<PathBuf>,
     },
     /// Run a pipeline file and apply the result: scheme to tinty,
