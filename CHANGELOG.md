@@ -5,7 +5,12 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-22
+
+The dithering release: `wal --dither` draws a wallpaper with the
+scheme's colors only, in checker, halftone, pattern or diffuse styles,
+with four new looks built on it, and `icons --dither` does the same for
+icon themes. Looks can also be written in YAML or JSON.
 
 ### Added
 
@@ -191,6 +196,7 @@ First release.
 - 375 bundled base16 schemes (tinted-theming snapshot).
 - Deterministic, byte-identical output; Nix builders for Stylix.
 
+[0.4.0]: https://github.com/fortesoft-co/rehue/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/fortesoft-co/rehue/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fortesoft-co/rehue/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fortesoft-co/rehue/releases/tag/v0.1.0
