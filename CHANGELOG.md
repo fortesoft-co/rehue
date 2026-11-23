@@ -16,6 +16,11 @@ versions may break).
   the output keeps the input's container (H.264, or VP9 for WebM) and
   its audio. `compare.png` shows the first frame, `report.json` counts
   every frame, and `preview.html` plays it. No `--dither` on video yet.
+- `wal --deband` (video) and `wal --grain [AMOUNT]`, for banding a
+  grade makes visible: deband runs ffmpeg's deband filter on the frames
+  before grading; grain adds fine monochrome grain after it (4 levels by
+  default), the same every run and moving frame to frame on a video.
+  The Video docs say which to try for what.
 - `--grays keep|tint` (config `grays`): with `tint`, gray pixels take
   the hue of the scheme's grays as they take on its chroma, so whites
   go cream or lavender with the scheme and a dark sky takes the

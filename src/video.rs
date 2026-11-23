@@ -210,14 +210,25 @@ pub fn probe(ffmpeg: &Path, path: &Path) -> Result<Probe, String> {
     })
 }
 
-/// The decoding filter: the stream's matrix and range in, RGB out.
-fn read_filter(probe: &Probe, size: Option<(u32, u32)>) -> String {
+/// ffmpeg's deband filter as `--deband` runs it: smooths the blocky
+/// steps compression leaves in gradients, before the grade makes them
+/// show.
+const DEBAND: &str = "deband=1thr=0.015:2thr=0.015:3thr=0.015:range=16:blur=1";
+
+/// The decoding filter: optionally deband, then the stream's matrix and
+/// range in, RGB out.
+fn read_filter(probe: &Probe, size: Option<(u32, u32)>, deband: bool) -> String {
     let scale = match size {
         Some((w, h)) => format!("w={w}:h={h}:"),
         None => String::new(),
     };
+    let deband = if deband {
+        format!("{DEBAND},")
+    } else {
+        String::new()
+    };
     format!(
-        "scale={scale}in_color_matrix={}:in_range={}:flags={SWS_FLAGS},format=rgb24",
+        "{deband}scale={scale}in_color_matrix={}:in_range={}:flags={SWS_FLAGS},format=rgb24",
         probe.matrix, probe.range
     )
 }
@@ -232,7 +243,7 @@ pub fn sample_size(probe: &Probe) -> (u32, u32) {
 /// Up to [`SAMPLE_FRAMES`] frames spread evenly over the video, scaled
 /// to [`SAMPLE_WIDTH`] across and stacked top to bottom: what the grade
 /// is measured on.
-pub fn sample(ffmpeg: &Path, path: &Path, probe: &Probe) -> Result<RgbImage, String> {
+pub fn sample(ffmpeg: &Path, path: &Path, probe: &Probe, deband: bool) -> Result<RgbImage, String> {
     let (w, h) = sample_size(probe);
     let rate = if probe.duration > 0.0 {
         format!("fps={}/{:.6},", SAMPLE_FRAMES, probe.duration)
@@ -244,7 +255,10 @@ pub fn sample(ffmpeg: &Path, path: &Path, probe: &Probe) -> Result<RgbImage, Str
             .args(["-v", "error", "-nostdin", "-i"])
             .arg(path)
             .args(["-map", "0:v:0", "-vf"])
-            .arg(format!("{rate}{}", read_filter(probe, Some((w, h)))))
+            .arg(format!(
+                "{rate}{}",
+                read_filter(probe, Some((w, h)), deband)
+            ))
             .args(["-frames:v", &SAMPLE_FRAMES.to_string()])
             .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]),
         "ffmpeg (sampling frames)",
@@ -278,12 +292,13 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    pub fn open(ffmpeg: &Path, path: &Path, probe: &Probe) -> Result<Self, String> {
+    /// `deband`: run ffmpeg's deband filter on the frames first.
+    pub fn open(ffmpeg: &Path, path: &Path, probe: &Probe, deband: bool) -> Result<Self, String> {
         let mut child = Command::new(ffmpeg)
             .args(["-v", "error", "-nostdin", "-i"])
             .arg(path)
             .args(["-map", "0:v:0", "-fps_mode", "passthrough", "-vf"])
-            .arg(read_filter(probe, None))
+            .arg(read_filter(probe, None, deband))
             .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

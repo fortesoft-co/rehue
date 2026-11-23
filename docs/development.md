@@ -194,6 +194,7 @@ Flakes only see files git tracks: `git add` new files before
 | `src/extract.rs` | Hue extraction: a chroma²-weighted hue histogram and a deterministic circular k-means. |
 | `src/grade_scheme.rs` | `rehue scheme`: the per-role pipeline and its options. |
 | `src/grade_wal.rs` | `rehue wal`: the per-color remap (`ColorMap`), its modes, and the dither stage. |
+| `src/grain.rs` | Fine grain: a small, deterministic jitter in lightness, after the grade. |
 | `src/icons.rs` | `rehue icons`: SVG and PNG recoloring, theme layout, folders, the preview. |
 | `src/lib.rs` | rehue: paint base16 color schemes and wallpapers with each other's colors. |
 | `src/look.rs` | Looks: saved grades, selectable by name (`-l pop`). |
@@ -217,6 +218,7 @@ Flakes only see files git tracks: `git add` new files before
 | `tests/formats.rs` | Input formats: png, jpeg, webp, gif, tiff, bmp and qoi all read. |
 | `tests/grade_scheme.rs` | `rehue scheme`: the role pipeline, assign and cycle. |
 | `tests/grade_wal.rs` | `rehue wal`: modes, arrangement, blend dials. |
+| `tests/grain.rs` | Grain: small, centered, monochrome, the same every run, new each frame. |
 | `tests/icons.rs` | `rehue icons`: colour rewriting, theme layout, folders. |
 | `tests/look.rs` | Looks: saved grades layered under the config and the flags. |
 | `tests/lut.rs` | LUT export and the per-color remap it bakes. |

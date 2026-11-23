@@ -529,15 +529,53 @@ fn palette_summary(weights: &[f64; 16]) -> String {
     }
 }
 
+/// What a `wal` run does beyond its grade: the flags that aren't grading
+/// settings.
+#[derive(Default)]
+struct WalRun<'a> {
+    dry_run: bool,
+    lut: Option<(LutFormat, u32)>,
+    /// ffmpeg, for a video (else found on its own).
+    ffmpeg: Option<&'a Path>,
+    /// Deband a video's frames before grading.
+    deband: bool,
+    /// Grain after grading, in levels.
+    grain: Option<f64>,
+}
+
 fn run_wal(
     wallpaper: &Path,
     parsed: &Scheme,
     out: &Path,
     config: grade_wal::WalConfig,
-    dry_run: bool,
-    lut: Option<(LutFormat, u32)>,
-    ffmpeg: Option<&Path>,
+    run: WalRun,
 ) -> Result<(), String> {
+    let WalRun {
+        dry_run,
+        lut,
+        ffmpeg,
+        deband,
+        grain,
+    } = run;
+    if let Some(amount) = grain {
+        if !(1.0..=rehue::grain::MAX).contains(&amount) {
+            return Err(format!(
+                "--grain takes 1..={} (got {amount})",
+                rehue::grain::MAX
+            ));
+        }
+        if config.dither.is_some() {
+            return Err(
+                "--grain doesn't go with --dither: a dither draws with the scheme's colors only"
+                    .to_string(),
+            );
+        }
+    }
+    if deband && !video::is_video(wallpaper) {
+        return Err(
+            "--deband takes a video (it smooths compression banding in its frames)".to_string(),
+        );
+    }
     let regs = grade_wal::resolved_roles(&config)?;
     let weights = grade_wal::palette_weights(&config)?;
     let left_out: Vec<usize> = (0..16).filter(|i| weights[*i] == 0.0).collect();
@@ -600,7 +638,7 @@ fn run_wal(
     };
     let dynamic = match &video {
         Some((tool, probe)) => {
-            image::DynamicImage::ImageRgb8(video::sample(tool, wallpaper, probe)?)
+            image::DynamicImage::ImageRgb8(video::sample(tool, wallpaper, probe, deband)?)
         }
         None => image::ImageReader::open(wallpaper)
             .map_err(|e| format!("can't read wallpaper {}: {}", wallpaper.display(), e))?
@@ -726,13 +764,20 @@ fn run_wal(
     // A video: every frame through the grade, and the first frame stands
     // in for the picture in compare.png.
     let (source, remapped_rgb, coverage, video_info, wallpaper_file) = match &video {
-        None => (
-            source,
-            remapped_rgb,
-            coverage,
-            None,
-            "wallpaper.png".to_string(),
-        ),
+        None => {
+            let mut remapped_rgb = remapped_rgb;
+            if let Some(amount) = grain {
+                let width = remapped_rgb.width();
+                rehue::grain::apply(&mut remapped_rgb, width, 0, amount);
+            }
+            (
+                source,
+                remapped_rgb,
+                coverage,
+                None,
+                "wallpaper.png".to_string(),
+            )
+        }
         Some((tool, probe)) => {
             let ext = wallpaper
                 .extension()
@@ -745,7 +790,15 @@ fn run_wal(
                     .with_vivid(vivid);
                 grade_wal::ColorTable::new(&map, arranged.len())
             });
-            let graded = grade_video(tool, wallpaper, &out.join(&file), probe, table.as_ref())?;
+            let graded = grade_video(
+                tool,
+                wallpaper,
+                &out.join(&file),
+                probe,
+                table.as_ref(),
+                deband,
+                grain,
+            )?;
             println!("rehue wal: {} frames through the grade", graded.frames);
             let info = serde_json::json!({
                 "frames": graded.frames,
@@ -809,7 +862,7 @@ fn run_wal(
         .map(|(slot, count)| (slot.to_string(), *count))
         .collect();
     // a dither stage changes every pixel even on a passive grade
-    let passthrough = passive && config.dither.is_none();
+    let passthrough = passive && config.dither.is_none() && grain.is_none() && !deband;
     let mut report = serde_json::json!({
         "params": config,
         "vivid_chroma": vivid,
@@ -818,6 +871,12 @@ fn run_wal(
     });
     if let Some(info) = video_info {
         report["video"] = info;
+    }
+    if deband {
+        report["deband"] = serde_json::json!(true);
+    }
+    if let Some(amount) = grain {
+        report["grain"] = serde_json::json!(amount);
     }
     write_json_file(&out.join("report.json"), &report)?;
 
@@ -885,16 +944,18 @@ struct GradedVideo {
     coverage: Vec<u64>,
 }
 
-/// Every frame of `input` through `table` (unchanged without one) into
-/// `output`.
+/// Every frame of `input` (debanded first with `deband`) through `table`
+/// (unchanged without one), with `grain` after, into `output`.
 fn grade_video(
     tool: &Path,
     input: &Path,
     output: &Path,
     probe: &video::Probe,
     table: Option<&grade_wal::ColorTable>,
+    deband: bool,
+    grain: Option<f64>,
 ) -> Result<GradedVideo, String> {
-    let mut decoder = video::Decoder::open(tool, input, probe)?;
+    let mut decoder = video::Decoder::open(tool, input, probe, deband)?;
     let mut encoder = video::Encoder::open(tool, input, output, probe)?;
     let mut frame = Vec::new();
     let mut graded = vec![0u8; probe.width as usize * probe.height as usize * 3];
@@ -902,13 +963,14 @@ fn grade_video(
     let mut frames = 0u64;
     let mut first = None;
     while decoder.next(&mut frame)? {
-        let out: &[u8] = match table {
-            Some(table) => {
-                table.apply(&frame, &mut graded, &mut coverage);
-                &graded
-            }
-            None => &frame,
-        };
+        match table {
+            Some(table) => table.apply(&frame, &mut graded, &mut coverage),
+            None => graded.copy_from_slice(&frame),
+        }
+        if let Some(amount) = grain {
+            rehue::grain::apply(&mut graded, probe.width, frames, amount);
+        }
+        let out: &[u8] = &graded;
         encoder.write(out)?;
         if first.is_none() {
             first = Some((frame.clone(), out.to_vec()));
@@ -1477,9 +1539,10 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
                 &scheme,
                 &dir,
                 config.clone(),
-                dry_run,
-                None,
-                None,
+                WalRun {
+                    dry_run,
+                    ..WalRun::default()
+                },
             )?;
             dir.join("wallpaper.png")
         }
@@ -1600,6 +1663,8 @@ fn run(command: Commands) -> Result<(), String> {
             lut,
             lut_level,
             ffmpeg,
+            deband,
+            grain,
         } => {
             let (mut wal_config, looks) = rehue::look::resolve::<grade_wal::WalConfig>(
                 &config_label(config.as_deref()),
@@ -1616,9 +1681,13 @@ fn run(command: Commands) -> Result<(), String> {
                 &parsed,
                 out.as_deref().unwrap_or(Path::new("rehue-out")),
                 wal_config,
-                dry_run,
-                lut.map(|format| (format, lut_level)),
-                ffmpeg.as_deref(),
+                WalRun {
+                    dry_run,
+                    lut: lut.map(|format| (format, lut_level)),
+                    ffmpeg: ffmpeg.as_deref(),
+                    deband,
+                    grain,
+                },
             )
         }
         Commands::Icons {

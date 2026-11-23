@@ -16,7 +16,7 @@ fn one_thread_and_many_give_the_same_bytes() {
     let scheme = fixture("solarized-dark.yaml");
     let wall = wall.to_str().unwrap();
     let scheme = scheme.to_str().unwrap();
-    let cases: [&[&str]; 7] = [
+    let cases: [&[&str]; 8] = [
         &["-H", "1"],
         &["-l", "snap"],
         &["-H", "1", "--dither", "checker,scale=3"],
@@ -24,6 +24,7 @@ fn one_thread_and_many_give_the_same_bytes() {
         &["-l", "newsprint"],
         &["--dither", "diffuse,scale=2"],
         &["-H", "1", "--lut", "hald", "--lut-level", "4"],
+        &["-H", "1", "--grain", "5"],
     ];
     for (k, args) in cases.iter().enumerate() {
         let mut outputs = Vec::new();

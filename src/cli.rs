@@ -239,6 +239,25 @@ pub enum Commands {
         /// ffprobe is looked for beside it.  e.g. --ffmpeg ~/bin/ffmpeg
         #[arg(long, help_heading = "Video", value_name = "FFMPEG")]
         ffmpeg: Option<PathBuf>,
+        /// Smooth a video's compression banding before grading: ffmpeg's
+        /// deband filter, for blocky steps in skies and gradients.
+        ///
+        /// Video only.  e.g. --deband
+        #[arg(long, help_heading = "Banding")]
+        deband: bool,
+        /// Add fine grain after grading, AMOUNT levels of 255 (1..32,
+        /// default 4), to hide what banding is left.
+        ///
+        /// Monochrome, the same every run, and moving frame to frame on
+        /// a video.  Not with --dither.  e.g. --grain 3
+        #[arg(
+            long,
+            help_heading = "Banding",
+            value_name = "AMOUNT",
+            num_args = 0..=1,
+            default_missing_value = "4"
+        )]
+        grain: Option<f64>,
     },
     /// Recolor an icon theme (or one SVG / PNG icon) with a scheme.
     ///

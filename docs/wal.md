@@ -395,6 +395,33 @@ rehue wal -i clip.mp4 -s tokyo-night-storm -l pop -o graded
 
 Play the result with any video wallpaper player, such as mpvpaper.
 
+### Banding or blotches
+
+A grade can make what a video's compression left behind easier to see.
+Each fix is opt-in; try them by what you see:
+
+- **Patches of color in a dark or gray sky** (olive here, pink there,
+  where the original was plain gray): `--grays tint`. The grays take
+  the scheme's tint instead of their own faint, noisy hue.
+- **Blocky steps in skies and gradients**: `--deband`. ffmpeg smooths
+  the compression's steps before the grade.
+- **Steps that are still there**: `--grain`, fine grain over the
+  result, which hides them (`--grain 2` for less, `--grain 6` for
+  more; 4 by default). It moves frame to frame like film grain, and
+  works on a still too.
+
+```sh
+rehue wal -i night.mp4 -s rose-pine-moon -H 1 --grays tint --deband --grain
+rehue wal -i sunset.mp4 -s gruvbox-dark -H 1 --deband --grain 3
+```
+
+<!-- gen:flags:wal:banding -->
+| flag | value | what it does |
+| --- | --- | --- |
+| `--deband` |  | Smooth a video's compression banding before grading: ffmpeg's deband filter, for blocky steps in skies and gradients |
+| `--grain` | `AMOUNT` | Add fine grain after grading, AMOUNT levels of 255 (1..32, default 4), to hide what banding is left |
+<!-- /gen:flags:wal:banding -->
+
 <!-- gen:flags:wal:video -->
 | flag | value | what it does |
 | --- | --- | --- |

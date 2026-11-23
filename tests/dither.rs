@@ -370,3 +370,33 @@ fn continuous_styles_cover_the_whole_range_between_two_inks() {
     );
     assert_ne!(a, b, "the kernels differ");
 }
+
+#[test]
+fn deband_takes_a_video_and_grain_stays_off_dithers() {
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let dir = std::env::temp_dir().join(format!("rehue-grain-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let wall = dir.join("wall.png");
+    gradient_image((32, 24)).save(&wall).unwrap();
+    let scheme = fixture("solarized-dark.yaml");
+    let fails = |extra: &[&str], says: &str| {
+        let run = std::process::Command::new(bin)
+            .args(["wal", "-i"])
+            .arg(&wall)
+            .arg("-s")
+            .arg(&scheme)
+            .args(extra)
+            .arg("-o")
+            .arg(dir.join("out"))
+            .output()
+            .unwrap();
+        assert!(!run.status.success(), "{extra:?} should fail");
+        let err = String::from_utf8_lossy(&run.stderr);
+        assert!(err.contains(says), "{extra:?}: {err}");
+    };
+    fails(&["--deband"], "--deband takes a video");
+    fails(&["--dither", "--grain"], "--grain doesn't go with --dither");
+    fails(&["--grain", "40"], "--grain takes 1..=32");
+    let _ = std::fs::remove_dir_all(&dir);
+}

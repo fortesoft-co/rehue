@@ -167,3 +167,45 @@ fn a_video_takes_no_dither_yet() {
     assert!(String::from_utf8_lossy(&run.stderr).contains("--dither doesn't take a video"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn deband_and_grain_go_through_a_video() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        eprintln!("ffmpeg / ffprobe not found: skipping");
+        return;
+    };
+    let dir = scratch("deband");
+    let input = dir.join("clip.mp4");
+    clip(&ffmpeg, &input);
+    let scheme = fixture("solarized-dark.yaml");
+    let out = dir.join("out");
+    let run = wal(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "-H",
+        "1",
+        "--deband",
+        "--grain",
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let video = out.join("wallpaper.mp4");
+    let streams = probe(
+        &ffprobe,
+        &video,
+        "stream=codec_type,width,height,nb_read_frames",
+    );
+    assert_eq!(streams.lines().next(), Some("video,96,54,12"));
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(out.join("report.json")).unwrap()).unwrap();
+    assert_eq!(report["deband"], true);
+    assert_eq!(report["grain"], 4.0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
