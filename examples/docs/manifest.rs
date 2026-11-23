@@ -56,6 +56,8 @@ pub enum Kind {
     /// Headless-browser screenshots of a preview.html, one per view,
     /// side by side.
     Shot,
+    /// The single cell, a video, as an animated WebP `width` wide.
+    Animation,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

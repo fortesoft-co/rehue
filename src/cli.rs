@@ -46,7 +46,8 @@ pub enum Commands {
         /// e.g. -i rose-pine-dawn   -i ~/schemes/mine.yaml
         #[arg(short, long, value_name = "SCHEME")]
         input: String,
-        /// The wallpaper whose hues the scheme takes on: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
+        /// The wallpaper whose hues the scheme takes on: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi;
+        /// or a video (mp4, webm, mkv or mov), its hues measured on frames across it.
         ///
         /// e.g. -w ~/pictures/butterfly.webp
         #[arg(short, long)]
@@ -123,8 +124,8 @@ pub enum Commands {
         #[arg(long, help_heading = "Grading", value_name = "[ROLE] C", num_args = 1..=2, allow_negative_numbers = true)]
         chroma: Vec<String>,
     },
-    /// Wallpaper + scheme → wallpaper: repaint the image with the scheme's
-    /// palette.
+    /// Wallpaper + scheme → wallpaper: repaint the image (or a video) with
+    /// the scheme's palette.
     ///
     /// Repaint an image with a base16 scheme's palette: every pixel
     /// moves toward the palette (hue and chroma by dial; lightness stays
@@ -360,7 +361,8 @@ pub enum Commands {
     ///          rehue inspect --schemes gruvbox
     ///          rehue inspect --looks
     Inspect {
-        /// The image whose hues get extracted (families mode): png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
+        /// The image whose hues get extracted (families mode): png, jpeg, webp, gif (its first frame), tiff, bmp or qoi;
+        /// or a video (mp4, webm, mkv or mov), its hues measured on frames across it.
         ///
         /// e.g. -w ~/pictures/butterfly.webp
         #[arg(short, long)]

@@ -21,6 +21,11 @@ versions may break).
   before grading; grain adds fine monochrome grain after it (4 levels by
   default), the same every run and moving frame to frame on a video.
   The Video docs say which to try for what.
+- `scheme -w` and `inspect -w` take a video too, its hue families
+  measured on frames across it. `inspect -s NAME -o DIR` also writes
+  `inspect.png`, the scheme's 16 slots as swatches. The Video docs show
+  a skyline from dusk to night before and after, with its hue families
+  and the scheme.
 - `--grays keep|tint` (config `grays`): with `tint`, gray pixels take
   the hue of the scheme's grays as they take on its chroma, so whites
   go cream or lavender with the scheme and a dark sky takes the

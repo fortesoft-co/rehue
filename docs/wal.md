@@ -23,10 +23,12 @@ orange. Its brightest specks reach the accents' full strength while
 the dim ones stay quiet: the picture keeps its own range of color,
 inside the scheme's.
 
-It reads PNG, JPEG, WebP, GIF (the first frame), TIFF, BMP and QOI.
-A run writes:
+It reads PNG, JPEG, WebP, GIF (the first frame), TIFF, BMP and QOI,
+and video: MP4, WebM, MKV and MOV, graded frame by frame through
+ffmpeg (see [Video](#video)). A run writes:
 
-- `wallpaper.png`, the repainted image
+- `wallpaper.png`, the repainted image (`wallpaper.mp4` and so on for
+  a video)
 - `compare.png`, before/after thumbnails
 - `report.json`, how much of the image each slot covers
 - `preview.html`, the scheme on a mock desktop next to the result
@@ -394,6 +396,32 @@ rehue wal -i clip.mp4 -s tokyo-night-storm -l pop -o graded
 - `--dither` doesn't take a video yet.
 
 Play the result with any video wallpaper player, such as mpvpaper.
+
+A skyline from dusk to night in Dawnfox, its sky kept clean with the
+[banding](#banding-or-blotches) flags:
+
+<!-- gen:run:wal-video -->
+```sh
+rehue wal \
+  -i assets/xiang-qi-chongqing-twilight.mp4 \
+  -s dawnfox \
+  -H 1 \
+  --match-lightness 0.3 \
+  --chroma 0.8 \
+  --grays tint \
+  --deband \
+  --grain \
+  -o graded
+```
+<!-- /gen:run:wal-video -->
+
+| | |
+| --- | --- |
+| ![the Chongqing skyline from dusk to night, as shot](../assets/examples/wal-video-before.webp) | ![the clip's hue families](../assets/examples/wal-video-families.png)<br>the clip's hue families |
+| ![the same clip graded with dawnfox](../assets/examples/wal-video-after.webp) | ![dawnfox's 16 slots](../assets/examples/wal-video-dawnfox.png)<br>dawnfox |
+
+[`rehue inspect -w`](inspect.md) and [`rehue scheme -w`](scheme.md)
+take a video too, its hues measured on frames across it.
 
 ### Banding or blotches
 

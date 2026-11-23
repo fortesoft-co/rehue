@@ -103,7 +103,18 @@ impl Record {
     }
 }
 
+/// The hue families of an image file, or of a video's frames sampled
+/// across it (through ffmpeg, as `wal` grades one).
 pub fn extract_hues(path: &Path, params: &ExtractionParams) -> Result<Vec<Cluster>, String> {
+    if crate::video::is_video(path) {
+        let ffmpeg = crate::video::resolve_ffmpeg(None)?;
+        let probe = crate::video::probe(&ffmpeg, path)?;
+        let frames = crate::video::sample(&ffmpeg, path, &probe, false)?;
+        return Ok(extract_hues_dynamic(
+            &DynamicImage::ImageRgb8(frames),
+            params,
+        ));
+    }
     let image = ImageReader::open(path)
         .map_err(|e| format!("can't read wallpaper {}: {}", path.display(), e))?
         .decode()

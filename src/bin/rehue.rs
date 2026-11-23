@@ -45,39 +45,31 @@ fn print_families(verb: &str, clusters: &[extract::Cluster]) {
 }
 
 /// The 16-cell before/after swatch image (reference top, mapped bottom).
-fn render_preview(
-    original: &BTreeMap<String, String>,
-    mapped: &BTreeMap<String, String>,
-) -> Result<image::RgbImage, String> {
+/// The 16 slots as rows of swatches, one row per palette (base00 first).
+fn render_preview(rows: &[&BTreeMap<String, String>]) -> Result<image::RgbImage, String> {
     let cell: u32 = 24;
     let gap: u32 = 4;
     let width = cell * BASE_SLOTS.len() as u32;
-    let height = cell * 2 + gap;
+    let height = cell * rows.len() as u32 + gap * (rows.len() as u32 - 1);
     let mut img = image::ImageBuffer::from_pixel(width, height, image::Rgb([34u8, 34, 39]));
-    for (idx, slot) in BASE_SLOTS.iter().copied().enumerate() {
-        let x0 = idx as u32 * cell + 2;
-        let original_hex = original
-            .get(slot)
-            .ok_or_else(|| format!("missing colour {}", slot))?;
-        let mapped_hex = mapped
-            .get(slot)
-            .ok_or_else(|| format!("missing colour {}", slot))?;
-        fill_rect(
-            &mut img,
-            x0,
-            1,
-            x0 + cell - 4,
-            cell - 1,
-            hex_to_rgb(original_hex)?,
-        );
-        fill_rect(
-            &mut img,
-            x0,
-            cell + gap,
-            x0 + cell - 4,
-            cell * 2 + gap - 1,
-            hex_to_rgb(mapped_hex)?,
-        );
+    for (row, palette) in rows.iter().enumerate() {
+        let y0 = row as u32 * (cell + gap);
+        for (idx, slot) in BASE_SLOTS.iter().copied().enumerate() {
+            let x0 = idx as u32 * cell + 2;
+            let hex = palette
+                .get(slot)
+                .ok_or_else(|| format!("missing colour {}", slot))?;
+            // the first row keeps a pixel's margin above it
+            let top = if row == 0 { 1 } else { y0 };
+            fill_rect(
+                &mut img,
+                x0,
+                top,
+                x0 + cell - 4,
+                y0 + cell - 1,
+                hex_to_rgb(hex)?,
+            );
+        }
     }
     Ok(img)
 }
@@ -424,7 +416,7 @@ fn run_scheme(
         .zip(&slot_hexes)
         .map(|(slot, hex)| (slot.to_string(), hex.clone()))
         .collect();
-    render_preview(&original, &mapped)?
+    render_preview(&[&original, &mapped])?
         .save(out.join("preview.png"))
         .map_err(|e| format!("can't write preview.png: {}", e))?;
     let scheme_name = parsed.meta_name();
@@ -1028,7 +1020,15 @@ fn run_inspect(
                 })?,
             )
             .map_err(|e| format!("can't write preview.html: {}", e))?;
-            println!("rehue inspect: wrote preview.html");
+            let slots: BTreeMap<String, String> = BASE_SLOTS
+                .iter()
+                .map(|slot| slot.to_string())
+                .zip(hexes.iter().cloned())
+                .collect();
+            render_preview(&[&slots])?
+                .save(dir.join("inspect.png"))
+                .map_err(|e| format!("can't write inspect.png: {}", e))?;
+            println!("rehue inspect: wrote preview.html, inspect.png");
         }
         return Ok(());
     }

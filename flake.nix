@@ -60,7 +60,8 @@
         };
 
         # Everything the docs image builder needs on top of the
-        # toolchain: imagemagick for the montages, headless chromium for
+        # toolchain: imagemagick for the montages, libwebp's img2webp for
+        # the animated video examples, headless chromium for
         # the preview.html screenshots, Papirus for the icons example
         # (kept out of `default` so a plain `cargo test` shell doesn't
         # pull a browser).
@@ -72,6 +73,7 @@
             [
               imagemagick
               dejavu_fonts
+              libwebp
             ]
             ++ lib.optionals stdenv.hostPlatform.isLinux [ chromium ];
           FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };

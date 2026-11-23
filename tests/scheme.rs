@@ -181,3 +181,33 @@ fn every_embedded_scheme_parses_with_16_slots() {
     }
     assert!(count > 300, "collection looks truncated: {count} schemes");
 }
+
+#[test]
+fn inspect_a_scheme_writes_its_swatches() {
+    let dir = std::env::temp_dir().join(format!("rehue-inspect-swatches-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let out = rehue(&[
+        "inspect",
+        "-s",
+        "gruvbox-light",
+        "-o",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let png = image::open(dir.join("inspect.png")).unwrap().to_rgb8();
+    assert_eq!((png.width(), png.height()), (16 * 24, 24));
+    // the middle of each swatch is its slot, base00 first
+    let hexes = Scheme::resolve("gruvbox-light", None)
+        .unwrap()
+        .slot_hexes()
+        .unwrap();
+    for (i, hex) in hexes.iter().enumerate() {
+        let p = png.get_pixel(i as u32 * 24 + 12, 12).0;
+        assert_eq!(rehue::color::hex_to_rgb(hex).unwrap(), p, "slot {i}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

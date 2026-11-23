@@ -5,7 +5,9 @@ families, a scheme's colors, every bundled scheme, or the looks.
 
 **Wallpaper mode** lists the image's hue families with their index,
 hue, chroma and weight, above a row of truecolor swatches in the same
-order. The indices are what `assign` refers to.
+order. The indices are what `assign` refers to. A video works too
+(`-w my-loop.mp4`): its families are measured on frames across it,
+through ffmpeg (`$REHUE_FFMPEG`, else your `PATH`).
 
 <!-- gen:run:inspect-butterfly -->
 ```sh
@@ -28,8 +30,8 @@ rehue inspect -s my-theme.yaml      # by path
 ```
 
 With `-o DIR`, wallpaper mode also writes `inspect.png` (the swatch
-row) and scheme mode writes `preview.html` (the same mock page
-`scheme` produces).
+row) and scheme mode writes `inspect.png` (the 16 slots in a row) and
+`preview.html` (the same mock page `scheme` produces).
 
 **Looks mode** lists the [looks](looks.md), built-in and your own;
 `rehue inspect --looks NAME` prints what one sets.

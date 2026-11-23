@@ -15,6 +15,7 @@ butterfly = "assets/kelly-ishmael-butterfly-closeup.webp"
 bango = "assets/bango-renders-3d-abstract.webp"
 bust = "assets/tamula-aura-garden-bust.webp"
 anime = "assets/honeyworks-anime-video-frame.webp"
+chongqing = "assets/xiang-qi-chongqing-twilight.mp4"
 
 # ---------------------------------------- README and page examples
 
@@ -598,3 +599,40 @@ rungs = [
   { args = "--dither halftone" },
   { args = "--dither diffuse,kernel=atkinson" },
 ]
+
+# ---------------------------------------- wal: video
+
+[[run]]
+id = "wal-video"
+args = "wal -i {chongqing} -s dawnfox -H 1 --match-lightness 0.3 --chroma 0.8 --grays tint --deband --grain -o {out}"
+out = "graded"
+
+[[run]]
+id = "wal-video-families"
+args = "inspect -w {chongqing} -o {out}"
+out = "families"
+
+[[run]]
+id = "wal-video-scheme"
+args = "inspect -s dawnfox -o {out}"
+out = "dawnfox"
+
+[[image]]
+file = "assets/examples/wal-video-before.webp"
+kind = "animation"
+cells = [{ src = "{chongqing}" }]
+
+[[image]]
+file = "assets/examples/wal-video-families.png"
+kind = "copy"
+cells = [{ src = "{out:wal-video-families}/inspect.png" }]
+
+[[image]]
+file = "assets/examples/wal-video-after.webp"
+kind = "animation"
+cells = [{ src = "{out:wal-video}/wallpaper.mp4" }]
+
+[[image]]
+file = "assets/examples/wal-video-dawnfox.png"
+kind = "copy"
+cells = [{ src = "{out:wal-video-scheme}/inspect.png" }]

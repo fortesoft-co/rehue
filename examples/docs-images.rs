@@ -8,9 +8,10 @@
 //!   nix develop .#examples -c cargo run --release --example docs-images
 //!   ... --example docs-images -- wal-territory glitter   # only these
 //!
-//! Needs ImageMagick (`magick`) and, for the preview screenshots, a
-//! Chromium (`chromium`, `google-chrome`, or $CHROME); the examples
-//! devshell provides both, and the pinned Papirus the icon examples
+//! Needs ImageMagick (`magick`), libwebp's `img2webp` and ffmpeg for the
+//! animated examples, and, for the preview screenshots, a Chromium
+//! (`chromium`, `google-chrome`, or $CHROME); the examples devshell
+//! provides them all, and the pinned Papirus the icon examples
 //! recolor (`$REHUE_DOCS_ICONS`).  Scratch output lands in .scratch/docs-images.
 
 #[path = "docs/manifest.rs"]
@@ -36,6 +37,13 @@ const MIN_CHANGE: f64 = 3.0;
 /// four most-changed slots.
 const MIN_SCHEME_CHANGE: f64 = 2.0;
 const FG: &str = "#e8e8ef";
+
+/// Animated examples: frames per second and lossy WebP quality.  Every
+/// frame is a keyframe: with frames drawn over the last, lossy WebP
+/// leaves stale blocks wherever the picture changes slowly (a sky
+/// darkening), and redrawing whole frames costs only about a fifth more.
+const ANIMATION_FPS: u32 = 8;
+const ANIMATION_QUALITY: &str = "40";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -160,6 +168,36 @@ impl Builder {
         sh(cmd.arg(out)).map(|_| ())
     }
 
+    /// `video` as an animated WebP `width` px wide.
+    fn animation(&self, video: &Path, width: u32, out: &Path) -> Result<()> {
+        let stem = out.file_stem().unwrap_or_default().to_string_lossy();
+        let frames = self.work.join("animation").join(&*stem);
+        let _ = std::fs::remove_dir_all(&frames);
+        std::fs::create_dir_all(&frames).map_err(|e| e.to_string())?;
+        let ffmpeg = rehue::video::resolve_ffmpeg(None)?;
+        sh(Command::new(ffmpeg)
+            .args(["-v", "error", "-i"])
+            .arg(video)
+            .arg("-vf")
+            .arg(format!(
+                "fps={ANIMATION_FPS},scale={width}:-2:flags=lanczos"
+            ))
+            .arg(frames.join("%04d.png")))?;
+        let mut pngs: Vec<PathBuf> = std::fs::read_dir(&frames)
+            .map_err(|e| e.to_string())?
+            .map(|e| e.map(|e| e.path()).map_err(|e| e.to_string()))
+            .collect::<Result<_>>()?;
+        pngs.sort();
+        sh(Command::new("img2webp")
+            .args(["-loop", "0", "-kmin", "0", "-kmax", "1", "-lossy"])
+            .args(["-q", ANIMATION_QUALITY, "-m", "6", "-d"])
+            .arg((1000 / ANIMATION_FPS).to_string())
+            .args(&pngs)
+            .arg("-o")
+            .arg(out))
+        .map(|_| ())
+    }
+
     fn corner(&self, png: &Path) -> Result<String> {
         sh(Command::new("magick")
             .arg(png)
@@ -237,6 +275,7 @@ impl Builder {
                 .arg(format!("{}%", image.scale.unwrap_or(200)))
                 .arg(&out))
             .map(|_| ()),
+            Kind::Animation => self.animation(&cells[0].1, image.width.unwrap_or(480), &out),
             Kind::Shot => {
                 let shots: Vec<PathBuf> = image
                     .views
@@ -455,6 +494,9 @@ fn run() -> Result<()> {
         .find(|c| found(c))
         .map(String::from)
     });
+    if images.iter().any(|i| i.kind == Kind::Animation) && !found("img2webp") {
+        return Err("missing: img2webp (try: nix develop .#examples)".into());
+    }
     if chrome.is_none() && images.iter().any(|i| i.kind == Kind::Shot) {
         return Err("missing: chromium (or set CHROME=...)".into());
     }

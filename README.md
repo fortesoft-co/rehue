@@ -46,7 +46,7 @@ It works in both directions:
 - **`rehue wal`** (wallpaper + scheme → wallpaper): your
   wallpaper, repainted with the scheme's palette. No more hunting for
   a wallpaper that matches. The picture you love becomes the one that
-  matches.
+  matches. Video wallpapers work too, graded frame by frame.
 
 Use both and the loop closes: rehue a scheme from your wallpaper, then
 repaint the wallpaper with that scheme. Every command takes the thing
@@ -65,6 +65,7 @@ rehue scheme -i nord -w my-photo.jpg -o mapped
 
 # your wallpaper, repainted with a scheme's palette:
 rehue wal -i my-photo.jpg -s gruvbox-light -o repainted -H 1
+# (or a video wallpaper, with ffmpeg installed: -i my-loop.mp4)
 
 # the round trip: repaint the wallpaper with the scheme you just made
 rehue wal -i my-photo.jpg -s mapped/scheme.yaml -o repainted -H 1
@@ -157,7 +158,7 @@ Two more tabs approximate how Stylix maps the same 16 slots onto GTK
 | command | what it does |
 | --- | --- |
 | `rehue scheme` | Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the scheme's structure |
-| `rehue wal` | Wallpaper + scheme → wallpaper: repaint the image with the scheme's palette |
+| `rehue wal` | Wallpaper + scheme → wallpaper: repaint the image (or a video) with the scheme's palette |
 | `rehue icons` | Recolor an icon theme (or one SVG / PNG icon) with a scheme |
 | `rehue inspect` | Show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
 | `rehue enhance` | Upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
@@ -210,6 +211,9 @@ rehue wal -i my-photo.jpg -s gruvbox-light -H 1                  # repaint
 rehue wal -i my-photo.jpg -s gruvbox-light -H 1 --reach 90       # wash more of the palette over it
 rehue wal -i my-photo.jpg -s gruvbox-light -H 1 -p base0D,base0E # only these two colors
 ```
+
+A video wallpaper (`-i my-loop.mp4`, `.webm`, `.mkv` or `.mov`) is
+graded frame by frame through ffmpeg: see [video](docs/wal.md#video).
 
 More: [docs/wal.md](docs/wal.md), every option with examples, and
 LUT export for other tools and video.

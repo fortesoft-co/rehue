@@ -145,6 +145,47 @@ fn a_video_is_graded_frame_by_frame_with_its_audio() {
 }
 
 #[test]
+fn inspect_and_scheme_take_a_video() {
+    let Some((ffmpeg, _)) = tools() else {
+        eprintln!("ffmpeg / ffprobe not found: skipping");
+        return;
+    };
+    let dir = scratch("families");
+    let input = dir.join("clip.mp4");
+    clip(&ffmpeg, &input);
+    let inspect = Command::new(env!("CARGO_BIN_EXE_rehue"))
+        .args(["inspect", "-w"])
+        .arg(&input)
+        .arg("-o")
+        .arg(dir.join("inspect"))
+        .output()
+        .unwrap();
+    assert!(
+        inspect.status.success(),
+        "{}",
+        String::from_utf8_lossy(&inspect.stderr)
+    );
+    assert!(String::from_utf8_lossy(&inspect.stdout).contains("hue family"));
+    assert!(dir.join("inspect/inspect.png").is_file());
+    let scheme = Command::new(env!("CARGO_BIN_EXE_rehue"))
+        .args(["scheme", "-i"])
+        .arg(fixture("solarized-dark.yaml"))
+        .arg("-w")
+        .arg(&input)
+        .arg("-o")
+        .arg(dir.join("scheme"))
+        .output()
+        .unwrap();
+    assert!(
+        scheme.status.success(),
+        "{}",
+        String::from_utf8_lossy(&scheme.stderr)
+    );
+    assert!(dir.join("scheme/scheme.yaml").is_file());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_video_takes_no_dither_yet() {
     let Some((ffmpeg, _)) = tools() else {
         eprintln!("ffmpeg / ffprobe not found: skipping");
