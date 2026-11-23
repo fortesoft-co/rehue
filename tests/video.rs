@@ -250,3 +250,93 @@ fn deband_and_grain_go_through_a_video() {
     assert_eq!(report["grain"], 4.0);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn ffmpeg_args_split_like_a_shell_and_refuse_what_rehue_owns() {
+    use rehue::video::{EncodeArgs, split_args};
+    assert_eq!(
+        split_args(r#"-c:v libx264 -x264-params 'a=1:b=2' -metadata title="a \"b\"" x\ y"#)
+            .unwrap(),
+        [
+            "-c:v",
+            "libx264",
+            "-x264-params",
+            "a=1:b=2",
+            "-metadata",
+            r#"title=a "b""#,
+            "x y"
+        ]
+    );
+    assert!(split_args("-x 'open").is_err());
+    let parsed = EncodeArgs::parse("-c:v libx265 -pix_fmt:v yuv444p -crf 20").unwrap();
+    assert_eq!(parsed.pix_fmt.as_deref(), Some("yuv444p"));
+    assert_eq!(parsed.args, ["-c:v", "libx265", "-crf", "20"]);
+    for refused in [
+        "-vf scale=1:1",
+        "-filter:v null",
+        "-map 0",
+        "-t 2",
+        "-i x.mp4",
+        "-f matroska",
+    ] {
+        let err = EncodeArgs::parse(refused).unwrap_err();
+        assert!(err.contains("can't take"), "{refused}: {err}");
+    }
+    assert!(EncodeArgs::parse("-pix_fmt").is_err());
+}
+
+#[test]
+fn ffmpeg_args_set_how_the_video_is_encoded() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        eprintln!("ffmpeg / ffprobe not found: skipping");
+        return;
+    };
+    let dir = scratch("ffmpeg-args");
+    let input = dir.join("clip.mp4");
+    clip(&ffmpeg, &input);
+    let scheme = fixture("solarized-dark.yaml");
+    let out = dir.join("out");
+    let args = "-c:v libx264 -preset ultrafast -crf 30 -pix_fmt yuv444p";
+    let run = wal(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "-H",
+        "1",
+        "--ffmpeg-args",
+        args,
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let streams = probe(
+        &ffprobe,
+        &out.join("wallpaper.mp4"),
+        "stream=codec_type,codec_name,pix_fmt,nb_read_frames",
+    );
+    let mut streams = streams.lines();
+    assert_eq!(streams.next(), Some("h264,video,yuv444p,12"));
+    assert!(streams.next().is_some_and(|a| a.contains("audio")));
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(out.join("report.json")).unwrap()).unwrap();
+    assert_eq!(report["video"]["ffmpeg_args"], args);
+
+    let refused = wal(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "--ffmpeg-args",
+        "-vf scale=8:8",
+        "-o",
+        dir.join("refused").to_str().unwrap(),
+    ]);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("can't take -vf"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

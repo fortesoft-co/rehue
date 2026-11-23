@@ -240,6 +240,19 @@ pub enum Commands {
         /// ffprobe is looked for beside it.  e.g. --ffmpeg ~/bin/ffmpeg
         #[arg(long, help_heading = "Video", value_name = "FFMPEG")]
         ffmpeg: Option<PathBuf>,
+        /// Encoding flags for ffmpeg, in place of rehue's codec defaults
+        /// (H.264 crf 16, or VP9 crf 20 for WebM).
+        ///
+        /// Quoted as one argument; rehue keeps the input, mapping,
+        /// filters, length and container.  -pix_fmt sets the output's
+        /// pixel format.  e.g. --ffmpeg-args "-c:v libx265 -crf 20 -preset slow"
+        #[arg(
+            long,
+            help_heading = "Video",
+            value_name = "ARGS",
+            allow_hyphen_values = true
+        )]
+        ffmpeg_args: Option<String>,
         /// Smooth a video's compression banding before grading: ffmpeg's
         /// deband filter, for blocky steps in skies and gradients.
         ///

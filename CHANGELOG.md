@@ -21,6 +21,10 @@ versions may break).
   before grading; grain adds fine monochrome grain after it (4 levels by
   default), the same every run and moving frame to frame on a video.
   The Video docs say which to try for what.
+- `wal --ffmpeg-args "..."`: your own ffmpeg encoding flags for a
+  video, in place of rehue's codec settings (HEVC, AV1, `-pix_fmt
+  yuv444p`, audio flags, ...). Flags that would change the input,
+  mapping, filters, length or container are refused.
 - `scheme -w` and `inspect -w` take a video too, its hue families
   measured on frames across it. `inspect -s NAME -o DIR` also writes
   `inspect.png`, the scheme's 16 slots as swatches. The Video docs show

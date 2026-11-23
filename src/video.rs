@@ -356,6 +356,105 @@ impl Decoder {
     }
 }
 
+/// Flags `--ffmpeg-args` can't take: rehue owns the input, the stream
+/// mapping, the filters (the grade comes before any), the length and
+/// the container.
+const REFUSED: [&str; 14] = [
+    "-i",
+    "-map",
+    "-vf",
+    "-filter",
+    "-filter_complex",
+    "-lavfi",
+    "-ss",
+    "-t",
+    "-to",
+    "-frames",
+    "-vframes",
+    "-f",
+    "-y",
+    "-n",
+];
+
+/// Encoding flags for ffmpeg (`--ffmpeg-args`), in place of rehue's
+/// codec defaults.  A `-pix_fmt` is taken out and used by rehue's own
+/// conversion, so `yuv444p` (or 10-bit) is reached in one step.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct EncodeArgs {
+    pub pix_fmt: Option<String>,
+    pub args: Vec<String>,
+}
+
+impl EncodeArgs {
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let mut words = split_args(text)?.into_iter();
+        let mut parsed = EncodeArgs::default();
+        while let Some(word) = words.next() {
+            let name = word.split(':').next().unwrap_or_default();
+            if REFUSED.contains(&name) {
+                return Err(format!(
+                    "--ffmpeg-args can't take {word}: rehue sets the input, mapping, filters, length and container"
+                ));
+            }
+            if name == "-pix_fmt" {
+                let value = words
+                    .next()
+                    .ok_or_else(|| format!("--ffmpeg-args: {word} needs a value"))?;
+                parsed.pix_fmt = Some(value);
+                continue;
+            }
+            parsed.args.push(word);
+        }
+        Ok(parsed)
+    }
+}
+
+/// Split `text` into words the way a shell would: on whitespace, with
+/// 'single' quotes taken literally, "double" quotes and backslashes
+/// escaping.
+pub fn split_args(text: &str) -> Result<Vec<String>, String> {
+    let mut words = Vec::new();
+    let mut word: Option<String> = None;
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            c if c.is_whitespace() => words.extend(word.take()),
+            '\'' => {
+                let w = word.get_or_insert_with(String::new);
+                loop {
+                    match chars.next() {
+                        Some('\'') => break,
+                        Some(c) => w.push(c),
+                        None => return Err(format!("unclosed ' in: {text}")),
+                    }
+                }
+            }
+            '"' => {
+                let w = word.get_or_insert_with(String::new);
+                loop {
+                    match chars.next() {
+                        Some('"') => break,
+                        Some('\\') => match chars.next() {
+                            Some(c) => w.push(c),
+                            None => return Err(format!("unclosed \" in: {text}")),
+                        },
+                        Some(c) => w.push(c),
+                        None => return Err(format!("unclosed \" in: {text}")),
+                    }
+                }
+            }
+            '\\' => {
+                if let Some(c) = chars.next() {
+                    word.get_or_insert_with(String::new).push(c);
+                }
+            }
+            c => word.get_or_insert_with(String::new).push(c),
+        }
+    }
+    words.extend(word);
+    Ok(words)
+}
+
 /// Frames written into a new video, with the source's audio.
 pub struct Encoder {
     child: Child,
@@ -365,9 +464,17 @@ pub struct Encoder {
 
 impl Encoder {
     /// Encode `probe`-sized frames into `out`; the container (and so the
-    /// codec) follows `out`'s extension, and the audio comes from
-    /// `source`.
-    pub fn open(ffmpeg: &Path, source: &Path, out: &Path, probe: &Probe) -> Result<Self, String> {
+    /// default codec) follows `out`'s extension, the audio comes from
+    /// `source`, and `encode` replaces the video codec settings.
+    pub fn open(
+        ffmpeg: &Path,
+        source: &Path,
+        out: &Path,
+        probe: &Probe,
+        encode: &EncodeArgs,
+    ) -> Result<Self, String> {
+        let custom = !encode.args.is_empty();
+        let pix_fmt = encode.pix_fmt.as_deref().unwrap_or("yuv420p");
         let ext = out
             .extension()
             .and_then(|e| e.to_str())
@@ -382,32 +489,38 @@ impl Encoder {
             .args(["-map", "0:v:0", "-map", "1:a:0?", "-map_metadata", "-1"])
             .arg("-vf")
             .arg(format!(
-                "scale=out_color_matrix=bt709:out_range=tv:flags={SWS_FLAGS},format=yuv420p"
+                "scale=out_color_matrix=bt709:out_range=tv:flags={SWS_FLAGS},format={pix_fmt}"
             ))
             .args(["-colorspace", "bt709", "-color_primaries", "bt709"])
             .args(["-color_trc", "bt709", "-color_range", "tv"]);
         if ext == "webm" {
-            cmd.args([
-                "-c:v",
-                "libvpx-vp9",
-                "-crf",
-                "20",
-                "-b:v",
-                "0",
-                "-row-mt",
-                "1",
-            ]);
+            if !custom {
+                cmd.args([
+                    "-c:v",
+                    "libvpx-vp9",
+                    "-crf",
+                    "20",
+                    "-b:v",
+                    "0",
+                    "-row-mt",
+                    "1",
+                ]);
+            }
             match probe.audio.as_deref() {
                 Some("opus" | "vorbis") => cmd.args(["-c:a", "copy"]),
                 _ => cmd.args(["-c:a", "libopus", "-b:a", "160k"]),
             };
         } else {
-            cmd.args(["-c:v", "libx264", "-preset", "slow", "-crf", "16"])
-                .args(["-c:a", "copy"]);
+            if !custom {
+                cmd.args(["-c:v", "libx264", "-preset", "slow", "-crf", "16"]);
+            }
+            cmd.args(["-c:a", "copy"]);
             if ext == "mp4" || ext == "mov" {
                 cmd.args(["-movflags", "+faststart"]);
             }
         }
+        // after rehue's own, so an audio flag here wins too
+        cmd.args(&encode.args);
         let mut child = cmd
             .arg(out)
             .stdin(Stdio::piped())

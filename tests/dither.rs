@@ -396,6 +396,7 @@ fn deband_takes_a_video_and_grain_stays_off_dithers() {
         assert!(err.contains(says), "{extra:?}: {err}");
     };
     fails(&["--deband"], "--deband takes a video");
+    fails(&["--ffmpeg-args", "-crf 20"], "--ffmpeg-args takes a video");
     fails(&["--dither", "--grain"], "--grain doesn't go with --dither");
     fails(&["--grain", "40"], "--grain takes 1..=32");
     let _ = std::fs::remove_dir_all(&dir);

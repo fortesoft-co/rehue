@@ -533,6 +533,8 @@ struct WalRun<'a> {
     deband: bool,
     /// Grain after grading, in levels.
     grain: Option<f64>,
+    /// Encoding flags for ffmpeg, as given.
+    ffmpeg_args: Option<&'a str>,
 }
 
 fn run_wal(
@@ -548,7 +550,17 @@ fn run_wal(
         ffmpeg,
         deband,
         grain,
+        ffmpeg_args,
     } = run;
+    let encode = match ffmpeg_args {
+        Some(text) => {
+            if !video::is_video(wallpaper) {
+                return Err("--ffmpeg-args takes a video (it sets how one is encoded)".to_string());
+            }
+            video::EncodeArgs::parse(text)?
+        }
+        None => video::EncodeArgs::default(),
+    };
     if let Some(amount) = grain {
         if !(1.0..=rehue::grain::MAX).contains(&amount) {
             return Err(format!(
@@ -788,8 +800,11 @@ fn run_wal(
                 &out.join(&file),
                 probe,
                 table.as_ref(),
-                deband,
-                grain,
+                FrameSteps {
+                    deband,
+                    grain,
+                    encode: &encode,
+                },
             )?;
             println!("rehue wal: {} frames through the grade", graded.frames);
             let info = serde_json::json!({
@@ -798,6 +813,7 @@ fn run_wal(
                 "height": probe.height,
                 "fps": probe.fps,
                 "sampled_frames": source.height() / video::sample_size(probe).1,
+                "ffmpeg_args": ffmpeg_args,
             });
             (
                 graded.first,
@@ -936,19 +952,33 @@ struct GradedVideo {
     coverage: Vec<u64>,
 }
 
-/// Every frame of `input` (debanded first with `deband`) through `table`
-/// (unchanged without one), with `grain` after, into `output`.
+/// What happens to a video's frames around the grade.
+struct FrameSteps<'a> {
+    /// Deband the frames before grading.
+    deband: bool,
+    /// Grain after grading, in levels.
+    grain: Option<f64>,
+    /// How the result is encoded.
+    encode: &'a video::EncodeArgs,
+}
+
+/// Every frame of `input` through `table` (unchanged without one), with
+/// `steps` around it, into `output`.
 fn grade_video(
     tool: &Path,
     input: &Path,
     output: &Path,
     probe: &video::Probe,
     table: Option<&grade_wal::ColorTable>,
-    deband: bool,
-    grain: Option<f64>,
+    steps: FrameSteps,
 ) -> Result<GradedVideo, String> {
+    let FrameSteps {
+        deband,
+        grain,
+        encode,
+    } = steps;
     let mut decoder = video::Decoder::open(tool, input, probe, deband)?;
-    let mut encoder = video::Encoder::open(tool, input, output, probe)?;
+    let mut encoder = video::Encoder::open(tool, input, output, probe, encode)?;
     let mut frame = Vec::new();
     let mut graded = vec![0u8; probe.width as usize * probe.height as usize * 3];
     let mut coverage = vec![0u64; BASE_SLOTS.len()];
@@ -1665,6 +1695,7 @@ fn run(command: Commands) -> Result<(), String> {
             ffmpeg,
             deband,
             grain,
+            ffmpeg_args,
         } => {
             let (mut wal_config, looks) = rehue::look::resolve::<grade_wal::WalConfig>(
                 &config_label(config.as_deref()),
@@ -1687,6 +1718,7 @@ fn run(command: Commands) -> Result<(), String> {
                     ffmpeg: ffmpeg.as_deref(),
                     deband,
                     grain,
+                    ffmpeg_args: ffmpeg_args.as_deref(),
                 },
             )
         }

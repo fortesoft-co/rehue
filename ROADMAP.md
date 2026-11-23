@@ -30,13 +30,6 @@ shipped.
 - **Dithered video**: `--dither` on a video wallpaper (ordered styles;
   diffuse with a warning that it shimmers). Which codec settings keep
   a dither pattern intact is under test.
-- **Encoder options for video**: a generic way to hand ffmpeg its
-  encoding flags (`--ffmpeg-args "-c:v libsvtav1 -crf 30"`, or a
-  `ffmpeg-args` key in a config or look), replacing rehue's codec
-  defaults while rehue keeps the frame pipe, the color tags and the
-  audio mapping. To investigate: which flags rehue must refuse or
-  keep (input options, filters, `-pix_fmt` for 10-bit), and an output
-  extension that follows the chosen codec.
 - **Seamless loops**: `--loop SECONDS` crossfades a video's last
   seconds into its first, so the end flows into the beginning (the
   output is that much shorter), done by ffmpeg (`xfade`, `acrossfade`

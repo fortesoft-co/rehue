@@ -450,10 +450,34 @@ rehue wal -i sunset.mp4 -s gruvbox-dark -H 1 --deband --grain 3
 | `--grain` | `AMOUNT` | Add fine grain after grading, AMOUNT levels of 255 (1..32, default 4), to hide what banding is left |
 <!-- /gen:flags:wal:banding -->
 
+### Encoding
+
+`--ffmpeg-args` hands ffmpeg your own encoding flags, quoted as one
+argument, in place of rehue's codec settings (H.264 at crf 16, or VP9
+at crf 20 for WebM):
+
+```sh
+# HEVC, smaller (hvc1 so QuickTime and Apple players take it)
+rehue wal -i clip.mp4 -s nord -H 1 --ffmpeg-args "-c:v libx265 -crf 20 -preset slow -tag:v hvc1"
+# AV1, about a third of the default's size
+rehue wal -i clip.mp4 -s nord -H 1 --ffmpeg-args "-c:v libsvtav1 -crf 30"
+# full-resolution color, for sharp color edges
+rehue wal -i clip.mp4 -s nord -H 1 --ffmpeg-args "-pix_fmt yuv444p"
+```
+
+- rehue keeps the input, the stream mapping, the filters, the length
+  and the container, so `-i`, `-map`, `-vf`, `-filter_complex`, `-t`,
+  `-ss`, `-f` and the like are refused. The container still follows
+  the input (`.mkv` takes the most codecs).
+- `-pix_fmt` sets the pixel format rehue converts the frames to.
+- Audio flags (`-c:a`, `-b:a`, `-an`) override rehue's audio choice.
+- The flags are recorded in `report.json`'s `video` section.
+
 <!-- gen:flags:wal:video -->
 | flag | value | what it does |
 | --- | --- | --- |
 | `--ffmpeg` | `FFMPEG` | Path to ffmpeg, for a video wallpaper (-i clip.mp4, .webm, .mkv or .mov); else $REHUE_FFMPEG / $PATH |
+| `--ffmpeg-args` | `ARGS` | Encoding flags for ffmpeg, in place of rehue's codec defaults (H.264 crf 16, or VP9 crf 20 for WebM) |
 <!-- /gen:flags:wal:video -->
 
 ## LUT export
