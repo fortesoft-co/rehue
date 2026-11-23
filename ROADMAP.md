@@ -15,11 +15,9 @@ shipped.
     inside existing CSS/config files, as lutgen's `patch` does. Never
     the default path: fidelity is uncertain and in-place writes can
     break files, so at minimum diff-first with explicit confirmation.
-- **Scheme browser**: pick a scheme by eye from `inspect --schemes`.
-  First step: page through `$PAGER` (`less -R`) when stdout is a
-  terminal, as git does, with `--no-pager`; pipes stay plain. Later: an
-  interactive browser (ratatui) with a live preview of the selected
-  scheme (its terminal colors, or the wallpaper repainted).
+- **Scheme pager**: page `inspect --schemes` through `$PAGER`
+  (`less -R`) when stdout is a terminal, as git does, with
+  `--no-pager`; pipes stay plain.
 - **WCAG contrast mode**: a contrast-ratio option for `rehue scheme`
   (e.g. 4.5:1, the ratio theme designers check against) alongside the
   lightness-gap guard `min-text-contrast`, and possibly covering more
@@ -27,10 +25,8 @@ shipped.
 - **Scheme generation**: the big one. Derive the lightness/chroma/
   contrast structure a designer would have built, guided by the
   wallpaper, so `rehue scheme` works without a reference scheme at all.
-- **Advanced examples**: a docs page for the complex combinations
-  kept out of the main docs (assign across roles, reach tuning, colorize
-  recipes), each with the images to prove it.
-- **base24 coverage**: slots base10-17.
+- **Look book**: a docs page showcasing standout results, each with
+  the images and the recipe that made it.
 - **Media formats**: more inputs beyond png / jpeg / webp (gif, tiff,
   bmp, qoi, avif where a pure-Rust decoder allows), and animated
   GIF / APNG / WebP (LUT export already makes per-frame repaints a
@@ -39,8 +35,7 @@ shipped.
   alongside the built-in histogram + circular k-means (the options
   themselves are documented in [docs/grading.md](docs/grading.md#extraction)).
 - **Enhance expansion**: beyond v1 (Lanczos + Vulkan SR): denoise and
-  JPEG-artifact restoration models (Real-CUGAN / realesrnet), a
-  low-strength img2img restyle (sd.cpp) as a creative pass, and an
+  JPEG-artifact restoration models (Real-CUGAN / realesrnet), and an
   opt-in Nix SR builder (lavapipe for machines without a GPU driver).
 - **Performance**: the per-pixel wal pass is single-threaded.
   Non-dithered and ordered-dither modes parallelize cleanly (each

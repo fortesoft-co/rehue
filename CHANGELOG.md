@@ -38,6 +38,11 @@ versions may break).
   by path is read by its extension. Two files for one name are an
   error rather than a silent pick.
 
+### Changed
+
+- The bundled base24 schemes are gone; nothing read them, and the
+  binary is about 1 MB smaller.
+
 ### Changed (breaking)
 
 - `--dithering` and `--dithering-mode` are gone, replaced by

@@ -6,7 +6,7 @@
 
 use std::{env, fs, path::PathBuf};
 
-const SPECS: [&str; 2] = ["base16", "base24"];
+const SPECS: [&str; 1] = ["base16"];
 
 fn main() {
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("vendor/tinted-schemes");

@@ -4,7 +4,7 @@
 #   scripts/update-schemes.sh            # upstream HEAD
 #   scripts/update-schemes.sh <commit>   # a specific commit or tag
 #
-# Replaces vendor/tinted-schemes/ (base16 + base24 yaml, the upstream MIT
+# Replaces vendor/tinted-schemes/ (base16 yaml, the upstream MIT
 # LICENSE, and a SOURCE record of the pinned commit), then runs the scheme
 # tests so a malformed upstream scheme fails here, not in a user's run.
 # Run it by hand before a release and commit the result as one diff.
@@ -27,7 +27,7 @@ DATE="$(git -C "$TMP" log -1 --format=%cs)"
 
 rm -rf "$DEST"
 mkdir -p "$DEST"
-for spec in base16 base24; do
+for spec in base16; do
   mkdir -p "$DEST/$spec"
   find "$TMP/$spec" -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) \
     -exec cp {} "$DEST/$spec/" \;
@@ -37,7 +37,7 @@ cat >"$DEST/SOURCE" <<EOF
 upstream: $UPSTREAM
 commit:   $COMMIT
 date:     $DATE
-specs:    base16 ($(ls "$DEST/base16" | wc -l)), base24 ($(ls "$DEST/base24" | wc -l))
+specs:    base16 ($(ls "$DEST/base16" | wc -l))
 EOF
 
 echo "snapshot: tinted-theming/schemes @ ${COMMIT:0:7} ($DATE)"

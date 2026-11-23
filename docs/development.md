@@ -20,8 +20,7 @@ nix build .#rehue
 The bundled schemes are a vendored snapshot of
 [tinted-theming/schemes](https://github.com/tinted-theming/schemes)
 (MIT, see `vendor/tinted-schemes/LICENSE`), pinned to the commit
-recorded in `vendor/tinted-schemes/SOURCE`. base24 files are included
-for the base24 roadmap item but not used yet. To refresh before a
+recorded in `vendor/tinted-schemes/SOURCE`. To refresh before a
 release (it re-runs the scheme tests, so a malformed upstream scheme
 fails here):
 
