@@ -53,6 +53,9 @@
             clippy
             rustfmt
             rust-analyzer
+            # video wallpapers: wal drives ffmpeg, and the video tests
+            # skip without it
+            ffmpeg-headless
           ];
         };
 

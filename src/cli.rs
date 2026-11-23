@@ -135,7 +135,8 @@ pub enum Commands {
     ///
     #[command(visible_alias = "wallpaper", after_help = WAL_ROLES)]
     Wal {
-        /// The wallpaper to repaint: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
+        /// The wallpaper to repaint: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi;
+        /// or a video (mp4, webm, mkv or mov) through ffmpeg.
         ///
         /// e.g. -i ~/pictures/glitter.webp
         #[arg(short, long, value_name = "WALLPAPER")]
@@ -232,6 +233,12 @@ pub enum Commands {
             default_value_t = 8
         )]
         lut_level: u32,
+        /// Path to ffmpeg, for a video wallpaper (-i clip.mp4, .webm,
+        /// .mkv or .mov); else $REHUE_FFMPEG / $PATH.
+        ///
+        /// ffprobe is looked for beside it.  e.g. --ffmpeg ~/bin/ffmpeg
+        #[arg(long, help_heading = "Video", value_name = "FFMPEG")]
+        ffmpeg: Option<PathBuf>,
     },
     /// Recolor an icon theme (or one SVG / PNG icon) with a scheme.
     ///
@@ -548,6 +555,12 @@ pub struct GradeArgs {
     /// e.g. --neutrals mix
     #[arg(long, help_heading = "Grading", value_enum)]
     pub neutrals: Option<grade_wal::Neutrals>,
+    /// What hue gray pixels take on: `keep` their own (default), or
+    /// `tint` with the scheme's grays, as far as match-hue goes.
+    ///
+    /// e.g. --grays tint
+    #[arg(long, help_heading = "Grading", value_enum)]
+    pub grays: Option<grade_wal::Grays>,
     /// How strongly to harmonize with the scheme, 0..1: sets match-hue and
     /// match-chroma wherever they aren't set (default 0).
     ///

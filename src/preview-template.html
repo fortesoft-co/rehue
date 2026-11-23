@@ -47,7 +47,7 @@ body > input[name="view"] { position: absolute; opacity: 0; pointer-events: none
 .wallbox { flex: 1 1 320px; min-width: 260px; max-width: 520px; border: 1px solid var(--border);
            border-radius: 8px; padding: 12px; }
 .wallbox.off { display: none; }
-.wallbox img { display: block; max-width: 100%; border-radius: 6px;
+.wallbox img, .wallbox video { display: block; max-width: 100%; border-radius: 6px;
                border: 1px solid var(--border); }
 #v-palette:checked ~ header nav [for="v-palette"],
 #v-gtk:checked ~ header nav [for="v-gtk"],
@@ -308,7 +308,7 @@ main section { max-width: 780px; margin: 0 2px; }
   </div>
 
   <aside class="wallbox{{wall-mode}}">
-    <img src="{{wall-src}}" alt="the wallpaper">
+    {{wall-media}}
   </aside>
 </section>
 

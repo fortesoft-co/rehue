@@ -227,6 +227,18 @@ rungs = [
   { args = "--max-gray-chroma 0.1" },
 ]
 [[ladder]]
+id = "wal-grays"
+file = "assets/examples/options/wal-grays.webp"
+base = "wal -i {butterfly} -s nord -o {out}"
+output = "wallpaper.png"
+original = "{butterfly}"
+common = "--harmonize 1"
+rungs = [
+  { args = "", note = "keep, the default" },
+  { args = "--grays tint" },
+]
+
+[[ladder]]
 id = "wal-dither"
 file = "assets/examples/options/wal-dither.webp"
 base = "wal -i {bust} -s catppuccin-mocha -o {out}"

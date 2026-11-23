@@ -11,7 +11,7 @@ use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
 use rehue::role::AssignState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
 use rehue::terminal::{families_strip, scheme_strip};
-use rehue::{apply, extract, grade_scheme, grade_wal, preview, role};
+use rehue::{apply, extract, grade_scheme, grade_wal, preview, role, video};
 
 fn fill_rect(img: &mut image::RgbImage, x0: u32, y0: u32, x1: u32, y1: u32, rgb: [u8; 3]) {
     for y in y0..=y1 {
@@ -230,6 +230,7 @@ impl SchemeOverrides {
 struct WalOverrides {
     mode: Option<grade_wal::Mode>,
     neutrals: Option<grade_wal::Neutrals>,
+    grays: Option<grade_wal::Grays>,
     harmonize: Option<f64>,
     match_hue: Vec<String>,
     match_chroma: Vec<String>,
@@ -250,6 +251,7 @@ impl WalOverrides {
         WalOverrides {
             mode: g.mode,
             neutrals: g.neutrals,
+            grays: g.grays,
             harmonize: g.harmonize,
             match_hue: g.match_hue,
             match_chroma: g.match_chroma,
@@ -271,6 +273,9 @@ impl WalOverrides {
         }
         if let Some(n) = self.neutrals {
             config.neutrals = n;
+        }
+        if let Some(g) = self.grays {
+            config.grays = g;
         }
         if let Some(v) = self.harmonize {
             config.harmonize = v;
@@ -531,6 +536,7 @@ fn run_wal(
     config: grade_wal::WalConfig,
     dry_run: bool,
     lut: Option<(LutFormat, u32)>,
+    ffmpeg: Option<&Path>,
 ) -> Result<(), String> {
     let regs = grade_wal::resolved_roles(&config)?;
     let weights = grade_wal::palette_weights(&config)?;
@@ -572,10 +578,35 @@ fn run_wal(
         neutral_slots = (0..16).collect();
     }
 
-    let dynamic = image::ImageReader::open(wallpaper)
-        .map_err(|e| format!("can't read wallpaper {}: {}", wallpaper.display(), e))?
-        .decode()
-        .map_err(|e| format!("can't decode wallpaper {}: {}", wallpaper.display(), e))?;
+    // A video is graded from frames sampled across it, so the grade holds
+    // still from start to end; its frames go through ffmpeg below.
+    let video = if video::is_video(wallpaper) {
+        if config.dither.is_some() {
+            return Err("--dither doesn't take a video yet; grade it without".to_string());
+        }
+        let tool = video::resolve_ffmpeg(ffmpeg)?;
+        let probe = video::probe(&tool, wallpaper)?;
+        println!(
+            "rehue wal: video {}x{} at {:.3} fps, {:.1} s; the grade is measured on {} frames across it",
+            probe.width,
+            probe.height,
+            probe.fps_value(),
+            probe.duration,
+            video::SAMPLE_FRAMES
+        );
+        Some((tool, probe))
+    } else {
+        None
+    };
+    let dynamic = match &video {
+        Some((tool, probe)) => {
+            image::DynamicImage::ImageRgb8(video::sample(tool, wallpaper, probe)?)
+        }
+        None => image::ImageReader::open(wallpaper)
+            .map_err(|e| format!("can't read wallpaper {}: {}", wallpaper.display(), e))?
+            .decode()
+            .map_err(|e| format!("can't decode wallpaper {}: {}", wallpaper.display(), e))?,
+    };
     let source = dynamic.to_rgb8();
     // what blend mode measures colorfulness against (the LUT and the
     // report carry it too)
@@ -597,6 +628,8 @@ fn run_wal(
 
     let passive = grade_wal::is_passive(&regs, config.lightness, config.chroma);
     let mut arranged_hexes: Option<Vec<String>> = None;
+    // the palette and settings a video's frames are graded with
+    let mut grade_inputs: Option<(Vec<grade_wal::SlotPalette>, Vec<grade_wal::SlotOptions>)> = None;
     let (remapped_rgb, coverage) = if passive {
         // Contract: output is always wallpaper.png (here = input,
         // re-encoded, or dithered as it is when a dither is set).
@@ -624,9 +657,10 @@ fn run_wal(
 
         let (seed_hue, seed_light, seed_chroma) = grade_wal::facade_defaults(&config);
         println!(
-            "rehue wal: mode {}  neutrals {}  harmonize {:.2}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  reach {}  lightness {:+.3}  chroma {:.2}",
+            "rehue wal: mode {}  neutrals {}  grays {}  harmonize {:.2}  match-hue {:.2}  match-lightness {:.2}  match-chroma {:.2}  reach {}  lightness {:+.3}  chroma {:.2}",
             config.mode.unwrap_or(grade_wal::Mode::Blend).describe(),
             config.neutrals.describe(),
+            config.grays.describe(),
             config.harmonize,
             seed_hue,
             seed_light,
@@ -668,23 +702,75 @@ fn run_wal(
         // Arrangement reshapes the palette before per-pixel work.
         let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
         arranged_hexes = Some(arranged.iter().map(|s| oklch_to_hex(&s.lch)).collect());
-        let result = grade_wal::apply(
-            source.as_raw(),
-            source.width(),
-            source.height(),
-            &arranged,
-            &neutral_slots,
-            &grade_wal::slot_options(&regs, &config)?,
-            &config,
-        );
-        let pixels = image::RgbImage::from_raw(source.width(), source.height(), result.pixels)
-            .expect("remap preserves the pixel-buffer size");
-        (pixels, result.coverage)
+        let options = grade_wal::slot_options(&regs, &config)?;
+        if video.is_some() {
+            // graded frame by frame below
+            grade_inputs = Some((arranged, options));
+            (source.clone(), vec![0u64; 16])
+        } else {
+            let result = grade_wal::apply(
+                source.as_raw(),
+                source.width(),
+                source.height(),
+                &arranged,
+                &neutral_slots,
+                &options,
+                &config,
+            );
+            let pixels = image::RgbImage::from_raw(source.width(), source.height(), result.pixels)
+                .expect("remap preserves the pixel-buffer size");
+            (pixels, result.coverage)
+        }
     };
 
-    // The full-size PNG and the comparison thumbnails at the same time.
+    // A video: every frame through the grade, and the first frame stands
+    // in for the picture in compare.png.
+    let (source, remapped_rgb, coverage, video_info, wallpaper_file) = match &video {
+        None => (
+            source,
+            remapped_rgb,
+            coverage,
+            None,
+            "wallpaper.png".to_string(),
+        ),
+        Some((tool, probe)) => {
+            let ext = wallpaper
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_else(|| "mp4".to_string());
+            let file = format!("wallpaper.{ext}");
+            let table = grade_inputs.as_ref().map(|(arranged, options)| {
+                let map = grade_wal::ColorMap::new(arranged, &neutral_slots, options, &config)
+                    .with_vivid(vivid);
+                grade_wal::ColorTable::new(&map, arranged.len())
+            });
+            let graded = grade_video(tool, wallpaper, &out.join(&file), probe, table.as_ref())?;
+            println!("rehue wal: {} frames through the grade", graded.frames);
+            let info = serde_json::json!({
+                "frames": graded.frames,
+                "width": probe.width,
+                "height": probe.height,
+                "fps": probe.fps,
+                "sampled_frames": source.height() / video::sample_size(probe).1,
+            });
+            (
+                graded.first,
+                graded.first_graded,
+                graded.coverage,
+                Some(info),
+                file,
+            )
+        }
+    };
+
+    // The full-size PNG and the comparison thumbnails at the same time
+    // (a video is written already).
     std::thread::scope(|scope| {
         let wallpaper = scope.spawn(|| {
+            if video.is_some() {
+                return Ok(());
+            }
             remapped_rgb
                 .save(out.join("wallpaper.png"))
                 .map_err(|e| format!("can't write wallpaper.png: {}", e))
@@ -724,12 +810,15 @@ fn run_wal(
         .collect();
     // a dither stage changes every pixel even on a passive grade
     let passthrough = passive && config.dither.is_none();
-    let report = serde_json::json!({
+    let mut report = serde_json::json!({
         "params": config,
         "vivid_chroma": vivid,
         "passthrough": passthrough,
         "slot_coverage": coverage_map,
     });
+    if let Some(info) = video_info {
+        report["video"] = info;
+    }
     write_json_file(&out.join("report.json"), &report)?;
 
     if let Some(strip_hexes) = &arranged_hexes {
@@ -739,7 +828,7 @@ fn run_wal(
             flow: preview::PreviewFlow::WallpaperFromScheme,
             wallpaper_label: Some(&wall_label),
             // the repainted result is a sibling artifact
-            wallpaper_src: Some("wallpaper.png"),
+            wallpaper_src: Some(&wallpaper_file),
             scheme: &scheme_name,
             hexes: strip_hexes,
             left_out: &left_out,
@@ -768,7 +857,7 @@ fn run_wal(
                 println!(
                     "   pixel coverage {}: {:>5.1}%",
                     slot,
-                    100.0 * f64::from(*count as u32) / f64::from(total as u32)
+                    100.0 * *count as f64 / total as f64
                 );
             }
         }
@@ -780,11 +869,63 @@ fn run_wal(
         println!("{}", scheme_strip(strip_hexes));
     }
     if arranged_hexes.is_none() {
-        println!("rehue wal: wrote wallpaper.png, compare.png, report.json");
+        println!("rehue wal: wrote {wallpaper_file}, compare.png, report.json");
     } else {
-        println!("rehue wal: wrote wallpaper.png, compare.png, preview.html, report.json");
+        println!("rehue wal: wrote {wallpaper_file}, compare.png, preview.html, report.json");
     }
     Ok(())
+}
+
+/// A video run's results.
+struct GradedVideo {
+    frames: u64,
+    /// The first frame, before and after.
+    first: image::RgbImage,
+    first_graded: image::RgbImage,
+    coverage: Vec<u64>,
+}
+
+/// Every frame of `input` through `table` (unchanged without one) into
+/// `output`.
+fn grade_video(
+    tool: &Path,
+    input: &Path,
+    output: &Path,
+    probe: &video::Probe,
+    table: Option<&grade_wal::ColorTable>,
+) -> Result<GradedVideo, String> {
+    let mut decoder = video::Decoder::open(tool, input, probe)?;
+    let mut encoder = video::Encoder::open(tool, input, output, probe)?;
+    let mut frame = Vec::new();
+    let mut graded = vec![0u8; probe.width as usize * probe.height as usize * 3];
+    let mut coverage = vec![0u64; BASE_SLOTS.len()];
+    let mut frames = 0u64;
+    let mut first = None;
+    while decoder.next(&mut frame)? {
+        let out: &[u8] = match table {
+            Some(table) => {
+                table.apply(&frame, &mut graded, &mut coverage);
+                &graded
+            }
+            None => &frame,
+        };
+        encoder.write(out)?;
+        if first.is_none() {
+            first = Some((frame.clone(), out.to_vec()));
+        }
+        frames += 1;
+    }
+    encoder.finish()?;
+    let (before, after) = first.ok_or_else(|| format!("{}: no frames", input.display()))?;
+    let image = |px: Vec<u8>| {
+        image::RgbImage::from_raw(probe.width, probe.height, px).expect("frame is the probed size")
+    };
+    Ok(GradedVideo {
+        frames,
+        first: image(before),
+        first_graded: image(after),
+        coverage,
+    })
 }
 
 /// The extraction preview: indexed family table + the terminal swatch
@@ -1338,6 +1479,7 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
                 config.clone(),
                 dry_run,
                 None,
+                None,
             )?;
             dir.join("wallpaper.png")
         }
@@ -1457,6 +1599,7 @@ fn run(command: Commands) -> Result<(), String> {
             assign,
             lut,
             lut_level,
+            ffmpeg,
         } => {
             let (mut wal_config, looks) = rehue::look::resolve::<grade_wal::WalConfig>(
                 &config_label(config.as_deref()),
@@ -1475,6 +1618,7 @@ fn run(command: Commands) -> Result<(), String> {
                 wal_config,
                 dry_run,
                 lut.map(|format| (format, lut_level)),
+                ffmpeg.as_deref(),
             )
         }
         Commands::Icons {

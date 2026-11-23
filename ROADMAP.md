@@ -27,12 +27,22 @@ shipped.
   wallpaper, so `rehue scheme` works without a reference scheme at all.
 - **Look book**: a docs page showcasing standout results, each with
   the images and the recipe that made it.
-- **Media formats**: animated GIF / APNG / WebP (LUT export already
-  makes per-frame repaints a table lookup), and AVIF or JPEG XL inputs
-  where a pure-Rust decoder allows.
+- **Dithered video**: `--dither` on a video wallpaper (ordered styles;
+  diffuse with a warning that it shimmers). Which codec settings keep
+  a dither pattern intact is under test.
 - **Alternative extraction backends**: optional extraction libraries
   alongside the built-in histogram + circular k-means (the options
   themselves are documented in [docs/grading.md](docs/grading.md#extraction)).
 - **Enhance expansion**: beyond v1 (Lanczos + Vulkan SR): denoise and
   JPEG-artifact restoration models (Real-CUGAN / realesrnet), and an
   opt-in Nix SR builder (lavapipe for machines without a GPU driver).
+
+## On demand
+
+Left out until someone asks for them.
+
+- **Animated GIF / APNG / WebP**: repaint a loop and keep its format.
+- **AVIF and JPEG XL inputs**: AVIF decoding needs a C library (dav1d);
+  JPEG XL has a pure-Rust decoder (jxl-oxide).
+- **Shader export**: the grade as a LUT texture plus GLSL, with ordered
+  dithering, for mpv, glpaper or Hydra.

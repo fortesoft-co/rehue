@@ -21,3 +21,4 @@ pub mod preview;
 pub mod role;
 pub mod scheme;
 pub mod terminal;
+pub mod video;

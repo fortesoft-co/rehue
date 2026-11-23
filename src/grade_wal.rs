@@ -73,6 +73,29 @@ impl Neutrals {
     }
 }
 
+/// What hue gray pixels take on when they take on the scheme's chroma.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum Grays {
+    /// The default: a gray keeps its own hue.
+    #[default]
+    Keep,
+    /// A gray takes on the scheme's neutral tint (its grays' hue), as far
+    /// as match-hue goes: whites go cream or lavender with the scheme,
+    /// and a dark sky takes the background's tint instead of its own
+    /// murky one.
+    Tint,
+}
+
+impl Grays {
+    pub fn describe(&self) -> &'static str {
+        match self {
+            Self::Keep => "keep",
+            Self::Tint => "tint",
+        }
+    }
+}
+
 impl Mode {
     pub fn describe(&self) -> &'static str {
         match self {
@@ -127,6 +150,9 @@ pub struct WalConfig {
     /// What the scheme's neutral slots do in `blend` mode: `floor`
     /// (the default) or `mix`.
     pub neutrals: Neutrals,
+    /// What hue grays take on: `keep` their own (the default) or `tint`
+    /// with the scheme's.
+    pub grays: Grays,
     pub max_gray_chroma: f64,
     pub lightness: f64,
     pub chroma: f64,
@@ -150,6 +176,7 @@ impl Default for WalConfig {
             dither: None,
             mode: None,
             neutrals: Neutrals::Floor,
+            grays: Grays::Keep,
             max_gray_chroma: 0.02,
             lightness: 0.0,
             chroma: 1.0,
@@ -490,6 +517,11 @@ pub struct ColorMap<'a> {
 /// per-pixel scratch on the stack at this size.
 const MAX_SLOTS: usize = 16;
 
+/// Where a pixel counts as fully colorful, as a multiple of
+/// `max_gray_chroma`: between the two, the gray and color treatments
+/// blend.
+pub const GRAY_BAND: f64 = 2.0;
+
 /// The finest split of per-pixel work across threads, in pixels.
 const PIXELS_PER_UNIT: usize = 4096;
 
@@ -595,9 +627,15 @@ impl<'a> ColorMap<'a> {
     /// One colour through the remap: exactly what `apply` produces for a
     /// pixel of this colour without a dither stage.
     pub fn map_rgb(&self, rgb: &[u8; 3]) -> [u8; 3] {
+        self.map_rgb_slot(rgb).0
+    }
+
+    /// [`map_rgb`](Self::map_rgb), plus the slot the colour counts toward
+    /// in the coverage (`None` for a gray the palette passes through).
+    pub fn map_rgb_slot(&self, rgb: &[u8; 3]) -> ([u8; 3], Option<usize>) {
         let raw = rgb_to_oklch(rgb);
-        let (l, c, h, _) = self.run(raw);
-        oklch_to_rgb(&Lch { l, c, h })
+        let (l, c, h, slot) = self.run(raw);
+        (oklch_to_rgb(&Lch { l, c, h }), slot)
     }
 
     /// The weighted circular mean of these slots' hues: the same sums as
@@ -619,19 +657,46 @@ impl<'a> ColorMap<'a> {
     /// anchor slot index (`None` for a gray pixel when the palette
     /// leaves every neutral slot out: it passes through ungraded).
     ///
+    /// Below `max_gray_chroma` a pixel is gray; from
+    /// [`GRAY_BAND`] times that up it is fully colorful; between, the
+    /// two treatments blend smoothly (lightness, chroma, and hue around
+    /// the circle), so a near-gray area such as a night sky never splits
+    /// into hard-edged patches where its chroma crosses the line.
+    fn run(&self, raw: Lch) -> (f64, f64, f64, Option<usize>) {
+        let low = self.config.max_gray_chroma;
+        let high = low * GRAY_BAND;
+        if raw.c < low {
+            return self.treat(raw, true);
+        }
+        if raw.c >= high {
+            return self.treat(raw, false);
+        }
+        let x = (raw.c - low) / (high - low);
+        let t = x * x * (3.0 - 2.0 * x);
+        let gray = self.treat(raw, true);
+        let color = self.treat(raw, false);
+        (
+            gray.0 + (color.0 - gray.0) * t,
+            gray.1 + (color.1 - gray.1) * t,
+            circ_lerp(gray.2, color.2, t),
+            if t < 0.5 { gray.3 } else { color.3 },
+        )
+    }
+
+    /// One treatment of a pixel: as a gray (`gray`) or as a color.
+    ///
     /// Palette weights divide a slot's distance, in both modes: a
     /// weight-2 slot pulls from twice as far in blend and claims an arc
     /// twice as wide when picking the nearest slot.  The snap-mode reach
     /// gate still measures the real distance.  Weight 0 slots take no
     /// part at all.
-    fn run(&self, raw: Lch) -> (f64, f64, f64, Option<usize>) {
+    fn treat(&self, raw: Lch, gray: bool) -> (f64, f64, f64, Option<usize>) {
         let (l_in, c_in) = (raw.l, raw.c);
         let reach = self.config.reach;
-        let gray_floor = self.config.max_gray_chroma;
         let weight = |idx: usize| self.options[idx].weight;
         let (mut l2, mut c2, h2);
         let best_index;
-        if raw.c < gray_floor {
+        if gray {
             // Achromatic: keyed to the scheme's low-chroma slots by raw
             // lightness (first minimum wins).
             let neutrals = &self.kept_neutrals;
@@ -655,7 +720,7 @@ impl<'a> ColorMap<'a> {
             // In blend mode the target is the palette's weighted mean over
             // the neutral slots (by lightness closeness), not one slot's
             // the constant - the lightness ramp blends smoothly.
-            let (target_l, target_c) = if self.mode == Mode::Blend {
+            let (target_l, target_c, target_h) = if self.mode == Mode::Blend {
                 let t = reach.max(1e-3);
                 let mut ws = [0.0f64; MAX_SLOTS];
                 let mut total = 0.0f64;
@@ -673,9 +738,10 @@ impl<'a> ColorMap<'a> {
                         .sum::<f64>()
                         / total
                 };
-                (mix(|s| s.l), mix(|s| s.c))
+                let set: Vec<(usize, f64)> = neutrals.iter().copied().zip(ws).collect();
+                (mix(|s| s.l), mix(|s| s.c), self.circ_mean(&set))
             } else {
-                (slots_target.l, slots_target.c)
+                (slots_target.l, slots_target.c, slots_target.h)
             };
             l2 = l_in;
             if n.match_lightness > 0.0 {
@@ -686,9 +752,15 @@ impl<'a> ColorMap<'a> {
             } else {
                 c2 = c_in;
             }
-            // Achromatic pixels keep their raw hue: blending hue on a
-            // colour with no chroma would be noise.
-            h2 = raw.h;
+            // A gray keeps its own hue, or with `grays = tint` takes the
+            // neutrals' (the scheme's tint) as far as match-hue goes: a
+            // gray's own hue is near-arbitrary, and raising its chroma
+            // makes that hue show.
+            h2 = if self.config.grays == Grays::Tint && n.match_hue > 0.0 {
+                circ_lerp(raw.h, target_h, n.match_hue)
+            } else {
+                raw.h
+            };
         } else {
             // Chromatic: nearest slot by raw hue (first minimum), then
             // the opt-in blend moves, reach-gated in snap mode.
@@ -864,6 +936,68 @@ pub fn apply(
     WalOutput {
         pixels: out,
         coverage: counts,
+    }
+}
+
+/// A [`ColorMap`] for every 8-bit colour, worked out once: grading is
+/// then a lookup per pixel, the same bytes `apply` gives.  Pays off when
+/// many pixels go through one grade (a video's frames).  64 MB.
+pub struct ColorTable {
+    /// Per colour (`r << 16 | g << 8 | b`): the mapped colour in the low
+    /// 24 bits, the coverage slot in the high 8 (`NO_SLOT` for none).
+    entries: Vec<u32>,
+    slots: usize,
+}
+
+const NO_SLOT: u32 = 0xff;
+
+impl ColorTable {
+    pub fn new(map: &ColorMap, slots: usize) -> Self {
+        let mut entries = vec![0u32; 1 << 24];
+        crate::par::chunks_mut(&mut entries, 1 << 16, |start, run| {
+            for (k, entry) in run.iter_mut().enumerate() {
+                let i = start + k;
+                let rgb = [(i >> 16) as u8, (i >> 8) as u8, i as u8];
+                let (out, slot) = map.map_rgb_slot(&rgb);
+                let slot = slot.map_or(NO_SLOT, |s| s as u32);
+                *entry = slot << 24
+                    | u32::from(out[0]) << 16
+                    | u32::from(out[1]) << 8
+                    | u32::from(out[2]);
+            }
+        });
+        ColorTable { entries, slots }
+    }
+
+    /// Grade an rgb8 buffer into `out` (the same length), adding each
+    /// pixel to `coverage` (one count per slot).
+    pub fn apply(&self, pixels: &[u8], out: &mut [u8], coverage: &mut [u64]) {
+        debug_assert_eq!(pixels.len(), out.len());
+        let parts = crate::par::chunks_mut(out, PIXELS_PER_UNIT * 3, |start, run| {
+            let src = &pixels[start..start + run.len()];
+            let mut counts = vec![0u64; self.slots];
+            for (s, d) in src
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .zip(run.as_chunks_mut::<3>().0.iter_mut())
+            {
+                let i = usize::from(s[0]) << 16 | usize::from(s[1]) << 8 | usize::from(s[2]);
+                let e = self.entries[i];
+                *d = [(e >> 16) as u8, (e >> 8) as u8, e as u8];
+                let slot = e >> 24;
+                if slot != NO_SLOT {
+                    counts[slot as usize] += 1;
+                }
+            }
+            counts
+        });
+        for (total, n) in coverage
+            .iter_mut()
+            .zip(crate::par::sum_counts(parts, self.slots))
+        {
+            *total += n;
+        }
     }
 }
 

@@ -203,6 +203,7 @@ Flakes only see files git tracks: `git add` new files before
 | `src/role.rs` | The four roles, their names, and `assign`, shared by both directions. |
 | `src/scheme.rs` | Base16 scheme loading and rendering. |
 | `src/terminal.rs` | Truecolor ANSI swatch strips for `inspect`. |
+| `src/video.rs` | Video wallpapers: frames in and out through ffmpeg, graded in between. |
 | `src/bin/rehue.rs` | `rehue` CLI: the mapping flows, plus `inspect` and `enhance` utilities. |
 | `build.rs` | Embeds `vendor/tinted-schemes` as the bundled scheme table. |
 | `examples/docs-images.rs` | Builds the docs images from `examples/docs/examples.toml`. |
@@ -224,6 +225,7 @@ Flakes only see files git tracks: `git add` new files before
 | `tests/scheme.rs` | Schemes: parsing and rendering, the bundled collection, name resolution. |
 | `tests/terminal.rs` | The ANSI strip renderers (the terminal previews). |
 | `tests/threads.rs` | The output is the same bytes however many threads the work is cut into. |
+| `tests/video.rs` | Video wallpapers through ffmpeg (skipped when ffmpeg isn't installed). |
 | `tests/common/mod.rs` | Shared test inputs: repo-fixture paths and synthetic palettes/images. |
 <!-- /gen:source-files -->
 

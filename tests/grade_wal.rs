@@ -353,10 +353,13 @@ fn blend_keeps_the_images_saturation_structure_in_the_schemes_range() {
     let chroma = |c: f64| rgb_to_oklch(&map.map_rgb(&px(c))).c;
     let neutral_c = (0..8).map(|i| slots[i].lch.c).sum::<f64>() / 8.0;
     // a muted pixel settles near the scheme's neutral chroma, a vivid one
-    // reaches the accent's
-    assert!((chroma(0.03) - (neutral_c + 0.2 * (slots[13].lch.c - neutral_c))).abs() < 0.02);
+    // reaches the accent's (0.05 sits just past the gray band, which
+    // ends at twice max-gray-chroma)
+    let muted = 0.05;
+    let expect = neutral_c + muted / 0.15 * (slots[13].lch.c - neutral_c);
+    assert!((chroma(muted) - expect).abs() < 0.02);
     assert!((chroma(0.15) - slots[13].lch.c).abs() < 0.02);
-    assert!(chroma(0.03) < chroma(0.08) && chroma(0.08) < chroma(0.15));
+    assert!(chroma(muted) < chroma(0.08) && chroma(0.08) < chroma(0.15));
 
     // the image decides what "vivid" means: 95th percentile
     let mut pixels = Vec::new();
@@ -402,4 +405,109 @@ fn snap_takes_colors_to_the_accents_not_a_gray_of_nearby_hue() {
     );
     // neutrals mix lets the grays compete, as snap did before
     assert!(graded(Neutrals::Mix).c < 0.05);
+}
+
+#[test]
+fn the_color_table_grades_exactly_as_apply_does() {
+    let (_, slots) = solarized();
+    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
+    let rgb = gradient_image((97, 61)).to_rgb8();
+    let pixels = rgb.as_raw();
+    for config in [
+        WalConfig {
+            harmonize: 1.0,
+            ..Default::default()
+        },
+        WalConfig {
+            mode: Some(Mode::Snap),
+            match_hue: Some(1.0),
+            ..Default::default()
+        },
+    ] {
+        let regs = rehue::grade_wal::resolved_roles(&config).unwrap();
+        let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
+        let direct = rehue::grade_wal::apply(pixels, 97, 61, &slots, &neutral, &options, &config);
+        let map = rehue::grade_wal::ColorMap::new(&slots, &neutral, &options, &config)
+            .with_vivid(rehue::grade_wal::vivid_chroma(pixels));
+        let table = rehue::grade_wal::ColorTable::new(&map, slots.len());
+        let mut out = vec![0u8; pixels.len()];
+        let mut coverage = vec![0u64; slots.len()];
+        table.apply(pixels, &mut out, &mut coverage);
+        assert!(out == direct.pixels, "{:?}", config.mode);
+        assert_eq!(coverage, direct.coverage);
+    }
+}
+
+#[test]
+fn near_grays_blend_smoothly_into_colors() {
+    use rehue::color::rgb_to_oklab;
+    use rehue::grade_wal::{ColorMap, GRAY_BAND};
+    let (_, slots) = solarized();
+    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
+    let config = WalConfig {
+        harmonize: 1.0,
+        ..Default::default()
+    };
+    let regs = rehue::grade_wal::resolved_roles(&config).unwrap();
+    let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
+    let map = ColorMap::new(&slots, &neutral, &options, &config);
+    // dim pixels of every hue stepped through the gray band: no step
+    // changes the result by more than a little (in Oklab, before 8-bit
+    // rounding blurs it)
+    let low = config.max_gray_chroma;
+    let high = low * GRAY_BAND;
+    let steps = 60;
+    let mut worst = 0.0f64;
+    for hue in (0..360).step_by(10) {
+        for l in [0.2, 0.35, 0.6] {
+            let mut last: Option<[f64; 3]> = None;
+            for k in 0..=steps {
+                let c = low * 0.5 + (high * 1.25 - low * 0.5) * k as f64 / steps as f64;
+                let px = oklch_to_rgb(&Lch {
+                    l,
+                    c,
+                    h: f64::from(hue),
+                });
+                let out = rgb_to_oklab(&map.map_rgb(&px));
+                if let Some(prev) = last {
+                    let d = ((out[0] - prev[0]).powi(2)
+                        + (out[1] - prev[1]).powi(2)
+                        + (out[2] - prev[2]).powi(2))
+                    .sqrt();
+                    worst = worst.max(d);
+                }
+                last = Some(out);
+            }
+        }
+    }
+    assert!(worst < 0.02, "worst step {worst:.4}");
+}
+
+#[test]
+fn grays_keep_their_hue_unless_tinted() {
+    use rehue::color::{circ_dist, rgb_to_oklch};
+    use rehue::grade_wal::{ColorMap, Grays};
+    let (_, slots) = solarized();
+    let neutral: Vec<usize> = (0..16).filter(|i| slots[*i].lch.c < 0.08).collect();
+    // a faintly yellow-green gray, below max-gray-chroma
+    let gray = oklch_to_rgb(&Lch {
+        l: 0.3,
+        c: 0.015,
+        h: 110.0,
+    });
+    let graded = |grays: Grays| {
+        let config = WalConfig {
+            harmonize: 1.0,
+            grays,
+            ..Default::default()
+        };
+        let regs = rehue::grade_wal::resolved_roles(&config).unwrap();
+        let options = rehue::grade_wal::slot_options(&regs, &config).unwrap();
+        rgb_to_oklch(&ColorMap::new(&slots, &neutral, &options, &config).map_rgb(&gray))
+    };
+    let dark_neutral_hue = slots[1].lch.h; // solarized's base01, a blue-green
+    let keep = graded(Grays::Keep);
+    let tint = graded(Grays::Tint);
+    assert!(circ_dist(keep.h, 110.0) < 20.0, "keep: {keep:?}");
+    assert!(circ_dist(tint.h, dark_neutral_hue) < 30.0, "tint: {tint:?}");
 }

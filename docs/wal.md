@@ -239,11 +239,14 @@ rehue wal --harmonize 1 --palette all,base0B=6
 ### max-gray-chroma — default `0.02`
 
 Chroma below which pixels count as gray: they key to the scheme's
-low-chroma slots by lightness and **keep their own hue
-unconditionally** (match-hue never touches them). Raising it pulls
-pale pixels into the repainting earlier. Same companion as reach: the
-effect only exists at nonzero match dials. Shown on the butterfly,
-whose pale wings sit right around the threshold.
+low-chroma slots by lightness and keep their own hue (unless
+[grays](#grays--keep-default--tint) is `tint`). From there up to twice
+the value, pixels blend from gray to color, so a near-gray area such
+as a night sky never splits into patches where its chroma crosses the
+line. Raising it pulls pale pixels into the repainting earlier. Same
+companion as reach: the effect only exists at nonzero match dials.
+Shown on the butterfly, whose pale wings sit right around the
+threshold.
 
 ![original / max-gray-chroma 0.02, 0.1 with harmonize 1, on the butterfly](../assets/examples/options/wal-max-gray-chroma.webp)
 
@@ -255,6 +258,28 @@ rehue wal --harmonize 1 --max-gray-chroma 0.02
 rehue wal --harmonize 1 --max-gray-chroma 0.1
 ```
 <!-- /gen:ladder:wal-max-gray-chroma -->
+
+### grays — `keep` (default) | `tint`
+
+What hue gray pixels take on when they take on the scheme's chroma.
+With `keep`, a gray keeps its own hue. With `tint`, it takes the hue
+of the scheme's grays, as far as match-hue goes: here nord's cool
+blue-gray replaces the photo's warm beige in the shadows and pale
+petals, where with gruvbox whites go cream and with rose-pine
+lavender. Use it where a gray's own faint hue would show
+through, such as a night sky, or the gray parts of a one-color icon
+pack.
+
+![original / harmonize 1 with grays keep / with grays tint, nord on the butterfly](../assets/examples/options/wal-grays.webp)
+
+<!-- gen:ladder:wal-grays -->
+```sh
+# inputs: rehue wal -i assets/kelly-ishmael-butterfly-closeup.webp -s nord -o out
+# keep, the default
+rehue wal --harmonize 1
+rehue wal --harmonize 1 --grays tint
+```
+<!-- /gen:ladder:wal-grays -->
 
 ### assign — per role
 
@@ -343,6 +368,39 @@ rehue wal -i wall.png -s gruvbox-light -l pc98       # harmonize, then dither
 
 [dither.md](dither.md) covers every style and setting, with examples.
 
+## Video
+
+Give `-i` a video (`.mp4`, `.webm`, `.mkv` or `.mov`) and every frame
+goes through the grade. It needs
+[ffmpeg](https://ffmpeg.org/download.html) and ffprobe: on your `PATH`,
+named by `$REHUE_FFMPEG`, or given with `--ffmpeg` (ffprobe is looked
+for beside it).
+
+```sh
+rehue wal -i clip.mp4 -s tokyo-night-storm -l pop -o graded
+```
+
+- The output keeps the input's container: `wallpaper.mp4` (H.264, as
+  are `.mkv` and `.mov`) or `wallpaper.webm` (VP9). The audio comes
+  across unchanged (to Opus for WebM, unless it is already).
+- The grade is measured on 32 frames spread across the whole video and
+  then applied to every frame the same way, so the colors hold steady
+  when the light changes.
+- `compare.png` shows the first frame, `report.json` counts coverage
+  over every frame and adds a `video` section, and `preview.html`
+  plays the result.
+- The frames rehue hands ffmpeg are the same bytes every run; the
+  encoded file also depends on your ffmpeg build.
+- `--dither` doesn't take a video yet.
+
+Play the result with any video wallpaper player, such as mpvpaper.
+
+<!-- gen:flags:wal:video -->
+| flag | value | what it does |
+| --- | --- | --- |
+| `--ffmpeg` | `FFMPEG` | Path to ffmpeg, for a video wallpaper (-i clip.mp4, .webm, .mkv or .mov); else $REHUE_FFMPEG / $PATH |
+<!-- /gen:flags:wal:video -->
+
 ## LUT export
 
 `--lut hald` (or `--lut cube`) also bakes the grade into a 3D lookup
@@ -360,9 +418,9 @@ ffmpeg -i clip.mp4 -i graded/lut.png -filter_complex '[0][1]haldclut' out.mp4   
 `--lut-level` sets the resolution (default 8, i.e. 64 points per
 channel; `.cube` goes up to 8). At level 16 the Hald LUT covers every
 8-bit color, and ImageMagick reproduces rehue's own output pixel for
-pixel; lower levels are interpolated by the tool applying them. It
-doesn't go with `--dither`, because a dithered pixel depends on its
-position, not just its color.
+pixel; lower levels are interpolated by the tool applying them. With
+`--dither`, the LUT holds the grade before dithering: a dithered pixel
+depends on its position, not just its color, so no LUT can hold it.
 
 <!-- gen:flags:wal:lut-export -->
 | flag | value | what it does |
@@ -378,6 +436,7 @@ position, not just its color.
 | --- | --- | --- |
 | `--mode` | `blend \| snap` | How pixels find their palette color: `blend` = mix the nearby palette colors, weighted by hue distance (default); `snap` = take the nearest one |
 | `--neutrals` | `floor \| mix` | What the scheme's grays (base00-07) do for colorful pixels: `floor` = only set the lowest chroma in blend, and never catch a color in snap, so the image keeps its color structure (default); `mix` = join in like any slot, a calmer cast faded toward the scheme's grays |
+| `--grays` | `keep \| tint` | What hue gray pixels take on: `keep` their own (default), or `tint` with the scheme's grays, as far as match-hue goes |
 | `--harmonize` | `0..1` | How strongly to harmonize with the scheme, 0..1: sets match-hue and match-chroma wherever they aren't set (default 0) |
 | `--match-hue` | `[ROLE] 0..1` | How much of the palette's hue each pixel takes on (0 = keep its own, 1 = fully adopt) |
 | `--match-chroma` | `[ROLE] 0..1` | How much of the palette's chroma each pixel takes on (0 = keep its own, 1 = fully adopt) |

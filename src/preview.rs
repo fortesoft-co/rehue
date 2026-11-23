@@ -150,7 +150,13 @@ pub fn render(input: &Preview) -> Result<String, String> {
     html = html.replace("{{scheme}}", &escape_html(scheme));
     html = html.replace("{{mode}}", mode);
     html = html.replace("{{wall-mode}}", wall_mode);
-    html = html.replace("{{wall-src}}", &wall_src);
+    // a video wallpaper plays, silently and on a loop
+    let wall_media = if wallpaper_src.is_some_and(|src| crate::video::is_video(Path::new(src))) {
+        format!(r#"<video src="{wall_src}" autoplay loop muted playsinline></video>"#)
+    } else {
+        format!(r#"<img src="{wall_src}" alt="the wallpaper">"#)
+    };
+    html = html.replace("{{wall-media}}", &wall_media);
     for (index, hex) in hexes.iter().enumerate() {
         html = html.replace(&format!("{{{{base{:02x}}}}}", index), hex);
         let off = if left_out.contains(&index) {

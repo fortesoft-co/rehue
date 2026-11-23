@@ -9,6 +9,18 @@ versions may break).
 
 ### Added
 
+- Video wallpapers: `wal -i clip.mp4` (or `.webm`, `.mkv`, `.mov`)
+  grades every frame, through ffmpeg found like `enhance`'s SR tool
+  (`--ffmpeg`, `$REHUE_FFMPEG`, then `PATH`). The grade is measured on
+  32 frames across the video, so it holds steady from start to end;
+  the output keeps the input's container (H.264, or VP9 for WebM) and
+  its audio. `compare.png` shows the first frame, `report.json` counts
+  every frame, and `preview.html` plays it. No `--dither` on video yet.
+- `--grays keep|tint` (config `grays`): with `tint`, gray pixels take
+  the hue of the scheme's grays as they take on its chroma, so whites
+  go cream or lavender with the scheme and a dark sky takes the
+  background's tint instead of its own murky one. `keep` is the
+  default.
 - GIF, TIFF, BMP and QOI inputs alongside PNG, JPEG and WebP, for
   `wal`, `scheme`, `inspect` and `enhance`. A GIF paints its first
   frame. `scheme`'s `preview.html` leaves the wallpaper panel out for
@@ -16,6 +28,13 @@ versions may break).
 
 ### Changed
 
+- Near-gray pixels blend smoothly from the gray treatment to the color
+  one, between `max-gray-chroma` and twice it, instead of switching at
+  the line: a night sky or a soft glow no longer splits into
+  hard-edged patches of accent color. Most `wal` and `icons` output
+  changes slightly.
+- `wal --lut`'s docs: with `--dither`, the LUT holds the grade before
+  dithering (they said the two don't go together).
 - `wal` runs across all cores, and the per-pixel grade does less
   work: an 8K (33 MP) wallpaper paints in about 1.5 s instead of 25 s,
   a 4K one in 0.4 s. Dithering runs across cores too (diffuse's error
