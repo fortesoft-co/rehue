@@ -74,6 +74,9 @@ pub struct Image {
     /// scale percentage
     #[serde(default)]
     pub scale: Option<u32>,
+    /// animation: frames per second (default 8)
+    #[serde(default)]
+    pub fps: Option<u32>,
     /// shot: preview.html views (palette | gtk | qt)
     #[serde(default)]
     pub views: Vec<String>,

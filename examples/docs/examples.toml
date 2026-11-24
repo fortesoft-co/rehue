@@ -17,6 +17,7 @@ bust = "assets/tamula-aura-garden-bust.webp"
 anime = "assets/honeyworks-anime-video-frame.webp"
 chongqing = "assets/xiang-qi-chongqing-twilight.mp4"
 plant = "assets/nothing-ahead-plant-in-rain.mp4"
+city = "assets/giang-city-skyline-night.mp4"
 
 # ---------------------------------------- README and page examples
 
@@ -674,3 +675,43 @@ cells = [{ src = "{out:video-dither-scheme}/inspect.png" }]
 file = "assets/examples/video-dither-after.webp"
 kind = "animation"
 cells = [{ src = "{out:video-dither}/wallpaper.mp4" }]
+
+# ---------------------------------------- wal: a looped video
+
+[[run]]
+id = "video-loop"
+args = "wal -i {city} -s tokyo-night-storm -H 1 --match-hue 1 --grays tint -p base0E=2,base08,base0C --lightness 0.02 --chroma 1.15 --loop fade,start=0,end=4.171 -o {out}"
+out = "looped"
+
+[[run]]
+id = "video-loop-families"
+args = "inspect -w {city} -o {out}"
+out = "families"
+
+[[run]]
+id = "video-loop-scheme"
+args = "inspect -s tokyo-night-storm -o {out}"
+out = "tokyo-night-storm"
+
+# the clip as it is, played on repeat: the jump where it wraps
+[[image]]
+file = "assets/examples/video-loop-before.webp"
+kind = "animation"
+fps = 12
+cells = [{ src = "{city}" }]
+
+[[image]]
+file = "assets/examples/video-loop-families.png"
+kind = "copy"
+cells = [{ src = "{out:video-loop-families}/inspect.png" }]
+
+[[image]]
+file = "assets/examples/video-loop-tokyo-night-storm.png"
+kind = "copy"
+cells = [{ src = "{out:video-loop-scheme}/inspect.png" }]
+
+[[image]]
+file = "assets/examples/video-loop-after.webp"
+kind = "animation"
+fps = 12
+cells = [{ src = "{out:video-loop}/wallpaper.mp4" }]

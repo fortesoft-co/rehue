@@ -38,10 +38,11 @@ const MIN_CHANGE: f64 = 3.0;
 const MIN_SCHEME_CHANGE: f64 = 2.0;
 const FG: &str = "#e8e8ef";
 
-/// Animated examples: frames per second and lossy WebP quality.  Every
-/// frame is a keyframe: with frames drawn over the last, lossy WebP
-/// leaves stale blocks wherever the picture changes slowly (a sky
-/// darkening), and redrawing whole frames costs only about a fifth more.
+/// Animated examples: frames per second (an image can set its own) and
+/// lossy WebP quality.  Every frame is a keyframe: with frames drawn
+/// over the last, lossy WebP leaves stale blocks wherever the picture
+/// changes slowly (a sky darkening), and redrawing whole frames costs
+/// only about a fifth more.
 const ANIMATION_FPS: u32 = 8;
 const ANIMATION_QUALITY: &str = "40";
 
@@ -168,8 +169,8 @@ impl Builder {
         sh(cmd.arg(out)).map(|_| ())
     }
 
-    /// `video` as an animated WebP `width` px wide.
-    fn animation(&self, video: &Path, width: u32, out: &Path) -> Result<()> {
+    /// `video` as an animated WebP `width` px wide, at `fps`.
+    fn animation(&self, video: &Path, width: u32, fps: u32, out: &Path) -> Result<()> {
         let stem = out.file_stem().unwrap_or_default().to_string_lossy();
         let frames = self.work.join("animation").join(&*stem);
         let _ = std::fs::remove_dir_all(&frames);
@@ -180,7 +181,7 @@ impl Builder {
             .arg(video)
             .arg("-vf")
             .arg(format!(
-                "fps={ANIMATION_FPS},scale={width}:-2:flags=lanczos"
+                "fps={fps},scale={width}:-2:flags=lanczos"
             ))
             .arg(frames.join("%04d.png")))?;
         let mut pngs: Vec<PathBuf> = std::fs::read_dir(&frames)
@@ -191,7 +192,7 @@ impl Builder {
         sh(Command::new("img2webp")
             .args(["-loop", "0", "-kmin", "0", "-kmax", "1", "-lossy"])
             .args(["-q", ANIMATION_QUALITY, "-m", "6", "-d"])
-            .arg((1000 / ANIMATION_FPS).to_string())
+            .arg((1000 / fps).to_string())
             .args(&pngs)
             .arg("-o")
             .arg(out))
@@ -275,7 +276,12 @@ impl Builder {
                 .arg(format!("{}%", image.scale.unwrap_or(200)))
                 .arg(&out))
             .map(|_| ()),
-            Kind::Animation => self.animation(&cells[0].1, image.width.unwrap_or(480), &out),
+            Kind::Animation => self.animation(
+                &cells[0].1,
+                image.width.unwrap_or(480),
+                image.fps.unwrap_or(ANIMATION_FPS),
+                &out,
+            ),
             Kind::Shot => {
                 let shots: Vec<PathBuf> = image
                     .views

@@ -46,7 +46,9 @@ versions may break).
   `start` and `end` settle the rest, and the printed flag makes the
   same loop again. The grade is measured on the frames the loop plays,
   the sound is crossfaded with the picture, and `report.json` records
-  the join and every candidate.
+  the join and every candidate. The video docs show a city skyline at
+  night as shot, jumping where it wraps, and looped in three of
+  tokyo-night-storm's colors.
 - Every run setting has a config key: `wal`'s `lut`, `lut-level`,
   `deband`, `grain`, `ffmpeg`, `ffmpeg-args` and `loop` (its string or
   a table), `scheme-dir` on `scheme`, `wal` and `icons`, and `enhance`

@@ -168,6 +168,33 @@ rehue wal -i rain.mp4 -s kanagawa --loop ask            # pick from what it find
 rehue wal -i rain.mp4 -s kanagawa --loop fade,min=50%   # a crossfade, at least half the clip
 ```
 
+A city skyline at night, its last second crossfaded into its first,
+graded with three of tokyo-night-storm's colors: purple, lavender and
+cyan. The clip is cut to
+a join `--loop ask` offered on the full shot, so the fade spans all of
+it:
+
+<!-- gen:run:video-loop -->
+```sh
+rehue wal \
+  -i assets/giang-city-skyline-night.mp4 \
+  -s tokyo-night-storm \
+  -H 1 \
+  --match-hue 1 \
+  --grays tint \
+  -p base0E=2,base08,base0C \
+  --lightness 0.02 \
+  --chroma 1.15 \
+  --loop fade,start=0,end=4.171 \
+  -o looped
+```
+<!-- /gen:run:video-loop -->
+
+| | |
+| --- | --- |
+| ![a city skyline at night as shot, jumping back to its start each time it repeats](../assets/examples/video-loop-before.webp)<br>as shot, on repeat: it jumps where it wraps | ![the clip's hue families](../assets/examples/video-loop-families.png)<br>the clip's hue families |
+| ![the same clip looped and graded with tokyo-night-storm, repeating without a jump](../assets/examples/video-loop-after.webp)<br>looped: the end flows into the start | ![tokyo-night-storm's 16 slots](../assets/examples/video-loop-tokyo-night-storm.png)<br>tokyo-night-storm, graded with three of its slots only: purple `base0E`, lavender `base08` and cyan `base0C` (`-p`) |
+
 rehue scans the clip small, lists the joins it found and takes the
 best, printing the flag that makes it again:
 

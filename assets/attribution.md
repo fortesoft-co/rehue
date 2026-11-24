@@ -12,5 +12,7 @@
 - Pexels License - xiang qi - https://www.pexels.com/video/chongqing-cityscape-at-twilight-34766468/ (https://www.pexels.com/@xiang-qi-346904928/)
 **Plant in the rain** (`nothing-ahead-plant-in-rain.mp4`: 4 s from 0:05, scaled to 960x540, no audio)
 - Pexels License - Nothing Ahead - https://www.pexels.com/video/a-close-up-of-a-plant-with-leaves-27865909/ (https://www.pexels.com/@ian-panelo/)
+**City skyline at night** (`giang-city-skyline-night.mp4`: 100 frames from 0:03, scaled to 960x540, no audio)
+- Pexels License - giang - https://www.pexels.com/video/video-of-buildings-in-a-city-7197870/ (https://www.pexels.com/@giang/)
 **Papirus icon theme** (in the icons images under `assets/examples/`, original and recolored; the theme itself is not in the repo)
 - GPL-3.0 - Papirus Development Team - https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
