@@ -137,7 +137,7 @@ wiring it in. This is the butterfly's:
 
 ![preview.html, palette view: the re-hued rose pine dawn on a terminal, code block and widgets beside the repainted butterfly](assets/examples/preview-palette.webp)
 
-Two more tabs approximate how Stylix maps the same 16 slots onto GTK
+Two more tabs approximate how rehue maps the same 16 slots onto GTK
 (Adwaita) and Qt (Kvantum):
 
 ![preview.html, GTK view (left) and Qt view (right)](assets/examples/preview-toolkits.webp)
@@ -181,8 +181,7 @@ forms:
 | `-p` | `--palette` (wal, icons) |
 | `-l` | `--look` |
 
-A scheme is a name from the bundled collection (all
-<!-- gen:scheme-count -->375<!-- /gen:scheme-count -->
+A scheme is a name from the bundled collection (all <!-- gen:scheme-count -->375<!-- /gen:scheme-count -->
 [tinted-theming](https://github.com/tinted-theming/schemes) base16
 schemes) or a path to a scheme YAML.
 

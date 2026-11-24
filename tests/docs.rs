@@ -188,6 +188,14 @@ fn parse(text: &str) -> Result<Vec<Region>, String> {
                     if text[*oend..at].contains('\n') {
                         return Err(format!("line {line}: inline region '{name}' spans lines"));
                     }
+                    // a line opening with `<!--` is an HTML block to
+                    // GitHub, which breaks the paragraph around it
+                    let line_start = text[..*oat].rfind('\n').map_or(0, |i| i + 1);
+                    if text[line_start..*oat].trim().is_empty() {
+                        return Err(format!(
+                            "line {line}: inline region '{name}' starts its line (GitHub breaks the paragraph there); put text before it"
+                        ));
+                    }
                     Region {
                         name,
                         inline: true,
@@ -984,7 +992,8 @@ fn malformed_regions_are_errors_with_lines() {
     assert!(err("<!-- /gen:n -->").contains("closes nothing"));
     assert!(err("<!-- gen:n -->1<!-- /gen:table -->").contains("closes 'n'"));
     assert!(err("<!-- gen:table -->\n<!-- gen:n -->\n").contains("don't nest"));
-    assert!(err("<!-- gen:zzz -->x<!-- /gen:zzz -->").contains("unknown region 'zzz'"));
+    assert!(err("a <!-- gen:zzz -->x<!-- /gen:zzz -->").contains("unknown region 'zzz'"));
+    assert!(err("a\n<!-- gen:n -->1<!-- /gen:n --> b").contains("starts its line"));
     assert!(err("<!-- gen:table -->\nx <!-- /gen:table -->").contains("mixes block and inline"));
     assert!(
         err("<!-- gen:table -->\n<!-- /gen:table -->\n<!-- gen:table -->\n<!-- /gen:table -->\n")
@@ -992,9 +1001,9 @@ fn malformed_regions_are_errors_with_lines() {
     );
     assert!(err("<!-- gen:Bad Name -->").contains("bad region name"));
     // inline duplicates are fine
-    let twice = "<!-- gen:n -->1<!-- /gen:n --> and <!-- gen:n -->2<!-- /gen:n -->";
+    let twice = "a <!-- gen:n -->1<!-- /gen:n --> and <!-- gen:n -->2<!-- /gen:n -->";
     assert_eq!(
         render(twice, &fake).unwrap(),
-        "<!-- gen:n -->42<!-- /gen:n --> and <!-- gen:n -->42<!-- /gen:n -->"
+        "a <!-- gen:n -->42<!-- /gen:n --> and <!-- gen:n -->42<!-- /gen:n -->"
     );
 }

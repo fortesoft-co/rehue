@@ -42,7 +42,7 @@ row) and scheme mode writes `inspect.png` (the 16 slots in a row) and
 A scheme (`scheme -i`, `wal -s`, `icons -s`, `inspect -s`) is either a
 **name** from the bundled collection (all <!-- gen:scheme-count -->375<!-- /gen:scheme-count -->
 [tinted-theming](https://github.com/tinted-theming/schemes) base16
-schemes, the same set Stylix uses) or a **path** to a scheme YAML.
+schemes, the same set tinty and Stylix use) or a **path** to a scheme YAML.
 
 To use your own collection, pass `--scheme-dir`: names are looked up
 there first, then in the bundled set.
