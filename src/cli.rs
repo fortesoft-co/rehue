@@ -69,7 +69,8 @@ pub enum Commands {
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
         /// Config file (.json, .toml or .yaml): extraction options,
-        /// `min-text-contrast`, `reach` and per-role records.
+        /// `min-text-contrast`, `reach`, per-role records and
+        /// `scheme-dir`.
         ///
         /// e.g. -c scheme.toml
         #[arg(short, long, value_name = "FILE")]
@@ -164,8 +165,9 @@ pub enum Commands {
         /// e.g. --scheme-dir ~/schemes
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
-        /// Config file (.json, .toml or .yaml): extraction options and the
-        /// grading options below, globally and per role.
+        /// Config file (.json, .toml or .yaml): extraction options, the
+        /// options below (grading globally and per role, dither, LUT,
+        /// video, banding) and `scheme-dir`.
         ///
         /// e.g. -c wal.toml
         #[arg(short, long, value_name = "FILE")]
@@ -221,19 +223,14 @@ pub enum Commands {
         /// e.g. --lut cube
         #[arg(long, help_heading = "LUT export", value_enum, value_name = "FORMAT")]
         lut: Option<LutFormat>,
-        /// LUT resolution as a Hald level, 2..16 (16 = every 8-bit color,
-        /// exact; `.cube` goes up to 8).
+        /// LUT resolution as a Hald level, 2..16 (default 8; 16 = every
+        /// 8-bit color, exact; `.cube` goes up to 8).
         ///
         /// Level L samples L² values per channel (8 = 64³ entries).
         ///
         /// e.g. --lut-level 12
-        #[arg(
-            long,
-            help_heading = "LUT export",
-            value_name = "2..16",
-            default_value_t = 8
-        )]
-        lut_level: u32,
+        #[arg(long, help_heading = "LUT export", value_name = "2..16")]
+        lut_level: Option<u32>,
         /// Path to ffmpeg, for a video wallpaper (-i clip.mp4, .webm,
         /// .mkv or .mov); else $REHUE_FFMPEG / $PATH.
         ///
@@ -342,7 +339,7 @@ pub enum Commands {
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
         /// Config file (.json, .toml or .yaml): the grading options below,
-        /// globally and per role, and `folders`.
+        /// globally and per role, `folders` and `scheme-dir`.
         ///
         /// e.g. -c icons.toml
         #[arg(short, long, value_name = "FILE")]
@@ -477,13 +474,19 @@ pub enum Commands {
         /// e.g. -o up4
         #[arg(short, long)]
         out: Option<PathBuf>,
+        /// Config file (.json, .toml or .yaml): `upscale`, `sr`, `model`
+        /// and `sr-tool`.
+        ///
+        /// e.g. -c enhance.toml
+        #[arg(short, long, value_name = "FILE")]
+        config: Option<PathBuf>,
         /// Target scale factor vs the source.  Lanczos takes 2..=8;
         /// SR weights are native 4x, so --sr takes 1..=4 (1 = same-size
-        /// restoration).
+        /// restoration).  Needed here or in the config.
         ///
         /// e.g. --upscale 4
         #[arg(long, help_heading = "Upscaling")]
-        upscale: u32,
+        upscale: Option<u32>,
         /// AI super-resolution instead of plain Lanczos.  Needs
         /// realesrgan-ncnn-vulkan: on $PATH, as $REHUE_SR_TOOL, or via
         /// --sr-tool.
@@ -553,7 +556,8 @@ Pipeline example:
 ";
 
 /// The `--lut` export formats.
-#[derive(Clone, Copy, Debug, PartialEq, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LutFormat {
     /// Hald CLUT image (`lut.png`).
     Hald,

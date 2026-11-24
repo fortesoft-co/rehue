@@ -214,7 +214,7 @@ fn the_pipeline_takes_a_shared_look_and_per_step_looks() {
     assert_eq!(scheme.roles["accents"].chroma, Some(1.3), "shared pop");
     let wal = p.rehue.wal.unwrap();
     assert_eq!(
-        (wal.harmonize, wal.chroma),
+        (wal.grade.harmonize, wal.grade.chroma),
         (0.4, 0.75),
         "own muted, table wins"
     );

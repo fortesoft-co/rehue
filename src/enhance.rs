@@ -26,9 +26,24 @@ use image::imageops::FilterType;
 /// The SR tool this module drives.
 pub const SR_TOOL_NAME: &str = "realesrgan-ncnn-vulkan";
 
+/// An `enhance` config file: the same settings as the flags, which win
+/// over it.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case", default)]
+pub struct EnhanceFile {
+    pub upscale: Option<u32>,
+    pub sr: bool,
+    pub model: Option<SrModel>,
+    /// Relative to the config file.
+    pub sr_tool: Option<PathBuf>,
+}
+
 /// The bundled Real-ESRGAN weights (`--model`); both upscale 4x
 /// natively.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
 pub enum SrModel {
     /// General photographic weights (`realesrgan-x4plus`).
     Photos,

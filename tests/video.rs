@@ -621,6 +621,26 @@ fn a_loop_fades_its_end_into_its_start_with_the_sound() {
     // halfway through the fade, both show
     let mid = &got[26];
     assert!(mean_diff(mid, &src[39]) > encode * 1.3 && mean_diff(mid, &src[9]) > encode * 1.3);
+
+    // the same loop from a config table makes the same frames
+    let config = dir.join("loop.toml");
+    std::fs::write(
+        &config,
+        "[loop]\nmode = \"fade\"\nstart = 0.5\nend = 3.5\nseam = 0.5\n",
+    )
+    .unwrap();
+    let again = dir.join("again");
+    wal_ok(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "-c",
+        config.to_str().unwrap(),
+        "-o",
+        again.to_str().unwrap(),
+    ]);
+    assert!(rgb_frames(&ffmpeg, &again.join("wallpaper.mp4")) == got);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -90,8 +90,10 @@ pub enum Min {
     Share(f64),
 }
 
-/// `--loop MODE[,key=value...]`.
-#[derive(Debug, Clone, PartialEq)]
+/// `--loop MODE[,key=value...]`; in a config, that string or a table
+/// (`mode`, `seam`, `min`, `start`, `end`).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "Value", into = "Value")]
 pub struct LoopOptions {
     pub mode: Mode,
     /// Seconds the fade or bridge lasts.
@@ -129,7 +131,7 @@ impl LoopOptions {
                 None if i == 0 => {
                     table.insert("mode".into(), Value::String(part.into()));
                 }
-                None => return Err(format!("--loop '{part}': settings are key=value")),
+                None => return Err(format!("loop '{part}': settings are key=value")),
                 Some((k, v)) => {
                     table.insert(k.trim().into(), Value::String(v.trim().into()));
                 }
@@ -142,7 +144,7 @@ impl LoopOptions {
                 text.parse::<f64>()
                     .ok()
                     .filter(|s| s.is_finite() && *s >= 0.0)
-                    .ok_or_else(|| format!("--loop {what} is seconds, not '{text}'"))
+                    .ok_or_else(|| format!("loop {what} is seconds, not '{text}'"))
             };
             match key.as_str() {
                 "mode" => {
@@ -154,7 +156,7 @@ impl LoopOptions {
                         "trim" => Mode::Only(Method::Trim),
                         _ => {
                             return Err(format!(
-                                "no --loop mode '{text}' (modes: auto, ask, fade, bridge, trim)"
+                                "no loop mode '{text}' (modes: auto, ask, fade, bridge, trim)"
                             ));
                         }
                     }
@@ -162,7 +164,7 @@ impl LoopOptions {
                 "seam" => {
                     let s = seconds("seam")?;
                     if s <= 0.0 {
-                        return Err("--loop seam is more than 0 seconds".into());
+                        return Err("loop seam is more than 0 seconds".into());
                     }
                     options.seam = s;
                 }
@@ -176,7 +178,7 @@ impl LoopOptions {
                                 .filter(|p| *p > 0.0 && *p <= 100.0);
                             Min::Share(
                                 p.ok_or_else(|| {
-                                    format!("--loop min is seconds or 1..100%, not '{text}'")
+                                    format!("loop min is seconds or 1..100%, not '{text}'")
                                 })? / 100.0,
                             )
                         }
@@ -185,20 +187,80 @@ impl LoopOptions {
                 }
                 "start" => options.start = Some(seconds("start")?),
                 "end" => options.end = Some(seconds("end")?),
-                _ => return Err(format!("--loop has no setting '{key}' (it takes {KEYS})")),
+                _ => return Err(format!("loop has no setting '{key}' (it takes {KEYS})")),
             }
         }
         if let (Some(start), Some(end)) = (options.start, options.end)
             && end <= start
         {
-            return Err(format!("--loop end ({end}) comes after start ({start})"));
+            return Err(format!("loop end ({end}) comes after start ({start})"));
         }
         Ok(options)
+    }
+
+    /// The mode's name.
+    pub fn mode_name(&self) -> String {
+        match self.mode {
+            Mode::Auto => "auto".into(),
+            Mode::Ask => "ask".into(),
+            Mode::Only(m) => m.to_string(),
+        }
     }
 
     /// Whether everything is given, so there's nothing to search.
     pub fn pinned(&self) -> bool {
         matches!(self.mode, Mode::Only(_)) && self.start.is_some() && self.end.is_some()
+    }
+}
+
+impl TryFrom<Value> for LoopOptions {
+    type Error = String;
+
+    /// The flag's string, `true` (auto), or a table of the same settings.
+    fn try_from(value: Value) -> Result<Self, String> {
+        match value {
+            Value::String(s) => Self::parse(&s),
+            Value::Bool(true) => Ok(Self::default()),
+            Value::Object(table) => {
+                let mut parts = vec![
+                    table
+                        .get("mode")
+                        .map(|m| m.as_str().map(str::to_string).ok_or("loop mode is a name"))
+                        .transpose()?
+                        .unwrap_or_else(|| "auto".into()),
+                ];
+                for (key, v) in &table {
+                    if key == "mode" {
+                        continue;
+                    }
+                    let text = match v {
+                        Value::String(s) => s.clone(),
+                        Value::Number(n) => n.to_string(),
+                        _ => return Err(format!("loop {key} is a number or text, not {v}")),
+                    };
+                    parts.push(format!("{key}={text}"));
+                }
+                Self::parse(&parts.join(","))
+            }
+            _ => Err("loop is a mode (\"fade,min=50%\"), true, or a table of settings".into()),
+        }
+    }
+}
+
+impl From<LoopOptions> for Value {
+    fn from(o: LoopOptions) -> Value {
+        let number = |x: f64| serde_json::Number::from_f64(x).map_or(Value::Null, Value::Number);
+        serde_json::json!({
+            "mode": o.mode_name(),
+            "seam": number(o.seam),
+            "min": match o.min {
+                None => Value::Null,
+                Some(Min::Seconds(s)) => number(s),
+                Some(Min::Share(p)) => Value::String(format!("{}%", p * 100.0)),
+            },
+            "start": o.start.map_or(Value::Null, number),
+            "end": o.end.map_or(Value::Null, number),
+        })
     }
 }
 
@@ -419,7 +481,7 @@ pub fn candidates(
     let seam = (options.seam * fps).round() as usize;
     if seam < 2 {
         return Err(format!(
-            "--loop seam={} is under two frames at {fps:.3} fps",
+            "loop seam={} is under two frames at {fps:.3} fps",
             options.seam
         ));
     }
@@ -434,7 +496,7 @@ pub fn candidates(
         && min > total
     {
         return Err(format!(
-            "--loop min is longer than the clip ({})",
+            "loop min is longer than the clip ({})",
             seconds(total, fps)
         ));
     }
@@ -612,7 +674,7 @@ fn check(plan: &Plan, fps: f64) -> Result<(), String> {
     };
     if plan.end < plan.start + room {
         return Err(format!(
-            "--loop start={} end={} leaves no room for a {}-frame seam",
+            "loop start={} end={} leaves no room for a {}-frame seam",
             seconds(plan.start, fps),
             seconds(plan.end, fps),
             plan.seam

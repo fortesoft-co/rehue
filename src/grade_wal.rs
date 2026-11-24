@@ -186,6 +186,48 @@ impl Default for WalConfig {
     }
 }
 
+/// A `wal` config file: the grade, plus the run's other settings.  The
+/// flags of the same names win over these.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct WalCommandConfig {
+    #[serde(flatten)]
+    pub grade: WalConfig,
+    /// Also bake the grade into a LUT (`--lut`).
+    #[serde(default)]
+    pub lut: Option<crate::cli::LutFormat>,
+    #[serde(default)]
+    pub lut_level: Option<u32>,
+    /// ffmpeg, for a video (relative to the config file).
+    #[serde(default)]
+    pub ffmpeg: Option<std::path::PathBuf>,
+    #[serde(default)]
+    pub ffmpeg_args: Option<String>,
+    #[serde(default, rename = "loop")]
+    pub looping: Option<crate::looping::LoopOptions>,
+    #[serde(default)]
+    pub deband: bool,
+    /// Grain amount; `true` is the default amount.
+    #[serde(default, deserialize_with = "grain_amount")]
+    pub grain: Option<f64>,
+}
+
+/// The grain amount `--grain` takes bare.
+pub const DEFAULT_GRAIN: f64 = 4.0;
+
+/// `grain = 3`, or `grain = true` for the default amount.
+fn grain_amount<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
+    use serde::de::Error;
+    match serde_json::Value::deserialize(d)? {
+        serde_json::Value::Null | serde_json::Value::Bool(false) => Ok(None),
+        serde_json::Value::Bool(true) => Ok(Some(DEFAULT_GRAIN)),
+        serde_json::Value::Number(n) => Ok(n.as_f64()),
+        v => Err(D::Error::custom(format!(
+            "grain is an amount or true, not {v}"
+        ))),
+    }
+}
+
 /// Resolved per-role settings the wall pipeline runs with.
 #[derive(Debug, Clone)]
 pub struct WalRoleSettings {

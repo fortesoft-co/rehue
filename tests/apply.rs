@@ -233,7 +233,7 @@ fn pipeline_load_resolves_paths_and_rejects_bad_files() {
     assert_eq!(pipeline.wallpaper, sb.path("wall.png"));
     assert_eq!(pipeline.out_dir(), sb.path("out"));
     assert_eq!(pipeline.apply.tinty_name, "rehue");
-    assert_eq!(pipeline.rehue.wal.as_ref().unwrap().harmonize, 1.0);
+    assert_eq!(pipeline.rehue.wal.as_ref().unwrap().grade.harmonize, 1.0);
 
     let no_steps = sb.write_pipeline("wallpaper = \"wall.png\"\nscheme = \"nord\"\n");
     let err = Pipeline::load(&no_steps).unwrap_err();

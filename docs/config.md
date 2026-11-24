@@ -1,8 +1,10 @@
 # Config files
 
-Every flag has a config key, so a grade you want to keep can live in a
-file passed with `-c` (`--config`). Keys are the flag names without
-the dashes. A config can be TOML, YAML or JSON; the file's extension
+Every setting has a config key, so a grade (or a whole run) you want
+to keep can live in a file passed with `-c` (`--config`). Keys are the
+flag names without the dashes. The flags that aren't keys name what a
+command runs on (`-i`, `-s`, `-w`, `-o`, `--name`), or are `--config`
+and `--dry-run` themselves. A config can be TOML, YAML or JSON; the file's extension
 (`.toml`, `.yaml` or `.yml`, `.json`) picks the format:
 
 ```toml
@@ -51,9 +53,41 @@ chroma = 1.3
 lightness = -0.05
 ```
 
+## Beyond the grade
+
+The rest of a run's flags are keys too:
+
+| key | command | what it sets |
+| --- | --- | --- |
+| `scheme-dir` | `scheme`, `wal`, `icons` | the directory scheme names look up first |
+| `lut`, `lut-level` | `wal` | a LUT of the grade: `"hald"` or `"cube"`, level 2..16 (default 8) |
+| `deband` | `wal` | `true` to deband a video's frames |
+| `grain` | `wal` | an amount, or `true` for the default 4 |
+| `ffmpeg` | `wal` | the ffmpeg to run |
+| `ffmpeg-args` | `wal` | encoding flags for ffmpeg, as one string |
+| `loop` | `wal` | the `--loop` string, or a table of its settings |
+| `upscale`, `sr`, `model`, `sr-tool` | `enhance` | the same as its flags |
+
+```toml
+# wal.toml
+harmonize = 1
+scheme-dir = "schemes"
+deband = true
+grain = 3
+
+[loop]
+mode = "fade"
+min = "50%"
+```
+
+A path (`scheme-dir`, `ffmpeg`, `sr-tool`) is taken from the config
+file's directory when it is relative. A flag wins over its key, as
+everywhere.
+
 The [`apply` pipeline](apply.md) takes the same keys in its
-`[rehue.scheme]` and `[rehue.wal]` tables, and [looks](looks.md) in
-their sections.
+`[rehue.scheme]` and `[rehue.wal]` tables (but `scheme-dir`, which is
+the pipeline's own, and paths are taken from the pipeline's
+directory), and [looks](looks.md) in their sections.
 
 ## Merge and precedence
 

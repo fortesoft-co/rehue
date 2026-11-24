@@ -1,7 +1,7 @@
 //! `rehue` CLI: the mapping flows, plus `inspect` and `enhance` utilities.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 
@@ -524,28 +524,70 @@ fn palette_summary(weights: &[f64; 16]) -> String {
 /// What a `wal` run does beyond its grade: the flags that aren't grading
 /// settings.
 #[derive(Default)]
-struct WalRun<'a> {
+struct WalRun {
     dry_run: bool,
     lut: Option<(LutFormat, u32)>,
     /// ffmpeg, for a video (else found on its own).
-    ffmpeg: Option<&'a Path>,
+    ffmpeg: Option<PathBuf>,
     /// Deband a video's frames before grading.
     deband: bool,
     /// Grain after grading, in levels.
     grain: Option<f64>,
     /// Encoding flags for ffmpeg, as given.
-    ffmpeg_args: Option<&'a str>,
-    /// `--loop`, as given.
-    looping: Option<&'a str>,
+    ffmpeg_args: Option<String>,
+    /// `--loop`.
+    looping: Option<rehue::looping::LoopOptions>,
 }
 
+impl WalRun {
+    /// The run settings a `wal` config holds, with `flags` winning.
+    fn from_config(config: &grade_wal::WalCommandConfig, flags: WalRun) -> WalRun {
+        WalRun {
+            dry_run: flags.dry_run,
+            lut: flags.lut,
+            ffmpeg: flags.ffmpeg.or_else(|| config.ffmpeg.clone()),
+            deband: flags.deband || config.deband,
+            grain: flags.grain.or(config.grain),
+            ffmpeg_args: flags.ffmpeg_args.or_else(|| config.ffmpeg_args.clone()),
+            looping: flags.looping.or_else(|| config.looping.clone()),
+        }
+    }
+}
+
+/// The LUT a run exports: the flags' format and level over the config's.
+fn lut_choice(
+    config: &grade_wal::WalCommandConfig,
+    format: Option<LutFormat>,
+    level: Option<u32>,
+) -> Option<(LutFormat, u32)> {
+    format
+        .or(config.lut)
+        .map(|f| (f, level.or(config.lut_level).unwrap_or(8)))
+}
+
+/// The file `wal` writes its wallpaper to: `wallpaper.png`, or the
+/// video's own container.
+fn wallpaper_file(wallpaper: &Path) -> String {
+    if video::is_video(wallpaper) {
+        let ext = wallpaper
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_else(|| "mp4".to_string());
+        format!("wallpaper.{ext}")
+    } else {
+        "wallpaper.png".to_string()
+    }
+}
+
+/// Returns the wallpaper file written (or that would be).
 fn run_wal(
     wallpaper: &Path,
     parsed: &Scheme,
     out: &Path,
     config: grade_wal::WalConfig,
     run: WalRun,
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
     let WalRun {
         dry_run,
         lut,
@@ -553,17 +595,13 @@ fn run_wal(
         deband,
         grain,
         ffmpeg_args,
-        looping,
+        looping: loop_options,
     } = run;
-    let loop_options = match looping {
-        Some(text) => {
-            if !video::is_video(wallpaper) {
-                return Err("--loop takes a video (it cuts one so it loops)".to_string());
-            }
-            Some(rehue::looping::LoopOptions::parse(text)?)
-        }
-        None => None,
-    };
+    let ffmpeg = ffmpeg.as_deref();
+    let ffmpeg_args = ffmpeg_args.as_deref();
+    if loop_options.is_some() && !video::is_video(wallpaper) {
+        return Err("--loop takes a video (it cuts one so it loops)".to_string());
+    }
     let encode = match ffmpeg_args {
         Some(text) => {
             if !video::is_video(wallpaper) {
@@ -690,7 +728,7 @@ fn run_wal(
         println!("rehue wal: palette - arranged (what would paint the wallpaper)");
         println!("{}", scheme_strip(&strip));
         println!("rehue wal: dry run (nothing written)");
-        return Ok(());
+        return Ok(out.join(wallpaper_file(wallpaper)));
     }
 
     std::fs::create_dir_all(out).map_err(|e| format!("can't create {}: {}", out.display(), e))?;
@@ -821,12 +859,7 @@ fn run_wal(
             )
         }
         Some((tool, probe, chosen)) => {
-            let ext = wallpaper
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(str::to_ascii_lowercase)
-                .unwrap_or_else(|| "mp4".to_string());
-            let file = format!("wallpaper.{ext}");
+            let file = wallpaper_file(wallpaper);
             let table = grade_inputs.as_ref().map(|(arranged, options)| {
                 let map = grade_wal::ColorMap::new(arranged, &neutral_slots, options, &config)
                     .with_vivid(vivid);
@@ -1016,7 +1049,7 @@ fn run_wal(
     } else {
         println!("rehue wal: wrote {wallpaper_file}, compare.png, preview.html, report.json");
     }
-    Ok(())
+    Ok(out.join(wallpaper_file))
 }
 
 /// The loop a video is cut to: the candidates and the one taken.
@@ -1878,20 +1911,20 @@ fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
     // The wallpaper that gets set: repainted (with the applied scheme)
     // when [rehue.wal] runs, else the source.
     let wallpaper = match &pipeline.rehue.wal {
-        Some(config) => {
-            let dir = out.join("wallpaper");
-            run_wal(
-                &pipeline.wallpaper,
-                &scheme,
-                &dir,
-                config.clone(),
+        Some(config) => run_wal(
+            &pipeline.wallpaper,
+            &scheme,
+            &out.join("wallpaper"),
+            config.grade.clone(),
+            WalRun::from_config(
+                config,
                 WalRun {
                     dry_run,
+                    lut: lut_choice(config, None, None),
                     ..WalRun::default()
                 },
-            )?;
-            dir.join("wallpaper.png")
-        }
+            ),
+        )?,
         None => pipeline.wallpaper.clone(),
     };
 
@@ -1968,9 +2001,15 @@ fn run(command: Commands) -> Result<(), String> {
             lightness,
             chroma,
         } => {
+            let mut file = rehue::config::read_file(config.as_deref())?;
+            let scheme_dir = scheme_dir.or(rehue::config::take_path(
+                &mut file,
+                "scheme-dir",
+                config.as_deref(),
+            )?);
             let (mut map_config, looks) = rehue::look::resolve::<grade_scheme::SchemeConfig>(
                 &config_label(config.as_deref()),
-                rehue::config::read_file(config.as_deref())?,
+                file,
                 &look,
                 None,
                 rehue::look::Target::Scheme,
@@ -2014,31 +2053,48 @@ fn run(command: Commands) -> Result<(), String> {
             ffmpeg_args,
             looping,
         } => {
-            let (mut wal_config, looks) = rehue::look::resolve::<grade_wal::WalConfig>(
+            let mut file = rehue::config::read_file(config.as_deref())?;
+            let scheme_dir = scheme_dir.or(rehue::config::take_path(
+                &mut file,
+                "scheme-dir",
+                config.as_deref(),
+            )?);
+            let (mut wal_config, looks) = rehue::look::resolve::<grade_wal::WalCommandConfig>(
                 &config_label(config.as_deref()),
-                rehue::config::read_file(config.as_deref())?,
+                file,
                 &look,
                 None,
                 rehue::look::Target::Wal,
             )?;
             print_looks("wal", &looks);
-            WalOverrides::from_grade(grade, dither, assign).apply(&mut wal_config)?;
+            if let Some(path) = wal_config.ffmpeg.take() {
+                wal_config.ffmpeg = Some(rehue::config::relative_to(config.as_deref(), path));
+            }
+            WalOverrides::from_grade(grade, dither, assign).apply(&mut wal_config.grade)?;
             let parsed = Scheme::resolve(&scheme, scheme_dir.as_deref())?;
+            let run = WalRun::from_config(
+                &wal_config,
+                WalRun {
+                    dry_run,
+                    lut: lut_choice(&wal_config, lut, lut_level),
+                    ffmpeg,
+                    deband,
+                    grain,
+                    ffmpeg_args,
+                    looping: looping
+                        .as_deref()
+                        .map(rehue::looping::LoopOptions::parse)
+                        .transpose()?,
+                },
+            );
             run_wal(
                 &input,
                 &parsed,
                 out.as_deref().unwrap_or(Path::new("rehue-out")),
-                wal_config,
-                WalRun {
-                    dry_run,
-                    lut: lut.map(|format| (format, lut_level)),
-                    ffmpeg: ffmpeg.as_deref(),
-                    deband,
-                    grain,
-                    ffmpeg_args: ffmpeg_args.as_deref(),
-                    looping: looping.as_deref(),
-                },
+                wal_config.grade,
+                run,
             )
+            .map(|_| ())
         }
         Commands::Icons {
             input,
@@ -2053,9 +2109,15 @@ fn run(command: Commands) -> Result<(), String> {
             dither,
             grade,
         } => {
+            let mut file = rehue::config::read_file(config.as_deref())?;
+            let scheme_dir = scheme_dir.or(rehue::config::take_path(
+                &mut file,
+                "scheme-dir",
+                config.as_deref(),
+            )?);
             let (mut icons_config, looks) = rehue::look::resolve::<rehue::icons::IconsConfig>(
                 &config_label(config.as_deref()),
-                rehue::config::read_file(config.as_deref())?,
+                file,
                 &look,
                 None,
                 rehue::look::Target::Icons,
@@ -2102,18 +2164,31 @@ fn run(command: Commands) -> Result<(), String> {
         Commands::Enhance {
             input,
             out,
+            config,
             upscale,
             sr,
             model,
             sr_tool,
-        } => run_enhance(
-            &input,
-            out.as_deref().unwrap_or(Path::new("rehue-out")),
-            upscale,
-            sr,
-            model.unwrap_or(SrModel::Photos),
-            sr_tool.as_deref(),
-        ),
+        } => {
+            let file: rehue::enhance::EnhanceFile =
+                rehue::config::from_value(rehue::config::read_file(config.as_deref())?)
+                    .map_err(|e| format!("{}: {e}", config_label(config.as_deref())))?;
+            let upscale = upscale
+                .or(file.upscale)
+                .ok_or("enhance needs --upscale (or upscale in the config)".to_string())?;
+            let sr_tool = sr_tool.or_else(|| {
+                file.sr_tool
+                    .map(|p| rehue::config::relative_to(config.as_deref(), p))
+            });
+            run_enhance(
+                &input,
+                out.as_deref().unwrap_or(Path::new("rehue-out")),
+                upscale,
+                sr || file.sr,
+                model.or(file.model).unwrap_or(SrModel::Photos),
+                sr_tool.as_deref(),
+            )
+        }
         Commands::Apply { pipeline, dry_run } => run_apply(&pipeline, dry_run),
     }
 }

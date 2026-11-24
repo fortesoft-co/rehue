@@ -52,7 +52,7 @@ detail along with the rest, exactly as it would the original.
 <!-- gen:flags:enhance:upscaling -->
 | flag | value | what it does |
 | --- | --- | --- |
-| `--upscale` | `UPSCALE` | Target scale factor vs the source. Lanczos takes 2..=8; SR weights are native 4x, so --sr takes 1..=4 (1 = same-size restoration) |
+| `--upscale` | `UPSCALE` | Target scale factor vs the source. Lanczos takes 2..=8; SR weights are native 4x, so --sr takes 1..=4 (1 = same-size restoration). Needed here or in the config |
 | `--sr` |  | AI super-resolution instead of plain Lanczos. Needs realesrgan-ncnn-vulkan: on $PATH, as $REHUE_SR_TOOL, or via --sr-tool |
 | `--model` | `photos \| anime` | SR weights (with --sr): photos = general x4plus, anime = x4plus-anime |
 | `--sr-tool` | `TOOL` | Path to the SR tool (with --sr); else $REHUE_SR_TOOL / $PATH |

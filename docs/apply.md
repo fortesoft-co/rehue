@@ -55,7 +55,8 @@ rehue apply --pipeline ~/.config/rehue/pipeline.toml
   `tinty-data-dir` point it at another setup (handy for trying things
   without touching your real one).
 - **Wallpaper:** `wallpaper-command` runs through `sh` with
-  `{wallpaper}` replaced by the (quoted) image path; `$REHUE_WALLPAPER`
+  `{wallpaper}` replaced by the (quoted) path of the image (or video,
+  when the pipeline's wallpaper is one, for a player such as mpvpaper); `$REHUE_WALLPAPER`
   and `$REHUE_SCHEME` are set too. Any setter works: swww, swaybg,
   feh, `gsettings set org.gnome.desktop.background picture-uri ...`.
 - **Paths** in the file resolve against the file's directory (`~/`

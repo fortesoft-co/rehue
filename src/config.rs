@@ -6,7 +6,7 @@
 //! becomes a typed config ([`from_value`]), so a typo is an error instead
 //! of a silently ignored setting.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -201,4 +201,30 @@ pub fn from_yaml(text: &str) -> Result<Value, String> {
 /// A TOML table as a JSON value.
 pub fn from_toml(table: toml::Table) -> Value {
     serde_json::to_value(table).expect("a TOML table is valid JSON")
+}
+
+/// `path` as written in the config file `file`: a relative path is taken
+/// from the file's directory (from here without a file).
+pub fn relative_to(file: Option<&Path>, path: PathBuf) -> PathBuf {
+    match file.and_then(Path::parent) {
+        Some(dir) if path.is_relative() => dir.join(path),
+        _ => path,
+    }
+}
+
+/// Take a path key (`scheme-dir`) out of a config before it is typed,
+/// relative to the config file.
+pub fn take_path(
+    config: &mut Value,
+    key: &str,
+    file: Option<&Path>,
+) -> Result<Option<PathBuf>, String> {
+    let Some(map) = config.as_object_mut() else {
+        return Ok(None);
+    };
+    match map.remove(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(relative_to(file, PathBuf::from(s)))),
+        Some(other) => Err(format!("{key} is a path, not {other}")),
+    }
 }

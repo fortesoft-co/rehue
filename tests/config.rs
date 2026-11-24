@@ -164,3 +164,103 @@ fn every_command_reads_yaml_and_toml_and_catches_typos() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn every_run_setting_has_a_config_key_and_flags_win() {
+    let bin = env!("CARGO_BIN_EXE_rehue");
+    let dir = scratch("run");
+    let wall = dir.join("wall.png");
+    gradient_image((24, 24)).save(&wall).unwrap();
+    std::fs::create_dir_all(dir.join("schemes")).unwrap();
+    std::fs::copy(
+        fixture("solarized-dark.yaml"),
+        dir.join("schemes/mine.yaml"),
+    )
+    .unwrap();
+    // a scheme-dir relative to the config, a LUT and grain
+    let config = write(
+        &dir,
+        "wal.toml",
+        "harmonize = 1\nscheme-dir = \"schemes\"\nlut = \"cube\"\nlut-level = 2\ngrain = 2\n",
+    );
+    let wal = |extra: &[&str], out: &str| {
+        let run = std::process::Command::new(bin)
+            .args(["wal", "-i", wall.to_str().unwrap(), "-s", "mine", "-c"])
+            .arg(&config)
+            .args(extra)
+            .arg("-o")
+            .arg(dir.join(out))
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let report: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join(out).join("report.json")).unwrap())
+                .unwrap();
+        report
+    };
+    let report = wal(&[], "a");
+    assert_eq!(report["grain"], 2.0);
+    assert!(dir.join("a/lut.cube").is_file());
+    // the flags win over the config, key by key
+    let report = wal(&["--grain", "3", "--lut", "hald"], "b");
+    assert_eq!(report["grain"], 3.0);
+    assert!(dir.join("b/lut.png").is_file() && !dir.join("b/lut.cube").exists());
+
+    // the video settings are keys too (checked here on their own: a
+    // still refuses them)
+    let video = rehue::config::from_value::<rehue::grade_wal::WalCommandConfig>(json!({
+        "deband": true,
+        "grain": true,
+        "ffmpeg": "bin/ffmpeg",
+        "ffmpeg-args": "-crf 20",
+        "loop": { "mode": "fade", "min": "50%", "seam": 0.5 },
+    }))
+    .unwrap();
+    assert!(video.deband);
+    assert_eq!(video.grain, Some(rehue::grade_wal::DEFAULT_GRAIN));
+    assert_eq!(video.ffmpeg_args.as_deref(), Some("-crf 20"));
+    let looping = video.looping.unwrap();
+    assert_eq!(
+        looping,
+        rehue::looping::LoopOptions::parse("fade,min=50%,seam=0.5").unwrap()
+    );
+    for bad in [json!({ "loop": { "mod": "fade" } }), json!({ "loop": 3 })] {
+        assert!(rehue::config::from_value::<rehue::grade_wal::WalCommandConfig>(bad).is_err());
+    }
+    assert_eq!(
+        rehue::config::from_value::<rehue::grade_wal::WalCommandConfig>(json!({ "loop": "ask" }))
+            .unwrap()
+            .looping
+            .unwrap()
+            .mode,
+        rehue::looping::Mode::Ask
+    );
+
+    // enhance reads upscale from its config
+    let up = write(&dir, "enhance.toml", "upscale = 2\n");
+    let run = std::process::Command::new(bin)
+        .args(["enhance", "-i", wall.to_str().unwrap(), "-c"])
+        .arg(&up)
+        .arg("-o")
+        .arg(dir.join("up"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let scaled = image::open(dir.join("up/wall.png")).unwrap();
+    assert_eq!((scaled.width(), scaled.height()), (48, 48));
+    let run = std::process::Command::new(bin)
+        .args(["enhance", "-i", wall.to_str().unwrap(), "-o"])
+        .arg(dir.join("up2"))
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&run.stderr).contains("needs --upscale"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

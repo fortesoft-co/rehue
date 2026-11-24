@@ -19,7 +19,7 @@ use std::process::Command;
 use serde::Deserialize;
 
 use crate::grade_scheme::SchemeConfig;
-use crate::grade_wal::WalConfig;
+use crate::grade_wal::WalCommandConfig;
 
 /// A pipeline file.  Paths are resolved against the file's directory;
 /// a leading `~/` expands to `$HOME`.
@@ -86,7 +86,7 @@ pub struct Steps {
     /// Repaint the wallpaper (with the rehued scheme when
     /// `[rehue.scheme]` ran, else the reference); the result is what gets
     /// set.
-    pub wal: Option<WalConfig>,
+    pub wal: Option<WalCommandConfig>,
 }
 
 /// The `[apply]` table.
@@ -208,16 +208,19 @@ fn resolve_steps(raw: &RawSteps, base: &Path, path: &Path) -> Result<Steps, Stri
             None => None,
         },
         wal: match &raw.wal {
-            Some(t) => Some(
-                resolve_look(
+            Some(t) => {
+                let mut wal: WalCommandConfig = resolve_look(
                     &what(Target::Wal),
                     step(t)?,
                     &[],
                     shared.clone(),
                     Target::Wal,
                 )?
-                .0,
-            ),
+                .0;
+                // ffmpeg is a path, relative to the pipeline
+                wal.ffmpeg = wal.ffmpeg.map(|p| resolve(base, &p));
+                Some(wal)
+            }
             None => None,
         },
     })

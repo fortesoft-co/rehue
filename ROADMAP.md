@@ -27,6 +27,10 @@ shipped.
   wallpaper, so `rehue scheme` works without a reference scheme at all.
 - **Look book**: a docs page showcasing standout results, each with
   the images and the recipe that made it.
+- **Nix module**: a home-manager / NixOS module with typed options
+  (checked and documented per option) that writes rehue's config and
+  wires the builders' outputs into Stylix, alongside today's `lib`
+  builders and their `config` attribute set.
 - **Loop bridges in auto**: `wal --loop` lists bridges but `auto`
   takes fades, as the seam score can't tell whether `minterpolate`
   will smear. A bridge won on a slow camera move and smeared a city

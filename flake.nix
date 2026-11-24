@@ -40,9 +40,9 @@
       apps = forAllSystems (pkgs: {
         rehue = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.rehue}/bin/rehue";
+          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.rehue}/bin/rehue";
         };
-        default = self.apps.${pkgs.system}.rehue;
+        default = self.apps.${pkgs.stdenv.hostPlatform.system}.rehue;
       });
 
       devShells = forAllSystems (pkgs: rec {
@@ -92,7 +92,7 @@
       lib = forAllSystems (
         pkgs:
         let
-          rehue = self.packages.${pkgs.system}.rehue;
+          rehue = self.packages.${pkgs.stdenv.hostPlatform.system}.rehue;
         in
         {
           # rehue a scheme with a wallpaper's hues (`rehue scheme`)
@@ -114,14 +114,22 @@
                 --out "$out"
             '';
 
-          # repaint a wallpaper with a scheme's palette (`rehue wal`)
+          # repaint a wallpaper with a scheme's palette (`rehue wal`); a
+          # video (.mp4, .webm, .mkv, .mov) builds with ffmpeg
           wal =
             { wallpaper, scheme, config ? { } }:
             let
               configFile = pkgs.writeText "rehue-wal-config.json" (builtins.toJSON config);
+              name = pkgs.lib.toLower (toString wallpaper);
+              isVideo = builtins.any (ext: pkgs.lib.hasSuffix ext name) [
+                ".mp4"
+                ".webm"
+                ".mkv"
+                ".mov"
+              ];
             in
             pkgs.runCommand "rehue-wal" {
-              nativeBuildInputs = [ rehue ];
+              nativeBuildInputs = [ rehue ] ++ pkgs.lib.optional isVideo pkgs.ffmpeg-headless;
               wallpaperArg = "${wallpaper}";
               schemeArg = "${scheme}";
               configArg = configFile;
@@ -131,6 +139,26 @@
                 --scheme "$schemeArg" \
                 --config "$configArg" \
                 --out "$out"
+            '';
+
+          # scale a picture up (`rehue enhance`, Lanczos: the sandbox has
+          # no GPU for --sr); the result is $out/wallpaper.png
+          enhance =
+            { wallpaper, config }:
+            let
+              configFile = pkgs.writeText "rehue-enhance-config.json" (builtins.toJSON config);
+            in
+            pkgs.runCommand "rehue-enhance" {
+              nativeBuildInputs = [ rehue ];
+              wallpaperArg = "${wallpaper}";
+              configArg = configFile;
+            } ''
+              rehue enhance \
+                --input "$wallpaperArg" \
+                --config "$configArg" \
+                --out build
+              mkdir -p "$out"
+              mv build/*.png "$out/wallpaper.png"
             '';
 
           # recolor an icon theme with a scheme (`rehue icons`); the result

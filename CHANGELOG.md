@@ -47,6 +47,17 @@ versions may break).
   same loop again. The grade is measured on the frames the loop plays,
   the sound is crossfaded with the picture, and `report.json` records
   the join and every candidate.
+- Every run setting has a config key: `wal`'s `lut`, `lut-level`,
+  `deband`, `grain`, `ffmpeg`, `ffmpeg-args` and `loop` (its string or
+  a table), `scheme-dir` on `scheme`, `wal` and `icons`, and `enhance`
+  takes `-c` with `upscale`, `sr`, `model` and `sr-tool`. Paths are
+  taken from the config's directory; flags still win. The `apply`
+  pipeline's `[rehue.wal]` takes them too, and sets a video wallpaper
+  when its wallpaper is one.
+- Nix: `lib.wal` builds a video wallpaper (with ffmpeg) and every
+  setting above through `config`; `lib.enhance` scales a picture up
+  (Lanczos). `docs/nix.md` lists every builder, what it takes and what
+  it gives.
 - `scheme -w` and `inspect -w` take a video too, its hue families
   measured on frames across it. `inspect -s NAME -o DIR` also writes
   `inspect.png`, the scheme's 16 slots as swatches. The video docs show

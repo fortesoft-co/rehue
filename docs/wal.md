@@ -414,7 +414,7 @@ depends on its position, not just its color, so no LUT can hold it.
 | flag | value | what it does |
 | --- | --- | --- |
 | `--lut` | `hald \| cube` | Also bake the grade into a 3D LUT: `lut.png` (Hald CLUT) or `lut.cube` |
-| `--lut-level` | `2..16` | LUT resolution as a Hald level, 2..16 (16 = every 8-bit color, exact; `.cube` goes up to 8) (default 8) |
+| `--lut-level` | `2..16` | LUT resolution as a Hald level, 2..16 (default 8; 16 = every 8-bit color, exact; `.cube` goes up to 8) |
 <!-- /gen:flags:wal:lut-export -->
 
 ## Every grading flag
