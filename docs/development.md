@@ -198,6 +198,7 @@ Flakes only see files git tracks: `git add` new files before
 | `src/icons.rs` | `rehue icons`: SVG and PNG recoloring, theme layout, folders, the preview. |
 | `src/lib.rs` | rehue: paint base16 color schemes and wallpapers with each other's colors. |
 | `src/look.rs` | Looks: saved grades, selectable by name (`-l pop`). |
+| `src/looping.rs` | Seamless loops: a video cut so its end flows back into its start. |
 | `src/lut.rs` | Hald CLUT and `.cube` export of a color function. |
 | `src/par.rs` | Per-pixel work across threads, with results that don't depend on the thread count. |
 | `src/preview.rs` | The compiled-in `preview.html`: CSS-only views, GTK and Qt mocks. |

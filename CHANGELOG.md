@@ -36,6 +36,17 @@ versions may break).
   laptop.
 - A video's frame count, speed and time left show on the terminal
   while it's graded.
+- `wal --loop [MODE][,key=value...]`: a video cut so its end flows
+  back into its start. rehue scans the clip at 160x90, scores every
+  join (the OKLab difference between the frames a fade blends, against
+  the clip's own motion), lists the best at a quarter, half and
+  three-quarters of the clip, and takes one: `auto` (the best fade, or
+  a trim when the clip already loops), `ask` (pick from the list),
+  `fade`, `bridge` (ffmpeg's `minterpolate`) or `trim`. `seam`, `min`,
+  `start` and `end` settle the rest, and the printed flag makes the
+  same loop again. The grade is measured on the frames the loop plays,
+  the sound is crossfaded with the picture, and `report.json` records
+  the join and every candidate.
 - `scheme -w` and `inspect -w` take a video too, its hue families
   measured on frames across it. `inspect -s NAME -o DIR` also writes
   `inspect.png`, the scheme's 16 slots as swatches. The video docs show

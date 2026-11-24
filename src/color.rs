@@ -56,7 +56,7 @@ fn dot(row: &[f64; 3], vec: &[f64; 3]) -> f64 {
 static SRGB_TO_LINEAR: std::sync::LazyLock<[f64; 256]> =
     std::sync::LazyLock::new(|| std::array::from_fn(|v| srgb_to_linear_exact(v as u8)));
 
-fn srgb_to_linear(v: u8) -> f64 {
+pub fn srgb_to_linear(v: u8) -> f64 {
     SRGB_TO_LINEAR[usize::from(v)]
 }
 

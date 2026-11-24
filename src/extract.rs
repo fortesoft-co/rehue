@@ -109,7 +109,7 @@ pub fn extract_hues(path: &Path, params: &ExtractionParams) -> Result<Vec<Cluste
     if crate::video::is_video(path) {
         let ffmpeg = crate::video::resolve_ffmpeg(None)?;
         let probe = crate::video::probe(&ffmpeg, path)?;
-        let frames = crate::video::sample(&ffmpeg, path, &probe, false)?;
+        let frames = crate::video::sample(&ffmpeg, path, &probe, false, None)?;
         return Ok(extract_hues_dynamic(
             &DynamicImage::ImageRgb8(frames),
             params,

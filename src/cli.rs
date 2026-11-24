@@ -255,6 +255,28 @@ pub enum Commands {
             allow_hyphen_values = true
         )]
         ffmpeg_args: Option<String>,
+        /// Loop a video seamlessly: cut it where its end flows back into
+        /// its start.  Bare = auto.
+        ///
+        /// MODE[,key=value...].  Modes: auto (the best seam: a trim when
+        /// the clip already loops, else a fade; prints every candidate),
+        /// ask (the candidates, numbered, to pick from), fade (the end
+        /// crossfades into the start), bridge (frames interpolated from
+        /// the end to the start), trim (a hard cut).  Settings: seam
+        /// (seconds the fade or bridge lasts, default 1), min (shortest
+        /// loop: seconds or a share like 50%), start and end (seconds
+        /// into the clip; give one and the other is searched).  The
+        /// sound is crossfaded with the picture.
+        ///
+        /// e.g. --loop   --loop ask   --loop fade,min=50%
+        #[arg(
+            long = "loop",
+            help_heading = "Video",
+            value_name = "MODE[,K=V]",
+            num_args = 0..=1,
+            default_missing_value = "auto"
+        )]
+        looping: Option<String>,
         /// Smooth a video's compression banding before grading: ffmpeg's
         /// deband filter, for blocky steps in skies and gradients.
         ///

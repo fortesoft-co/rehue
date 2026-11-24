@@ -16,6 +16,7 @@ pub mod grade_wal;
 pub mod grain;
 pub mod icons;
 pub mod look;
+pub mod looping;
 pub mod lut;
 pub mod par;
 pub mod preview;

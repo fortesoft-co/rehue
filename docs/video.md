@@ -25,6 +25,8 @@ rehue wal -i clip.mp4 -s tokyo-night-storm -l pop -o graded
   encoded file also depends on your ffmpeg build.
 - `--dither` draws every frame with the scheme's colors: see
   [Dithering a video](#dithering-a-video).
+- `--loop` cuts it so it plays on repeat without a jump: see
+  [Looping](#looping).
 
 Play the result with any video wallpaper player, such as mpvpaper.
 
@@ -155,6 +157,66 @@ color, size, encoding time and playback against each other:
 A checker loses little to `yuv420p` (98.8–99.8% kept); colored
 halftone and pattern dots lose the most.
 
+## Looping
+
+`--loop` cuts a video so its end flows back into its start, for a
+wallpaper that plays on repeat without a jump:
+
+```sh
+rehue wal -i rain.mp4 -s kanagawa --loop                # the best join
+rehue wal -i rain.mp4 -s kanagawa --loop ask            # pick from what it finds
+rehue wal -i rain.mp4 -s kanagawa --loop fade,min=50%   # a crossfade, at least half the clip
+```
+
+rehue scans the clip small, lists the joins it found and takes the
+best, printing the flag that makes it again:
+
+```
+rehue wal: loop candidates (seam: how far the join is from seamless; 0 = seamless, 1 = one frame's change)
+   1  fade      12.53s -   21.47s   loop    7.93s ( 26%)   seam   3.0   best
+   2  bridge    12.53s -   21.47s   loop    9.90s ( 33%)   seam     -
+   3  fade      12.53s -   29.67s   loop   16.13s ( 54%)   seam   3.6
+   4  bridge    12.53s -   29.67s   loop   18.10s ( 60%)   seam     -
+   5  fade       2.47s -   27.23s   loop   23.77s ( 79%)   seam  10.8
+   6  bridge     2.47s -   27.23s   loop   25.73s ( 86%)   seam     -
+rehue wal: loop fade from 12.53s to 21.47s, 7.93s long; to repeat it: --loop fade,start=12.533,end=21.467
+```
+
+Each length is the best join for a loop of at least a quarter, half
+and three-quarters of the clip, as a fade and as a bridge. Most clips
+drift (the light changes, the camera creeps), so the shortest loop
+usually joins best; `min` keeps more of the clip.
+
+| mode | what it does | works best on |
+| --- | --- | --- |
+| `auto` (bare `--loop`) | the best-scoring fade, or a trim when the clip already loops | |
+| `ask` | the list, numbered, and you type the one to take (needs a terminal) | |
+| `fade` | the end crossfades into the start | rain, water, foliage, traffic: texture that blends |
+| `bridge` | ffmpeg's `minterpolate` draws frames from the end to the start | slow camera moves; it smears buildings and sharp edges |
+| `trim` | a hard cut | clips made to loop |
+
+| setting | what it does | default |
+| --- | --- | --- |
+| `seam` | seconds the fade or bridge lasts | 1 |
+| `min` | the shortest loop: seconds, or a share like `50%` | a quarter of the clip |
+| `start`, `end` | seconds into the clip; give one and the other is searched | searched |
+
+- The seam score is how far the join is from seamless, against the
+  clip's own motion: 0 is seamless and 1 is as big a change as one
+  frame to the next. A bridge shows `-`, as the score can't tell
+  whether the interpolation will smear. Above 10 rehue warns that the
+  join will show: a time-lapse that only goes one way, day into night,
+  never comes back to its start.
+- The grade is measured on the frames the loop plays.
+- The sound is cut and crossfaded with the picture, so it is
+  re-encoded (AAC, or Opus for WebM); a bridge's sound is a stretch of
+  the clip's own, as sound can't be interpolated. `--ffmpeg-args -an`
+  drops it.
+- `report.json`'s `video` section gets a `loop` entry: the join taken,
+  its flag, and every candidate.
+- A clip over 2000 frames is scanned on one frame in a few, so its cut
+  lands within a few frames of the best.
+
 ## Encoding
 
 `--ffmpeg-args` hands ffmpeg your own encoding flags, quoted as one
@@ -185,6 +247,7 @@ rehue wal -i clip.mp4 -s nord -H 1 --ffmpeg-args "-pix_fmt yuv444p"
 | --- | --- | --- |
 | `--ffmpeg` | `FFMPEG` | Path to ffmpeg, for a video wallpaper (-i clip.mp4, .webm, .mkv or .mov); else $REHUE_FFMPEG / $PATH |
 | `--ffmpeg-args` | `ARGS` | Encoding flags for ffmpeg, in place of rehue's codec defaults (H.264 crf 16, or VP9 crf 20 for WebM; 4:4:4 with --dither) |
+| `--loop` | `MODE[,K=V]` | Loop a video seamlessly: cut it where its end flows back into its start. Bare = auto |
 <!-- /gen:flags:wal:video -->
 
 ## inspect and scheme

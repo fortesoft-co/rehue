@@ -27,13 +27,11 @@ shipped.
   wallpaper, so `rehue scheme` works without a reference scheme at all.
 - **Look book**: a docs page showcasing standout results, each with
   the images and the recipe that made it.
-- **Seamless loops**: `--loop SECONDS` crossfades a video's last
-  seconds into its first, so the end flows into the beginning (the
-  output is that much shorter), done by ffmpeg (`xfade`, `acrossfade`
-  for the audio). rehue picks where to cut: the frame that looks most
-  like the opening, so the crossfade has little to hide. To
-  investigate: how to score "looks most like" (on the graded frames),
-  and how far from the end to search.
+- **Loop bridges in auto**: `wal --loop` lists bridges but `auto`
+  takes fades, as the seam score can't tell whether `minterpolate`
+  will smear. A bridge won on a slow camera move and smeared a city
+  skyline; find a signal (camera motion is the first guess) so `auto`
+  can take one when it would win.
 - **Alternative extraction backends**: optional extraction libraries
   alongside the built-in histogram + circular k-means (the options
   themselves are documented in [docs/grading.md](docs/grading.md#extraction)).

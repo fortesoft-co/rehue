@@ -238,10 +238,11 @@ frame goes through the grade, through ffmpeg:
 rehue wal -i my-loop.mp4 -s tokyo-night-storm -l pop -o graded
 rehue wal -i my-loop.mp4 -s gruvbox-dark -H 1 --deband --grain   # smooth what the grade makes visible
 rehue wal -i my-loop.mp4 -s gruvbox-light --dither               # dithered, frame by frame
+rehue wal -i my-clip.mp4 -s kanagawa --loop                      # cut where the end flows into the start
 ```
 
 More: [docs/video.md](docs/video.md): what it needs and writes,
-banding, dithering a video and encoding, with examples.
+banding, dithering a video, looping and encoding, with examples.
 
 ## icons
 
@@ -356,7 +357,7 @@ setup.
 | [scheme](docs/scheme.md) | `rehue scheme`: every option, with examples |
 | [wal](docs/wal.md) | `rehue wal`: every option, with examples; LUT export |
 | [dither](docs/dither.md) | `wal --dither`: every style and setting, with examples |
-| [video](docs/video.md) | `wal` on a video: banding, dithering, encoding |
+| [video](docs/video.md) | `wal` on a video: banding, dithering, looping, encoding |
 | [icons](docs/icons.md) | `rehue icons`: folder colors, chosen-color packs, looks, dithering |
 | [inspect](docs/inspect.md) | `rehue inspect`; choosing a scheme |
 | [enhance](docs/enhance.md) | `rehue enhance`: Lanczos and super-resolution upscaling |

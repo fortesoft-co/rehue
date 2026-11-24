@@ -535,6 +535,8 @@ struct WalRun<'a> {
     grain: Option<f64>,
     /// Encoding flags for ffmpeg, as given.
     ffmpeg_args: Option<&'a str>,
+    /// `--loop`, as given.
+    looping: Option<&'a str>,
 }
 
 fn run_wal(
@@ -551,7 +553,17 @@ fn run_wal(
         deband,
         grain,
         ffmpeg_args,
+        looping,
     } = run;
+    let loop_options = match looping {
+        Some(text) => {
+            if !video::is_video(wallpaper) {
+                return Err("--loop takes a video (it cuts one so it loops)".to_string());
+            }
+            Some(rehue::looping::LoopOptions::parse(text)?)
+        }
+        None => None,
+    };
     let encode = match ffmpeg_args {
         Some(text) => {
             if !video::is_video(wallpaper) {
@@ -641,13 +653,23 @@ fn run_wal(
             probe.duration,
             video::SAMPLE_FRAMES
         );
-        Some((tool, probe))
+        let chosen = match &loop_options {
+            Some(options) => Some(choose_loop(&tool, wallpaper, &probe, options, dry_run)?),
+            None => None,
+        };
+        Some((tool, probe, chosen))
     } else {
         None
     };
     let dynamic = match &video {
-        Some((tool, probe)) => {
-            image::DynamicImage::ImageRgb8(video::sample(tool, wallpaper, probe, deband)?)
+        Some((tool, probe, chosen)) => {
+            // a loop is graded on the frames it plays
+            let range = chosen.as_ref().map(|c| {
+                let fps = probe.fps_value();
+                let p = c.pick().plan;
+                (p.start as f64 / fps, (p.end - p.start) as f64 / fps)
+            });
+            image::DynamicImage::ImageRgb8(video::sample(tool, wallpaper, probe, deband, range)?)
         }
         None => image::ImageReader::open(wallpaper)
             .map_err(|e| format!("can't read wallpaper {}: {}", wallpaper.display(), e))?
@@ -798,7 +820,7 @@ fn run_wal(
                 "wallpaper.png".to_string(),
             )
         }
-        Some((tool, probe)) => {
+        Some((tool, probe, chosen)) => {
             let ext = wallpaper
                 .extension()
                 .and_then(|e| e.to_str())
@@ -827,6 +849,19 @@ fn run_wal(
                 }
                 _ => encode.clone(),
             };
+            let plan = chosen.as_ref().map(|c| c.pick().plan);
+            let silent = probe.audio.is_none() || encode.args.iter().any(|a| a == "-an");
+            let audio = match plan {
+                Some(plan) if !silent => {
+                    let (graph, note) =
+                        rehue::looping::audio_graph(&plan, probe.fps_value(), probe.duration);
+                    if let Some(note) = note {
+                        eprintln!("rehue wal: note: {note}");
+                    }
+                    Some(graph)
+                }
+                _ => None,
+            };
             let graded = grade_video(
                 tool,
                 wallpaper,
@@ -838,6 +873,8 @@ fn run_wal(
                     grain,
                     encode: &encode,
                     dither: config.dither.as_ref().zip(video_inks.as_deref()),
+                    plan,
+                    audio: audio.as_deref(),
                 },
             )?;
             println!("rehue wal: {} frames through the grade", graded.frames);
@@ -850,6 +887,10 @@ fn run_wal(
                 "ffmpeg_args": ffmpeg_args,
                 "encoder": encoder,
             });
+            let mut info = info;
+            if let Some(chosen) = chosen {
+                info["loop"] = chosen.report(probe.fps_value());
+            }
             (
                 graded.first,
                 graded.first_graded,
@@ -978,6 +1019,152 @@ fn run_wal(
     Ok(())
 }
 
+/// The loop a video is cut to: the candidates and the one taken.
+struct LoopChoice {
+    candidates: Vec<rehue::looping::Candidate>,
+    picked: usize,
+    seam: f64,
+}
+
+impl LoopChoice {
+    fn pick(&self) -> rehue::looping::Candidate {
+        self.candidates[self.picked]
+    }
+
+    fn report(&self, fps: f64) -> serde_json::Value {
+        let entry = |c: &rehue::looping::Candidate| {
+            let p = c.plan;
+            serde_json::json!({
+                "method": p.method,
+                "start": p.start as f64 / fps,
+                "end": p.end as f64 / fps,
+                "start_frame": p.start,
+                "end_frame": p.end,
+                "seam_frames": p.seam,
+                "frames": p.frames(),
+                "score": c.score,
+                "flag": p.flag(fps, self.seam),
+            })
+        };
+        let mut out = entry(&self.pick());
+        out["candidates"] = self.candidates.iter().map(entry).collect();
+        out
+    }
+}
+
+/// Find where `path` loops, as `options` asks: scan it small, list the
+/// candidates, and take one (asking, for `ask`).
+fn choose_loop(
+    tool: &Path,
+    path: &Path,
+    probe: &video::Probe,
+    options: &rehue::looping::LoopOptions,
+    dry_run: bool,
+) -> Result<LoopChoice, String> {
+    use rehue::looping::{self, Mode};
+    let fps = probe.fps_value();
+    let estimate = (probe.duration * fps).round() as usize;
+    let scan = if options.pinned() {
+        None
+    } else {
+        let stride = looping::stride_for(estimate);
+        println!(
+            "rehue wal: looking for where the loop joins ({} at {}x{})",
+            if stride == 1 {
+                "every frame".to_string()
+            } else {
+                format!("one frame in {stride}")
+            },
+            looping::SCAN_WIDTH,
+            looping::SCAN_HEIGHT
+        );
+        let mut builder = looping::ScanBuilder::new(stride);
+        video::scan(tool, path, probe, stride, |frame| builder.push(frame))?;
+        Some(builder.finish())
+    };
+    // the frames there are: counted by the scan, else from the duration
+    let total = match &scan {
+        Some(s) if s.stride() == 1 => s.len(),
+        Some(s) => (s.len().saturating_sub(1) * s.stride() + 1).min(estimate),
+        None => estimate,
+    };
+    let candidates = looping::candidates(scan.as_ref(), options, fps, total)?;
+    let auto = looping::auto_pick(&candidates);
+    let seconds = |f: usize| f as f64 / fps;
+    if candidates.len() > 1 || options.mode == Mode::Ask {
+        println!(
+            "rehue wal: loop candidates (seam: how far the join is from seamless; 0 = seamless, 1 = one frame's change)"
+        );
+        for (i, c) in candidates.iter().enumerate() {
+            let p = c.plan;
+            println!(
+                "  {:>2}  {:<6}  {:>7.2}s - {:>7.2}s   loop {:>7.2}s ({:>3.0}%)   seam {:>5}{}",
+                i + 1,
+                p.method.to_string(),
+                seconds(p.start),
+                seconds(p.end),
+                seconds(p.frames()),
+                100.0 * p.frames() as f64 / total.max(1) as f64,
+                c.score.map_or("-".to_string(), |s| format!("{s:.1}")),
+                if i == auto { "   best" } else { "" }
+            );
+        }
+    }
+    let picked = if options.mode == Mode::Ask && !dry_run {
+        ask_loop(candidates.len(), auto)?
+    } else {
+        auto
+    };
+    let pick = candidates[picked];
+    println!(
+        "rehue wal: loop {} from {:.2}s to {:.2}s, {:.2}s long; to repeat it: --loop {}",
+        pick.plan.method,
+        seconds(pick.plan.start),
+        seconds(pick.plan.end),
+        seconds(pick.plan.frames()),
+        pick.plan.flag(fps, options.seam)
+    );
+    if let Some(score) = pick.score
+        && pick.plan.method == looping::Method::Fade
+        && score > looping::WARN_ABOVE
+    {
+        eprintln!(
+            "rehue wal: warning: no part of this clip comes back to its start closely (seam {score:.1}); the loop's join will show"
+        );
+    }
+    Ok(LoopChoice {
+        candidates,
+        picked,
+        seam: options.seam,
+    })
+}
+
+/// Ask which of `count` candidates to take (1-based on screen).
+fn ask_loop(count: usize, default: usize) -> Result<usize, String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return Err(
+            "--loop ask needs a terminal to answer in; use --loop auto, or the flags it prints"
+                .to_string(),
+        );
+    }
+    print!("pick [{}]: ", default + 1);
+    std::io::stdout().flush().map_err(|e| e.to_string())?;
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|e| format!("reading the pick: {e}"))?;
+    let line = line.trim();
+    if line.is_empty() {
+        return Ok(default);
+    }
+    match line.parse::<usize>() {
+        Ok(n) if (1..=count).contains(&n) => Ok(n - 1),
+        _ => Err(format!("no candidate '{line}' (1 to {count})")),
+    }
+}
+
 /// A video run's results.
 struct GradedVideo {
     frames: u64,
@@ -997,6 +1184,10 @@ struct FrameSteps<'a> {
     encode: &'a video::EncodeArgs,
     /// Dither the graded frames with these colors.
     dither: Option<(&'a rehue::dither::Dither, &'a [rehue::dither::Ink])>,
+    /// Play the frames as this loop.
+    plan: Option<rehue::looping::Plan>,
+    /// The loop's sound, as an ffmpeg filter graph.
+    audio: Option<&'a str>,
 }
 
 /// A frame count on stderr while a video is graded, when stderr is a
@@ -1011,11 +1202,11 @@ struct Progress {
 }
 
 impl Progress {
-    fn new(probe: &video::Probe) -> Self {
+    fn new(total: u64) -> Self {
         use std::io::IsTerminal;
         let start = std::time::Instant::now();
         Progress {
-            total: (probe.duration * probe.fps_value()).round() as u64,
+            total,
             start,
             // the first count a moment in, when the rate means something
             last: start,
@@ -1074,18 +1265,23 @@ fn grade_video(
         grain,
         encode,
         dither,
+        plan,
+        audio,
     } = steps;
     // with a dither, coverage counts its pixels, not the grade's
     let mut graded_coverage = vec![0u64; BASE_SLOTS.len()];
-    let mut decoder = video::Decoder::open(tool, input, probe, deband)?;
-    let mut encoder = video::Encoder::open(tool, input, output, probe, encode)?;
+    let mut decoder = video::Frames::open(tool, input, probe, deband, plan)?;
+    let mut encoder = video::Encoder::open(tool, input, output, probe, encode, audio)?;
     let mut frame = Vec::new();
     let mut graded = vec![0u8; probe.width as usize * probe.height as usize * 3];
     let mut coverage = vec![0u64; BASE_SLOTS.len()];
     let mut frames = 0u64;
     let mut first = None;
     let mut dithered: Vec<u8>;
-    let mut progress = Progress::new(probe);
+    let mut progress = Progress::new(match plan {
+        Some(p) => p.frames() as u64,
+        None => (probe.duration * probe.fps_value()).round() as u64,
+    });
     while decoder.next(&mut frame)? {
         let counts = if dither.is_some() {
             &mut graded_coverage
@@ -1816,6 +2012,7 @@ fn run(command: Commands) -> Result<(), String> {
             deband,
             grain,
             ffmpeg_args,
+            looping,
         } => {
             let (mut wal_config, looks) = rehue::look::resolve::<grade_wal::WalConfig>(
                 &config_label(config.as_deref()),
@@ -1839,6 +2036,7 @@ fn run(command: Commands) -> Result<(), String> {
                     deband,
                     grain,
                     ffmpeg_args: ffmpeg_args.as_deref(),
+                    looping: looping.as_deref(),
                 },
             )
         }

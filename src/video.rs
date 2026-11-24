@@ -240,19 +240,31 @@ pub fn sample_size(probe: &Probe) -> (u32, u32) {
     (w, h)
 }
 
-/// Up to [`SAMPLE_FRAMES`] frames spread evenly over the video, scaled
-/// to [`SAMPLE_WIDTH`] across and stacked top to bottom: what the grade
-/// is measured on.
-pub fn sample(ffmpeg: &Path, path: &Path, probe: &Probe, deband: bool) -> Result<RgbImage, String> {
+/// Up to [`SAMPLE_FRAMES`] frames spread evenly over the video (or over
+/// `range`, its start and length in seconds), scaled to
+/// [`SAMPLE_WIDTH`] across and stacked top to bottom: what the grade is
+/// measured on.
+pub fn sample(
+    ffmpeg: &Path,
+    path: &Path,
+    probe: &Probe,
+    deband: bool,
+    range: Option<(f64, f64)>,
+) -> Result<RgbImage, String> {
     let (w, h) = sample_size(probe);
-    let rate = if probe.duration > 0.0 {
-        format!("fps={}/{:.6},", SAMPLE_FRAMES, probe.duration)
+    let length = range.map_or(probe.duration, |(_, len)| len);
+    let rate = if length > 0.0 {
+        format!("fps={}/{:.6},", SAMPLE_FRAMES, length)
     } else {
         String::new()
     };
+    let mut cmd = Command::new(ffmpeg);
+    cmd.args(["-v", "error", "-nostdin"]);
+    if let Some((start, len)) = range {
+        cmd.args(["-ss", &format!("{start:.6}"), "-t", &format!("{len:.6}")]);
+    }
     let raw = output(
-        Command::new(ffmpeg)
-            .args(["-v", "error", "-nostdin", "-i"])
+        cmd.arg("-i")
             .arg(path)
             .args(["-map", "0:v:0", "-vf"])
             .arg(format!(
@@ -273,6 +285,45 @@ pub fn sample(ffmpeg: &Path, path: &Path, probe: &Probe, deband: bool) -> Result
     Ok(RgbImage::from_raw(w, h * frames as u32, raw).expect("whole frames"))
 }
 
+/// The loop pre-pass: every `stride`th frame at the scan size, in order
+/// (with a stride over 1, each followed by the frame after it, which
+/// measures one frame's motion), handed to `each`.
+pub fn scan(
+    ffmpeg: &Path,
+    path: &Path,
+    probe: &Probe,
+    stride: usize,
+    mut each: impl FnMut(&[u8]),
+) -> Result<(), String> {
+    let (w, h) = (crate::looping::SCAN_WIDTH, crate::looping::SCAN_HEIGHT);
+    let select = if stride > 1 {
+        format!("select=not(mod(n\\,{stride}))+not(mod(n-1\\,{stride})),")
+    } else {
+        String::new()
+    };
+    let mut cmd = Command::new(ffmpeg);
+    cmd.args(["-v", "error", "-nostdin", "-i"])
+        .arg(path)
+        .args(["-map", "0:v:0", "-fps_mode", "passthrough", "-vf"])
+        .arg(format!(
+            "{select}{}",
+            read_filter(probe, Some((w, h)), false)
+        ))
+        .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+    let mut decoder = Decoder::spawn(cmd, w as usize * h as usize * 3, "scanning for a loop")?;
+    let mut frame = Vec::new();
+    while decoder.next(&mut frame)? {
+        each(&frame);
+    }
+    Ok(())
+}
+
+/// Where to seek for source frame `frame`: half a frame early, so the
+/// frame itself is the first kept whatever the rounding.
+fn seek_to(frame: usize, probe: &Probe) -> Option<String> {
+    (frame > 0).then(|| format!("{:.6}", (frame as f64 - 0.5) / probe.fps_value()))
+}
+
 /// A child's stderr collected on a thread, so a full pipe never stalls it.
 fn collect_stderr(child: &mut Child) -> JoinHandle<String> {
     let mut stderr = child.stderr.take().expect("stderr is piped");
@@ -289,17 +340,74 @@ pub struct Decoder {
     stdout: ChildStdout,
     stderr: Option<JoinHandle<String>>,
     frame_len: usize,
+    /// What it's for, in its errors.
+    what: &'static str,
 }
 
 impl Decoder {
     /// `deband`: run ffmpeg's deband filter on the frames first.
-    pub fn open(ffmpeg: &Path, path: &Path, probe: &Probe, deband: bool) -> Result<Self, String> {
-        let mut child = Command::new(ffmpeg)
-            .args(["-v", "error", "-nostdin", "-i"])
+    /// `range`: only `count` frames from source frame `start`.
+    pub fn open(
+        ffmpeg: &Path,
+        path: &Path,
+        probe: &Probe,
+        deband: bool,
+        range: Option<(usize, usize)>,
+    ) -> Result<Self, String> {
+        let mut cmd = Command::new(ffmpeg);
+        cmd.args(["-v", "error", "-nostdin"]);
+        if let Some(t) = range.and_then(|(start, _)| seek_to(start, probe)) {
+            cmd.args(["-ss", &t]);
+        }
+        cmd.arg("-i")
             .arg(path)
             .args(["-map", "0:v:0", "-fps_mode", "passthrough", "-vf"])
-            .arg(read_filter(probe, None, deband))
-            .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+            .arg(read_filter(probe, None, deband));
+        if let Some((_, count)) = range {
+            cmd.args(["-frames:v", &count.to_string()]);
+        }
+        cmd.args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+        Self::spawn(cmd, probe.frame_len(), "decoding")
+    }
+
+    /// A loop's bridge: `frames` frames ffmpeg's motion interpolation
+    /// draws from source frame `from` to source frame `to` (neither
+    /// included).
+    pub fn bridge(
+        ffmpeg: &Path,
+        path: &Path,
+        probe: &Probe,
+        deband: bool,
+        from: usize,
+        to: usize,
+        frames: usize,
+    ) -> Result<Self, String> {
+        let mut cmd = Command::new(ffmpeg);
+        cmd.args(["-v", "error", "-nostdin"]);
+        for frame in [from, to] {
+            if let Some(t) = seek_to(frame, probe) {
+                cmd.args(["-ss", &t]);
+            }
+            cmd.arg("-i").arg(path);
+        }
+        // the two frames one second apart; at `frames + 1` fps the
+        // interpolation fills the second between them
+        let steps = frames + 1;
+        cmd.arg("-filter_complex")
+            .arg(format!(
+                "[0:v]trim=end_frame=1,setpts=PTS-STARTPTS[p];[1:v]trim=end_frame=1,setpts=PTS-STARTPTS[q];\
+                 [p][q]concat=n=2:v=1,settb=1,setpts=N,tpad=stop=2:stop_mode=clone,\
+                 minterpolate=fps={steps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,\
+                 trim=start_frame=1:end_frame={steps},{}[v]",
+                read_filter(probe, None, deband)
+            ))
+            .args(["-map", "[v]", "-fps_mode", "passthrough"])
+            .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+        Self::spawn(cmd, probe.frame_len(), "bridging the loop")
+    }
+
+    fn spawn(mut cmd: Command, frame_len: usize, what: &'static str) -> Result<Self, String> {
+        let mut child = cmd
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -311,7 +419,8 @@ impl Decoder {
             child,
             stdout,
             stderr,
-            frame_len: probe.frame_len(),
+            frame_len,
+            what,
         })
     }
 
@@ -348,11 +457,116 @@ impl Decoder {
         let stderr = self.stderr.take().map(|h| h.join().unwrap_or_default());
         if !status.success() {
             return Err(format!(
-                "ffmpeg (decoding) failed: {}",
+                "ffmpeg ({}) failed: {}",
+                self.what,
                 stderr.unwrap_or_default().trim()
             ));
         }
         Ok(())
+    }
+}
+
+/// A video's frames in playing order: all of them, or a loop's.
+pub struct Frames<'a> {
+    ffmpeg: &'a Path,
+    path: &'a Path,
+    probe: &'a Probe,
+    deband: bool,
+    plan: Option<crate::looping::Plan>,
+    main: Decoder,
+    /// Frames `main` has given.
+    read: usize,
+    /// A fade's head, opened when its tail starts.
+    head: Option<Decoder>,
+    head_frame: Vec<u8>,
+    /// A bridge, once `main` ends.
+    bridge: Option<Decoder>,
+}
+
+impl<'a> Frames<'a> {
+    pub fn open(
+        ffmpeg: &'a Path,
+        path: &'a Path,
+        probe: &'a Probe,
+        deband: bool,
+        plan: Option<crate::looping::Plan>,
+    ) -> Result<Self, String> {
+        use crate::looping::Method;
+        let range = plan.map(|p| match p.method {
+            // the body, then the tail the head fades in over
+            Method::Fade => (p.start + p.seam, p.end - p.start - p.seam),
+            Method::Bridge | Method::Trim => (p.start, p.end - p.start),
+        });
+        Ok(Frames {
+            ffmpeg,
+            path,
+            probe,
+            deband,
+            plan,
+            main: Decoder::open(ffmpeg, path, probe, deband, range)?,
+            read: 0,
+            head: None,
+            head_frame: Vec::new(),
+            bridge: None,
+        })
+    }
+
+    /// Fill `frame` with the next frame; `false` at the end.
+    pub fn next(&mut self, frame: &mut Vec<u8>) -> Result<bool, String> {
+        use crate::looping::Method;
+        if let Some(bridge) = &mut self.bridge {
+            return bridge.next(frame);
+        }
+        if !self.main.next(frame)? {
+            return match self.plan {
+                Some(p) if p.method == Method::Bridge => {
+                    let mut bridge = Decoder::bridge(
+                        self.ffmpeg,
+                        self.path,
+                        self.probe,
+                        self.deband,
+                        p.end - 1,
+                        p.start,
+                        p.seam - 1,
+                    )?;
+                    let more = bridge.next(frame)?;
+                    self.bridge = Some(bridge);
+                    Ok(more)
+                }
+                Some(p) if self.read < p.frames().min(p.end - p.start) => Err(format!(
+                    "the clip ended {} frames before the loop's cut",
+                    p.end - p.start - self.read - if p.method == Method::Fade { p.seam } else { 0 }
+                )),
+                _ => Ok(false),
+            };
+        }
+        self.read += 1;
+        if let Some(p) = self.plan.filter(|p| p.method == Method::Fade) {
+            let body = p.end - p.start - 2 * p.seam;
+            if self.read > body {
+                // tail frame k of the fade, over head frame k: the last
+                // is the head's alone, so the loop's first frame follows
+                let k = self.read - body - 1;
+                if self.head.is_none() {
+                    self.head = Some(Decoder::open(
+                        self.ffmpeg,
+                        self.path,
+                        self.probe,
+                        self.deband,
+                        Some((p.start, p.seam)),
+                    )?);
+                }
+                let head = self.head.as_mut().expect("opened above");
+                if !head.next(&mut self.head_frame)? {
+                    return Err("ffmpeg ran out of frames for the loop's fade".into());
+                }
+                let (wh, n) = (k as u32 + 1, p.seam as u32);
+                for (t, h) in frame.iter_mut().zip(&self.head_frame) {
+                    *t = ((u32::from(*t) * (n - wh) + u32::from(*h) * wh + n / 2) / n) as u8;
+                }
+            }
+        }
+        Ok(true)
     }
 }
 
@@ -538,13 +752,15 @@ pub struct Encoder {
 impl Encoder {
     /// Encode `probe`-sized frames into `out`; the container (and so the
     /// default codec) follows `out`'s extension, the audio comes from
-    /// `source`, and `encode` replaces the video codec settings.
+    /// `source` (through `audio`, a filter graph from `[1:a]` to `[a]`,
+    /// when given), and `encode` replaces the video codec settings.
     pub fn open(
         ffmpeg: &Path,
         source: &Path,
         out: &Path,
         probe: &Probe,
         encode: &EncodeArgs,
+        audio: Option<&str>,
     ) -> Result<Self, String> {
         let custom = !encode.args.is_empty();
         let pix_fmt = encode.pix_fmt.as_deref().unwrap_or("yuv420p");
@@ -559,7 +775,12 @@ impl Encoder {
             .args(["-video_size", &format!("{}x{}", probe.width, probe.height)])
             .args(["-framerate", &probe.fps, "-i", "-", "-i"])
             .arg(source)
-            .args(["-map", "0:v:0", "-map", "1:a:0?", "-map_metadata", "-1"])
+            .args(["-map", "0:v:0"]);
+        match audio {
+            Some(graph) => cmd.args(["-filter_complex", graph, "-map", "[a]"]),
+            None => cmd.args(["-map", "1:a:0?"]),
+        };
+        cmd.args(["-map_metadata", "-1"])
             .arg("-vf")
             .arg(format!(
                 "scale=out_color_matrix=bt709:out_range=tv:flags={SWS_FLAGS},format={pix_fmt}"
@@ -580,14 +801,18 @@ impl Encoder {
                 ]);
             }
             match probe.audio.as_deref() {
-                Some("opus" | "vorbis") => cmd.args(["-c:a", "copy"]),
+                Some("opus" | "vorbis") if audio.is_none() => cmd.args(["-c:a", "copy"]),
                 _ => cmd.args(["-c:a", "libopus", "-b:a", "160k"]),
             };
         } else {
             if !custom {
                 cmd.args(["-c:v", "libx264", "-preset", "slow", "-crf", "16"]);
             }
-            cmd.args(["-c:a", "copy"]);
+            // filtered sound can't be copied
+            match audio {
+                Some(_) => cmd.args(["-c:a", "aac", "-b:a", "192k"]),
+                None => cmd.args(["-c:a", "copy"]),
+            };
             if ext == "mp4" || ext == "mov" {
                 cmd.args(["-movflags", "+faststart"]);
             }

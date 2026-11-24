@@ -463,3 +463,253 @@ fn ffmpeg_args_set_how_the_video_is_encoded() {
     assert!(String::from_utf8_lossy(&refused.stderr).contains("can't take -vf"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A 4 s test clip: moving color bars and a tone.
+fn long_clip(ffmpeg: &Path, path: &Path) {
+    let ok = Command::new(ffmpeg)
+        .args(["-v", "error", "-y"])
+        .args([
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=96x54:rate=12:duration=4",
+        ])
+        .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=4"])
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"])
+        .arg(path)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "making the test clip");
+}
+
+/// A 4 s clip whose picture repeats every second (a box sliding across),
+/// stored losslessly so the repeats are exact.
+fn repeating_clip(ffmpeg: &Path, path: &Path) {
+    let ok = Command::new(ffmpeg)
+        .args(["-v", "error", "-y"])
+        .args(["-f", "lavfi", "-i", "color=c=gray:s=96x54:r=12:d=4"])
+        .args(["-f", "lavfi", "-i", "color=c=white:s=16x30:r=12:d=4"])
+        .args(["-filter_complex", "[0][1]overlay=x='mod(n*4,48)':y=10"])
+        .args(["-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv444p"])
+        .arg(path)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "making the repeating clip");
+}
+
+/// Every frame of `path`, as 96x54 RGB.
+fn rgb_frames(ffmpeg: &Path, path: &Path) -> Vec<Vec<u8>> {
+    let raw = Command::new(ffmpeg)
+        .args(["-v", "error", "-i"])
+        .arg(path)
+        .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .output()
+        .unwrap()
+        .stdout;
+    raw.chunks(96 * 54 * 3).map(<[u8]>::to_vec).collect()
+}
+
+fn mean_diff(a: &[u8], b: &[u8]) -> f64 {
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| x.abs_diff(*y) as f64)
+        .sum::<f64>()
+        / a.len() as f64
+}
+
+fn report(out: &Path) -> serde_json::Value {
+    serde_json::from_slice(&std::fs::read(out.join("report.json")).unwrap()).unwrap()
+}
+
+fn wal_ok(args: &[&str]) {
+    let run = wal(args);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+}
+
+#[test]
+fn a_video_that_already_loops_is_trimmed() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        eprintln!("ffmpeg / ffprobe not found: skipping");
+        return;
+    };
+    let dir = scratch("loop-trim");
+    let input = dir.join("clip.mp4");
+    repeating_clip(&ffmpeg, &input);
+    let scheme = fixture("solarized-dark.yaml");
+    let out = dir.join("out");
+    wal_ok(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "--loop",
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    let looped = &report(&out)["video"]["loop"];
+    // three whole repeats: frame 36 is frame 0 again (the fourth would
+    // need a frame 48)
+    assert_eq!(looped["method"], "trim");
+    assert_eq!(
+        (looped["start_frame"].as_u64(), looped["end_frame"].as_u64()),
+        (Some(0), Some(36))
+    );
+    assert_eq!(looped["flag"], "trim,start=0,end=3");
+    assert!(looped["candidates"].as_array().unwrap().len() > 1);
+    let video = out.join("wallpaper.mp4");
+    assert_eq!(probe(&ffprobe, &video, "stream=nb_read_frames"), "36");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_loop_fades_its_end_into_its_start_with_the_sound() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        eprintln!("ffmpeg / ffprobe not found: skipping");
+        return;
+    };
+    let dir = scratch("loop-fade");
+    let input = dir.join("clip.mp4");
+    long_clip(&ffmpeg, &input);
+    let scheme = fixture("solarized-dark.yaml");
+    let out = dir.join("out");
+    // frames 6 to 42 with a 6-frame fade: frames 12..36, then 36..42
+    // over 6..12
+    wal_ok(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "--loop",
+        "fade,start=0.5,end=3.5,seam=0.5",
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    let video = out.join("wallpaper.mp4");
+    let streams = probe(
+        &ffprobe,
+        &video,
+        "stream=codec_type,nb_read_frames,duration",
+    );
+    let mut lines = streams.lines();
+    // codec_type, duration, frames
+    assert!(lines.next().unwrap().ends_with(",30"), "{streams}");
+    let audio: f64 = lines
+        .next()
+        .unwrap()
+        .split(',')
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((audio - 2.5).abs() < 0.05, "audio {audio}s for a 2.5s loop");
+    assert_eq!(report(&out)["video"]["loop"]["frames"], 30);
+    // the loop opens on source frame 12 and its fade ends on frame 11, so
+    // the wrap is one ordinary step
+    let src = rgb_frames(&ffmpeg, &input);
+    let got = rgb_frames(&ffmpeg, &video);
+    assert!(mean_diff(&got[0], &src[12]) < mean_diff(&got[0], &src[11]));
+    assert!(mean_diff(&got[29], &src[11]) < mean_diff(&got[29], &src[12]));
+    // as close as any frame through the encode
+    let encode = mean_diff(&got[0], &src[12]);
+    assert!(mean_diff(&got[29], &src[11]) < encode * 1.2);
+    // halfway through the fade, both show
+    let mid = &got[26];
+    assert!(mean_diff(mid, &src[39]) > encode * 1.3 && mean_diff(mid, &src[9]) > encode * 1.3);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_bridge_adds_interpolated_frames_and_keeps_the_sound() {
+    let Some((ffmpeg, ffprobe)) = tools() else {
+        eprintln!("ffmpeg / ffprobe not found: skipping");
+        return;
+    };
+    let dir = scratch("loop-bridge");
+    let input = dir.join("clip.mp4");
+    long_clip(&ffmpeg, &input);
+    let scheme = fixture("solarized-dark.yaml");
+    let out = dir.join("out");
+    wal_ok(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "--loop",
+        "bridge,start=0,end=3,seam=0.5",
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    let video = out.join("wallpaper.mp4");
+    // 36 frames, then 5 drawn from frame 35 back to frame 0
+    let streams = probe(
+        &ffprobe,
+        &video,
+        "stream=codec_type,nb_read_frames,duration",
+    );
+    let mut lines = streams.lines();
+    // codec_type, duration, frames
+    assert!(lines.next().unwrap().ends_with(",41"), "{streams}");
+    let audio: f64 = lines
+        .next()
+        .unwrap()
+        .split(',')
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((audio - 41.0 / 12.0).abs() < 0.05, "audio {audio}s");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn loop_takes_a_video_and_ask_takes_a_terminal() {
+    let Some((ffmpeg, _)) = tools() else {
+        eprintln!("ffmpeg / ffprobe not found: skipping");
+        return;
+    };
+    let dir = scratch("loop-errors");
+    let scheme = fixture("solarized-dark.yaml");
+    let png = dir.join("still.png");
+    image::RgbImage::new(4, 4).save(&png).unwrap();
+    let run = wal(&[
+        "-i",
+        png.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "--loop",
+        "--dry-run",
+    ]);
+    assert!(String::from_utf8_lossy(&run.stderr).contains("--loop takes a video"));
+    let input = dir.join("clip.mp4");
+    long_clip(&ffmpeg, &input);
+    let out = dir.join("out");
+    let run = wal(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "--loop",
+        "ask",
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    assert!(!run.status.success());
+    assert!(String::from_utf8_lossy(&run.stderr).contains("needs a terminal"));
+    let run = wal(&[
+        "-i",
+        input.to_str().unwrap(),
+        "-s",
+        scheme.to_str().unwrap(),
+        "--loop",
+        "spin",
+        "--dry-run",
+    ]);
+    assert!(String::from_utf8_lossy(&run.stderr).contains("modes: auto, ask, fade, bridge, trim"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
