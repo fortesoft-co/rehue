@@ -1,6 +1,6 @@
 [package]
 name = "rehue"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 description = "Map base16 color schemes and wallpapers onto each other, deterministically"

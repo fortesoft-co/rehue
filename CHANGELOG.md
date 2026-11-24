@@ -5,7 +5,14 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-24
+
+The video release: `wal` takes a video wallpaper and grades every
+frame through ffmpeg, with deband and grain for the banding a grade
+shows, dithering that holds still, your own encoding flags, and
+`--loop`, which cuts a clip so its end flows back into its start.
+Every setting now has a config key, so the Nix builders can make a
+looped video wallpaper too, and `wal` runs across all cores.
 
 ### Added
 
@@ -282,6 +289,7 @@ First release.
 - 375 bundled base16 schemes (tinted-theming snapshot).
 - Deterministic, byte-identical output; Nix builders for Stylix.
 
+[0.5.0]: https://github.com/fortesoft-co/rehue/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/fortesoft-co/rehue/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/fortesoft-co/rehue/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/fortesoft-co/rehue/compare/v0.1.0...v0.2.0
