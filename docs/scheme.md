@@ -156,6 +156,19 @@ rehue scheme -i rose-pine-dawn -w my-photo.jpg --chroma-even accents 1
 rehue scheme -i rose-pine-dawn -w my-photo.jpg --lightness-even accents 0.5
 ```
 
+### match-lightness / match-chroma — per role, `0..1`, default `0`
+
+For a [generated](generate.md#lightness-and-chroma) scheme matching a
+scheme (`-g -i SCHEME`): pull a role's lightness or chroma toward the
+target's same slots, 0 leaving it, 1 taking the target's. Hue stays
+where `-M` puts it, so without `-M` the scheme keeps its own colors on
+the target's lightness or chroma. Accents keep 4.5:1 on base00.
+
+```sh
+rehue scheme -g -w my-photo.jpg -i gruvbox-dark --match-lightness 1
+rehue scheme -g -w my-photo.jpg -i gruvbox-dark --match-chroma accents 1
+```
+
 ### match — `0..1`
 
 `-M` sets match-hue and reach together: match-hue M, reach 45° at 0
@@ -203,6 +216,8 @@ rehue scheme --reach 180
 | `--chroma` | `[ROLE] C` | Scale a role's chroma (multiplied; 0.8 muted, 1.3 vivid) |
 | `--chroma-even` | `[ROLE] 0..1` | Pull a role's chroma toward its mean, 0..1 (0 off, 1 even) |
 | `--lightness-even` | `[ROLE] 0..1` | Pull a role's lightness toward its mean, 0..1 (0 off, 1 even) |
+| `--match-lightness` | `[ROLE] 0..1` | Pull a role's lightness toward the -i scheme's same slots, 0..1 (0 off, 1 the target's); with -g and -i only |
+| `--match-chroma` | `[ROLE] 0..1` | Pull a role's chroma toward the -i scheme's same slots, 0..1 (0 off, 1 the target's); with -g and -i only |
 <!-- /gen:flags:scheme:grading -->
 
 The same settings go in a `--config` file, along with the

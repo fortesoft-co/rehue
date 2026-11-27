@@ -179,6 +179,8 @@ struct SchemeOverrides {
     chroma: Vec<String>,
     chroma_even: Vec<String>,
     lightness_even: Vec<String>,
+    match_lightness: Vec<String>,
+    match_chroma: Vec<String>,
 }
 
 impl SchemeOverrides {
@@ -235,6 +237,16 @@ impl SchemeOverrides {
             let (target, value) = dial_arg("chroma", tokens)?;
             let v = parse_f64("chroma", &value)?;
             role_dial(config, target, move |reg| reg.chroma = Some(v));
+        }
+        for tokens in self.match_lightness.chunks(2) {
+            let (target, value) = dial_arg("match-lightness", tokens)?;
+            let v = parse_f64("match-lightness", &value)?;
+            role_dial(config, target, move |reg| reg.match_lightness = Some(v));
+        }
+        for tokens in self.match_chroma.chunks(2) {
+            let (target, value) = dial_arg("match-chroma", tokens)?;
+            let v = parse_f64("match-chroma", &value)?;
+            role_dial(config, target, move |reg| reg.match_chroma = Some(v));
         }
         for tokens in self.chroma_even.chunks(2) {
             let (target, value) = dial_arg("chroma-even", tokens)?;
@@ -494,9 +506,9 @@ struct Start {
     /// Its 16 slots as hex.
     hexes: Vec<String>,
     /// The target's hue families (the wallpaper's, or a scheme's
-    /// accents), and where the neutrals' hues come from.
+    /// accents), and what the slots match toward.
     clusters: Vec<extract::Cluster>,
-    neutrals: grade_scheme::Neutrals,
+    target: grade_scheme::Target,
     generated: Option<rehue::generate::Generated>,
     method_asked: Option<Method>,
     analysis: Option<rehue::generate::analysis::Analysis>,
@@ -539,7 +551,7 @@ fn run_scheme(
             Start {
                 hexes: parsed.slot_hexes()?,
                 clusters,
-                neutrals: grade_scheme::Neutrals::Heaviest,
+                target: grade_scheme::Target::Wallpaper,
                 generated: None,
                 method_asked: None,
                 analysis: None,
@@ -562,7 +574,7 @@ fn run_scheme(
                 println!("rehue scheme: {note}");
             }
             let hexes: Vec<String> = g.slots.iter().map(oklch_to_hex).collect();
-            let (clusters, neutrals) = match reference {
+            let (clusters, target) = match reference {
                 Some(target) => {
                     println!(
                         "rehue scheme: matching toward '{}' by {}",
@@ -582,14 +594,14 @@ fn run_scheme(
                             chroma: c.c,
                         })
                         .collect();
-                    (accents, grade_scheme::Neutrals::Slots(slots[..8].to_vec()))
+                    (accents, grade_scheme::Target::Scheme(slots))
                 }
-                None => (a.families.clone(), grade_scheme::Neutrals::Keep),
+                None => (a.families.clone(), grade_scheme::Target::Families),
             };
             Start {
                 hexes,
                 clusters,
-                neutrals,
+                target,
                 generated: Some(g),
                 method_asked: Some(asked),
                 analysis: Some(a),
@@ -599,7 +611,7 @@ fn run_scheme(
     let slot_hexes = start.hexes;
     let clusters = start.clusters;
 
-    let graded = grade_scheme::retint_lch(&slot_hexes, &clusters, &config, &start.neutrals)?;
+    let graded = grade_scheme::retint_lch(&slot_hexes, &clusters, &config, &start.target)?;
     let mut slots: [Lch; 16] = std::array::from_fn(|i| graded[BASE_SLOTS[i]]);
     // a generated scheme's accents keep 4.5:1 through matching, unless
     // their lightness is shifted on purpose
@@ -641,6 +653,12 @@ fn run_scheme(
             line += &format!(
                 "  chroma-even {:.2}  lightness-even {:.2}",
                 settings.chroma_even, settings.lightness_even
+            );
+        }
+        if settings.match_lightness > 0.0 || settings.match_chroma > 0.0 {
+            line += &format!(
+                "  match-lightness {:.2}  match-chroma {:.2}",
+                settings.match_lightness, settings.match_chroma
             );
         }
         println!("{line}");
@@ -2323,6 +2341,8 @@ fn run(command: Commands) -> Result<(), String> {
             chroma,
             chroma_even,
             lightness_even,
+            match_lightness,
+            match_chroma,
         } => {
             let mut file = rehue::config::read_file(config.as_deref())?;
             let scheme_dir = scheme_dir.or(rehue::config::take_path(
@@ -2353,6 +2373,8 @@ fn run(command: Commands) -> Result<(), String> {
                 chroma,
                 chroma_even,
                 lightness_even,
+                match_lightness,
+                match_chroma,
             }
             .apply(&mut map_config)?;
             let parsed = match &input {

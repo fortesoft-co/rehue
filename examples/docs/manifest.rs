@@ -108,6 +108,14 @@ pub struct Ladder {
     /// optional first cell, labelled "original"
     #[serde(default)]
     pub original: Option<String>,
+    /// the first cell's label, in place of "original"; `original` may
+    /// also be another run's output (`{out:ID}/preview.png`)
+    #[serde(
+        default,
+        rename = "original-label",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub original_label: Option<String>,
     #[serde(default = "default_width")]
     pub width: u32,
     /// optional region of every cell (`WxH+X+Y` in output pixels),

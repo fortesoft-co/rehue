@@ -152,6 +152,9 @@ impl Builder {
         geometry: &str,
         out: &Path,
     ) -> Result<()> {
+        if let Some(dir) = out.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
         let mut cmd = Command::new("magick");
         cmd.args([
             "montage",
@@ -263,6 +266,20 @@ impl Builder {
         }
         match image.kind {
             Kind::Montage => {
+                // a video in a montage shows as its first frame
+                for (i, (_, path)) in cells.iter_mut().enumerate() {
+                    if rehue::video::is_video(path) {
+                        std::fs::create_dir_all(&self.work).map_err(|e| e.to_string())?;
+                        let stem = out.file_stem().unwrap_or_default().to_string_lossy();
+                        let frame = self.work.join(format!("{stem}-frame-{i}.png"));
+                        sh(Command::new("ffmpeg")
+                            .args(["-y", "-loglevel", "error", "-i"])
+                            .arg(&*path)
+                            .args(["-frames:v", "1"])
+                            .arg(&frame))?;
+                        *path = frame;
+                    }
+                }
                 let tile = image.tile.clone().unwrap_or(format!("1x{}", cells.len()));
                 let geometry = format!("{}x+6+10", image.width.unwrap_or(480));
                 self.montage(&cells, &tile, &geometry, &out)
@@ -310,11 +327,12 @@ impl Builder {
         println!("{}", ladder.file);
         let mut cells = Vec::new();
         if let Some(original) = &ladder.original {
-            let none = |_: &str| -> Result<String> { Err("no {out} in original".into()) };
-            cells.push((
-                "original".to_string(),
-                self.root.join(self.manifest.expand(original, &none)?),
-            ));
+            let label = ladder.original_label.as_deref().unwrap_or("original");
+            let cell = Cell {
+                label: label.to_string(),
+                src: original.clone(),
+            };
+            cells.push((cell.label.clone(), self.src(&cell)?));
         }
         for (i, rung) in ladder.rungs.iter().enumerate() {
             let dir = self

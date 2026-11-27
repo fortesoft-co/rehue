@@ -17,6 +17,14 @@ The wallpaper sets everything:
 - **Every accent keeps 4.5:1 contrast** on the background, and base08
   (red) and base0B (green) stay apart for deuteranopes.
 
+The examples on this page are generated from two wallpapers: a night
+skyline video for a dark scheme, and a butterfly photo for a light one.
+In each strip, the top row is the generated scheme and the bottom row
+is the scheme after the flag (for the methods, both rows are the same:
+no flag changes them).
+
+![the two wallpapers: a night skyline and a butterfly](../assets/examples/generate/generate-wallpapers.png)
+
 The same wallpaper always gives the same scheme. A run writes the same
 files as any `rehue scheme` run, and `clusters.json` records the method
 that ran and the colors it read.
@@ -58,6 +66,52 @@ rehue scheme -g rswal -w my-photo.jpg
 | `triadic-fill` | three hues 120° apart, the gaps halved until there are eight |
 | `square` | four hues 90° apart |
 
+Dark, from the night skyline:
+
+![every method on the night skyline, dark](../assets/examples/generate/generate-methods-dark.png)
+
+<!-- gen:ladder:generate-methods-dark -->
+```sh
+# inputs: rehue scheme -w assets/giang-city-skyline-night.mp4 --variant dark -o out
+# the default (-g, auto)
+rehue scheme -g found
+rehue scheme -g distinct
+rehue scheme -g rswal
+rehue scheme -g conventional
+rehue scheme -g image-hues
+rehue scheme -g mono
+rehue scheme -g analogous
+rehue scheme -g complementary
+rehue scheme -g split-complementary
+rehue scheme -g triadic
+rehue scheme -g triadic-fill
+rehue scheme -g square
+```
+<!-- /gen:ladder:generate-methods-dark -->
+
+Light, from the butterfly:
+
+![every method on the butterfly, light](../assets/examples/generate/generate-methods-light.png)
+
+<!-- gen:ladder:generate-methods-light -->
+```sh
+# inputs: rehue scheme -w assets/kelly-ishmael-butterfly-closeup.webp --variant light -o out
+# the default (-g, auto)
+rehue scheme -g found
+rehue scheme -g distinct
+rehue scheme -g rswal
+rehue scheme -g conventional
+rehue scheme -g image-hues
+rehue scheme -g mono
+rehue scheme -g analogous
+rehue scheme -g complementary
+rehue scheme -g split-complementary
+rehue scheme -g triadic
+rehue scheme -g triadic-fill
+rehue scheme -g square
+```
+<!-- /gen:ladder:generate-methods-light -->
+
 base0F is a brown the wallpaper has where it has one, else a darker
 base08.
 
@@ -68,14 +122,9 @@ the run says so.
 ## Match toward a scheme
 
 `-M` (`--match`) pulls the generated scheme toward a target, 0 to 1. It
-is 0 by default, so the scheme is the wallpaper's own. With `-i`, the
-target is that scheme: the accents take its hues, and the neutrals take
-its tint.
+is 0 by default, so the scheme is the wallpaper's own.
 
-```sh
-rehue scheme -g -w my-photo.jpg -i gruvbox-dark -M 0.5   # halfway to gruvbox
-rehue scheme -g -w my-photo.jpg -i gruvbox-dark -M 1     # gruvbox's hues, the wallpaper's structure
-```
+### The wallpaper's own colors
 
 Without `-i`, the target is the wallpaper's own hue families, and only
 the accents move (the neutrals are already tinted from it):
@@ -83,6 +132,136 @@ the accents move (the neutrals are already tinted from it):
 ```sh
 rehue scheme -g -w my-photo.jpg -M 1
 ```
+
+![-M 0, 0.5 and 1 toward the night skyline's own hues](../assets/examples/generate/generate-match-own-dark.png)
+
+<!-- gen:ladder:generate-match-own-dark -->
+```sh
+# inputs: rehue scheme -g -w assets/giang-city-skyline-night.mp4 --variant dark -o out
+# the default
+rehue scheme -M 0
+rehue scheme -M 0.5
+rehue scheme -M 1
+```
+<!-- /gen:ladder:generate-match-own-dark -->
+
+![-M 0, 0.5 and 1 toward the butterfly's own hues](../assets/examples/generate/generate-match-own-light.png)
+
+<!-- gen:ladder:generate-match-own-light -->
+```sh
+# inputs: rehue scheme -g -w assets/kelly-ishmael-butterfly-closeup.webp --variant light -o out
+# the default
+rehue scheme -M 0
+rehue scheme -M 0.5
+rehue scheme -M 1
+```
+<!-- /gen:ladder:generate-match-own-light -->
+
+### Another scheme
+
+With `-i`, the target is that scheme, slot to slot: each accent takes
+the hue of the scheme's same slot (base0F toward its base0F), and each
+neutral takes the same neutral's tint.
+
+```sh
+rehue scheme -g -w my-photo.jpg -i gruvbox-dark -M 0.5   # halfway to gruvbox
+rehue scheme -g -w my-photo.jpg -i gruvbox-dark -M 1     # gruvbox's hues, the wallpaper's structure
+```
+
+Each strip starts with its target, to compare: gruvbox-dark for the
+dark scheme, gruvbox-light for the light one.
+
+![gruvbox-dark, then -M 0, 0.5 and 1 toward it on the night skyline](../assets/examples/generate/generate-match-gruvbox-dark.png)
+
+<!-- gen:ladder:generate-match-gruvbox-dark -->
+```sh
+# inputs: rehue scheme -g -w assets/giang-city-skyline-night.mp4 --variant dark -i gruvbox-dark -o out
+# the default
+rehue scheme -M 0
+rehue scheme -M 0.5
+rehue scheme -M 1
+```
+<!-- /gen:ladder:generate-match-gruvbox-dark -->
+
+![gruvbox-light, then -M 0, 0.5 and 1 toward it on the butterfly](../assets/examples/generate/generate-match-gruvbox-light.png)
+
+<!-- gen:ladder:generate-match-gruvbox-light -->
+```sh
+# inputs: rehue scheme -g -w assets/kelly-ishmael-butterfly-closeup.webp --variant light -i gruvbox-light -o out
+# the default
+rehue scheme -M 0
+rehue scheme -M 0.5
+rehue scheme -M 1
+```
+<!-- /gen:ladder:generate-match-gruvbox-light -->
+
+### Lightness and chroma
+
+`-M` moves hue. `--match-lightness` and `--match-chroma` pull the
+lightness and chroma toward the target scheme's same slots, 0 to 1,
+apart from it. Without `-M`, they keep the wallpaper's colors on the
+target's lightness or chroma:
+
+```sh
+rehue scheme -g -w my-photo.jpg -i gruvbox-dark --match-lightness 1          # gruvbox's lightness, the wallpaper's colors
+rehue scheme -g -w my-photo.jpg -i gruvbox-dark --match-chroma accents 1     # accents as vivid as gruvbox's
+rehue scheme -g -w my-photo.jpg -i gruvbox-dark -M 1 --match-lightness 1 --match-chroma 1   # gruvbox, the wallpaper's tint
+```
+
+Both take a role, like the other grading dials (`--match-chroma
+accents 1`), and need `-i`. Accents keep 4.5:1 on the background, so
+an accent the target has lighter (or darker, in a light scheme) than
+4.5:1 allows stops at it.
+
+![gruvbox-dark, then --match-lightness 0, 0.5 and 1 on the night skyline](../assets/examples/generate/generate-match-lightness-dark.png)
+
+<!-- gen:ladder:generate-match-lightness-dark -->
+```sh
+# inputs: rehue scheme -g -w assets/giang-city-skyline-night.mp4 --variant dark -i gruvbox-dark -o out
+# the default
+rehue scheme --match-lightness 0
+rehue scheme --match-lightness 0.5
+rehue scheme --match-lightness 1
+```
+<!-- /gen:ladder:generate-match-lightness-dark -->
+
+![gruvbox-light, then --match-lightness 0, 0.5 and 1 on the butterfly](../assets/examples/generate/generate-match-lightness-light.png)
+
+<!-- gen:ladder:generate-match-lightness-light -->
+```sh
+# inputs: rehue scheme -g -w assets/kelly-ishmael-butterfly-closeup.webp --variant light -i gruvbox-light -o out
+# the default
+rehue scheme --match-lightness 0
+rehue scheme --match-lightness 0.5
+rehue scheme --match-lightness 1
+```
+<!-- /gen:ladder:generate-match-lightness-light -->
+
+![gruvbox-dark, then --match-chroma 0, 0.5 and 1 on the night skyline](../assets/examples/generate/generate-match-chroma-dark.png)
+
+<!-- gen:ladder:generate-match-chroma-dark -->
+```sh
+# inputs: rehue scheme -g -w assets/giang-city-skyline-night.mp4 --variant dark -i gruvbox-dark -o out
+# the default
+rehue scheme --match-chroma 0
+rehue scheme --match-chroma 0.5
+rehue scheme --match-chroma 1
+```
+<!-- /gen:ladder:generate-match-chroma-dark -->
+
+![gruvbox-light, then --match-chroma 0, 0.5 and 1 on the butterfly](../assets/examples/generate/generate-match-chroma-light.png)
+
+<!-- gen:ladder:generate-match-chroma-light -->
+```sh
+# inputs: rehue scheme -g -w assets/kelly-ishmael-butterfly-closeup.webp --variant light -i gruvbox-light -o out
+# the default
+rehue scheme --match-chroma 0
+rehue scheme --match-chroma 0.5
+rehue scheme --match-chroma 1
+```
+<!-- /gen:ladder:generate-match-chroma-light -->
+
+### How far
 
 `-M` sets match-hue and reach together: reach is 45° at 0 and grows to
 180° at 1, so `-M 1` gives every accent a target hue. The accents keep
@@ -101,6 +280,68 @@ contrast allows, else by chroma:
 ```sh
 rehue scheme -g -w my-photo.jpg -M 1 --nudge
 ```
+
+## Even out the accents
+
+`--chroma-even accents` pulls the accents' chroma toward their mean, 0
+to 1, so none stands out as more or less vivid than the rest.
+`--lightness-even accents` does the same for lightness; the accents
+still keep 4.5:1 on the background. Any role works, as in
+[scheme.md](scheme.md#every-grading-flag).
+
+```sh
+rehue scheme -g distinct -w my-photo.jpg --chroma-even accents 1
+```
+
+The examples use `distinct`, whose accents differ the most:
+
+![--chroma-even accents 0, 0.5 and 1 on distinct, night skyline](../assets/examples/generate/generate-chroma-even-dark.png)
+
+<!-- gen:ladder:generate-chroma-even-dark -->
+```sh
+# inputs: rehue scheme -g distinct -w assets/giang-city-skyline-night.mp4 --variant dark -o out
+# the default
+rehue scheme --chroma-even accents 0
+rehue scheme --chroma-even accents 0.5
+rehue scheme --chroma-even accents 1
+```
+<!-- /gen:ladder:generate-chroma-even-dark -->
+
+![--chroma-even accents 0, 0.5 and 1 on distinct, butterfly](../assets/examples/generate/generate-chroma-even-light.png)
+
+<!-- gen:ladder:generate-chroma-even-light -->
+```sh
+# inputs: rehue scheme -g distinct -w assets/kelly-ishmael-butterfly-closeup.webp --variant light -o out
+# the default
+rehue scheme --chroma-even accents 0
+rehue scheme --chroma-even accents 0.5
+rehue scheme --chroma-even accents 1
+```
+<!-- /gen:ladder:generate-chroma-even-light -->
+
+![--lightness-even accents 0, 0.5 and 1 on distinct, night skyline](../assets/examples/generate/generate-lightness-even-dark.png)
+
+<!-- gen:ladder:generate-lightness-even-dark -->
+```sh
+# inputs: rehue scheme -g distinct -w assets/giang-city-skyline-night.mp4 --variant dark -o out
+# the default
+rehue scheme --lightness-even accents 0
+rehue scheme --lightness-even accents 0.5
+rehue scheme --lightness-even accents 1
+```
+<!-- /gen:ladder:generate-lightness-even-dark -->
+
+![--lightness-even accents 0, 0.5 and 1 on distinct, butterfly](../assets/examples/generate/generate-lightness-even-light.png)
+
+<!-- gen:ladder:generate-lightness-even-light -->
+```sh
+# inputs: rehue scheme -g distinct -w assets/kelly-ishmael-butterfly-closeup.webp --variant light -o out
+# the default
+rehue scheme --lightness-even accents 0
+rehue scheme --lightness-even accents 0.5
+rehue scheme --lightness-even accents 1
+```
+<!-- /gen:ladder:generate-lightness-even-light -->
 
 ## Save it
 

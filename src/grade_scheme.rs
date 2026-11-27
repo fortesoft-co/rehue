@@ -35,6 +35,8 @@ pub struct SchemeRoleConfig {
     pub chroma: Option<f64>,
     pub chroma_even: Option<f64>,
     pub lightness_even: Option<f64>,
+    pub match_lightness: Option<f64>,
+    pub match_chroma: Option<f64>,
 }
 
 /// Resolved per-role settings the pipeline runs with.
@@ -47,6 +49,9 @@ pub struct SchemeRoleSettings {
     pub chroma: f64,
     pub chroma_even: f64,
     pub lightness_even: f64,
+    /// Toward the target scheme's same slot, 0..1 (needs `-g -i`).
+    pub match_lightness: f64,
+    pub match_chroma: f64,
 }
 
 /// Map-scheme configuration: extraction options, `reach` (the accent
@@ -146,12 +151,16 @@ pub fn resolved_roles(
         let chroma = given.chroma.or(all.chroma).unwrap_or(1.0);
         let chroma_even = given.chroma_even.or(all.chroma_even).unwrap_or(0.0);
         let lightness_even = given.lightness_even.or(all.lightness_even).unwrap_or(0.0);
+        let match_lightness = given.match_lightness.or(all.match_lightness).unwrap_or(0.0);
+        let match_chroma = given.match_chroma.or(all.match_chroma).unwrap_or(0.0);
         if !(0.0..=1.0).contains(&match_hue) {
             return Err(format!("roles.{}.match-hue must be within [0, 1]", name));
         }
         for (key, v) in [
             ("chroma-even", chroma_even),
             ("lightness-even", lightness_even),
+            ("match-lightness", match_lightness),
+            ("match-chroma", match_chroma),
         ] {
             if !(0.0..=1.0).contains(&v) {
                 return Err(format!("roles.{name}.{key} must be within [0, 1]"));
@@ -170,6 +179,8 @@ pub fn resolved_roles(
                 chroma,
                 chroma_even,
                 lightness_even,
+                match_lightness,
+                match_chroma,
             },
         );
     }
@@ -221,17 +232,21 @@ fn choose_cluster(
     None
 }
 
-/// Where the neutrals' hues come from.
+/// What the slots match toward.
 #[derive(Debug, Clone)]
-pub enum Neutrals {
-    /// The heaviest wallpaper family (rehuing a scheme).
-    Heaviest,
-    /// Their own (a generated scheme, already tinted from the image).
-    Keep,
-    /// Each blends toward a target scheme's same slot, tint strength
-    /// and all (a generated scheme matching a scheme): opposite hues
-    /// pass near gray halfway, a gray target turns them gray.
-    Slots(Vec<Lch>),
+pub enum Target {
+    /// The wallpaper's families (rehuing a scheme): accents claim the
+    /// nearest, neutrals adopt the heaviest.
+    Wallpaper,
+    /// The wallpaper's families, for a generated scheme: accents claim
+    /// the nearest; neutrals keep their own hue (already tinted from
+    /// the image).
+    Families,
+    /// A scheme's 16 slots (a generated scheme matching a scheme), slot
+    /// to slot: each accent toward the same accent's hue; each neutral
+    /// blends toward the same neutral, tint strength and all (opposite
+    /// hues pass near gray halfway, a gray target turns them gray).
+    Scheme(Vec<Lch>),
 }
 
 /// The full mapped colours for all 16 slots.
@@ -251,16 +266,16 @@ pub fn retint(
         slot_hexes,
         clusters,
         config,
-        &Neutrals::Heaviest,
+        &Target::Wallpaper,
     )?))
 }
 
-/// `retint`, with the neutrals' source given, as colors.
+/// `retint`, toward the given target, as colors.
 pub fn retint_lch(
     slot_hexes: &[String],
     clusters: &[Cluster],
     config: &SchemeConfig,
-    neutrals: &Neutrals,
+    target: &Target,
 ) -> Result<BTreeMap<String, Lch>, String> {
     if slot_hexes.len() != BASE_SLOTS.len() {
         return Err(format!(
@@ -307,10 +322,18 @@ pub fn retint_lch(
             let anchor = lch_of(i);
             let hue = if let Some(hues) = &ramp {
                 hues[pos]
+            } else if let (Target::Scheme(target), "accents") = (target, name) {
+                // slot to slot: each accent toward the target's same slot
+                let to = target[i].h;
+                if circ_dist(anchor.h, to) <= config.reach() {
+                    to
+                } else {
+                    anchor.h
+                }
             } else if name == "accents" && !eligible.is_empty() {
                 // A matched cluster wins; a near miss keeps the scheme colour.
                 choose_cluster(&eligible, anchor.h, &mut used, config.reach()).unwrap_or(anchor.h)
-            } else if !matches!(neutrals, Neutrals::Heaviest) && name != "accents" {
+            } else if !matches!(target, Target::Wallpaper) && name != "accents" {
                 anchor.h
             } else {
                 // Neutrals (and accents with no eligible vivid family) adopt
@@ -349,7 +372,7 @@ pub fn retint_lch(
     // -- neutrals toward a target scheme: the tint itself blends (a/b),
     // so chroma moves with the hue --
     let mut chroma_of: HashMap<usize, f64> = HashMap::new();
-    if let Neutrals::Slots(target) = neutrals {
+    if let Target::Scheme(target) = target {
         for i in 0..8 {
             let settings = &regs[role_of_slot(BASE_SLOTS[i])];
             if settings.assign != AssignState::Off || settings.match_hue <= 0.0 {
@@ -365,12 +388,37 @@ pub fn retint_lch(
         }
     }
 
+    // -- lightness and chroma toward a target scheme's same slot --
+    let scheme_target = match target {
+        Target::Scheme(t) => Some(t),
+        _ => None,
+    };
+    if scheme_target.is_none() {
+        for name in ROLE_NAMES {
+            let s = &regs[name];
+            for (key, v) in [
+                ("match-lightness", s.match_lightness),
+                ("match-chroma", s.match_chroma),
+            ] {
+                if v > 0.0 {
+                    return Err(format!(
+                        "{key} ({name}) follows a target scheme: generate with -g and pass the scheme with -i"
+                    ));
+                }
+            }
+        }
+    }
+
     // -- grade: additive L shift, multiplicative chroma, per role --
     let mut graded: BTreeMap<String, Lch> = BTreeMap::new();
     for i in 0..BASE_SLOTS.len() {
         let settings = &regs[role_of_slot(BASE_SLOTS[i])];
-        let lch = lch_of(i);
-        let c = chroma_of.get(&i).copied().unwrap_or(lch.c);
+        let mut lch = lch_of(i);
+        let mut c = chroma_of.get(&i).copied().unwrap_or(lch.c);
+        if let Some(t) = scheme_target {
+            lch.l += (t[i].l - lch.l) * settings.match_lightness;
+            c += (t[i].c - c) * settings.match_chroma;
+        }
         graded.insert(
             BASE_SLOTS[i].to_string(),
             Lch {

@@ -715,3 +715,224 @@ file = "assets/examples/video-loop-after.webp"
 kind = "animation"
 fps = 12
 cells = [{ src = "{out:video-loop}/wallpaper.mp4" }]
+
+# ---------------------------------------- generate.md: dark (the night skyline) first, then light (the butterfly)
+
+# gruvbox-dark and gruvbox-light as they are, the targets the -i strips match toward
+[[run]]
+id = "generate-gruvbox"
+args = "scheme -i gruvbox-dark -w {butterfly} --match-hue 0 -o {out}"
+out = "gruvbox"
+
+[[run]]
+id = "generate-gruvbox-light"
+args = "scheme -i gruvbox-light -w {butterfly} --match-hue 0 -o {out}"
+out = "gruvbox-light"
+
+[[image]]
+file = "assets/examples/generate/generate-wallpapers.png"
+kind = "montage"
+tile = "2x1"
+width = 384
+cells = [
+  { label = "dark: the night skyline (a video)", src = "{city}" },
+  { label = "light: the butterfly", src = "{butterfly}" },
+]
+
+[[ladder]]
+id = "generate-methods-dark"
+file = "assets/examples/generate/generate-methods-dark.png"
+base = "scheme -w {city} --variant dark -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "-g found", note = "the default (-g, auto)" },
+  { args = "-g distinct" },
+  { args = "-g rswal" },
+  { args = "-g conventional" },
+  { args = "-g image-hues" },
+  { args = "-g mono" },
+  { args = "-g analogous" },
+  { args = "-g complementary" },
+  { args = "-g split-complementary" },
+  { args = "-g triadic" },
+  { args = "-g triadic-fill" },
+  { args = "-g square" },
+]
+
+[[ladder]]
+id = "generate-methods-light"
+file = "assets/examples/generate/generate-methods-light.png"
+base = "scheme -w {butterfly} --variant light -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "-g found", note = "the default (-g, auto)" },
+  { args = "-g distinct" },
+  { args = "-g rswal" },
+  { args = "-g conventional" },
+  { args = "-g image-hues" },
+  { args = "-g mono" },
+  { args = "-g analogous" },
+  { args = "-g complementary" },
+  { args = "-g split-complementary" },
+  { args = "-g triadic" },
+  { args = "-g triadic-fill" },
+  { args = "-g square" },
+]
+
+[[ladder]]
+id = "generate-match-own-dark"
+file = "assets/examples/generate/generate-match-own-dark.png"
+base = "scheme -g -w {city} --variant dark -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "-M 0", note = "the default" },
+  { args = "-M 0.5" },
+  { args = "-M 1" },
+]
+
+[[ladder]]
+id = "generate-match-own-light"
+file = "assets/examples/generate/generate-match-own-light.png"
+base = "scheme -g -w {butterfly} --variant light -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "-M 0", note = "the default" },
+  { args = "-M 0.5" },
+  { args = "-M 1" },
+]
+
+[[ladder]]
+id = "generate-match-gruvbox-dark"
+file = "assets/examples/generate/generate-match-gruvbox-dark.png"
+base = "scheme -g -w {city} --variant dark -i gruvbox-dark -o {out}"
+output = "preview.png"
+original = "{out:generate-gruvbox}/preview.png"
+original-label = "gruvbox-dark"
+width = 384
+rungs = [
+  { args = "-M 0", note = "the default" },
+  { args = "-M 0.5" },
+  { args = "-M 1" },
+]
+
+[[ladder]]
+id = "generate-match-gruvbox-light"
+file = "assets/examples/generate/generate-match-gruvbox-light.png"
+base = "scheme -g -w {butterfly} --variant light -i gruvbox-light -o {out}"
+output = "preview.png"
+original = "{out:generate-gruvbox-light}/preview.png"
+original-label = "gruvbox-light"
+width = 384
+rungs = [
+  { args = "-M 0", note = "the default" },
+  { args = "-M 0.5" },
+  { args = "-M 1" },
+]
+
+[[ladder]]
+id = "generate-match-lightness-dark"
+file = "assets/examples/generate/generate-match-lightness-dark.png"
+base = "scheme -g -w {city} --variant dark -i gruvbox-dark -o {out}"
+output = "preview.png"
+original = "{out:generate-gruvbox}/preview.png"
+original-label = "gruvbox-dark"
+width = 384
+rungs = [
+  { args = "--match-lightness 0", note = "the default" },
+  { args = "--match-lightness 0.5" },
+  { args = "--match-lightness 1" },
+]
+
+[[ladder]]
+id = "generate-match-lightness-light"
+file = "assets/examples/generate/generate-match-lightness-light.png"
+base = "scheme -g -w {butterfly} --variant light -i gruvbox-light -o {out}"
+output = "preview.png"
+original = "{out:generate-gruvbox-light}/preview.png"
+original-label = "gruvbox-light"
+width = 384
+rungs = [
+  { args = "--match-lightness 0", note = "the default" },
+  { args = "--match-lightness 0.5" },
+  { args = "--match-lightness 1" },
+]
+
+[[ladder]]
+id = "generate-match-chroma-dark"
+file = "assets/examples/generate/generate-match-chroma-dark.png"
+base = "scheme -g -w {city} --variant dark -i gruvbox-dark -o {out}"
+output = "preview.png"
+original = "{out:generate-gruvbox}/preview.png"
+original-label = "gruvbox-dark"
+width = 384
+rungs = [
+  { args = "--match-chroma 0", note = "the default" },
+  { args = "--match-chroma 0.5" },
+  { args = "--match-chroma 1" },
+]
+
+[[ladder]]
+id = "generate-match-chroma-light"
+file = "assets/examples/generate/generate-match-chroma-light.png"
+base = "scheme -g -w {butterfly} --variant light -i gruvbox-light -o {out}"
+output = "preview.png"
+original = "{out:generate-gruvbox-light}/preview.png"
+original-label = "gruvbox-light"
+width = 384
+rungs = [
+  { args = "--match-chroma 0", note = "the default" },
+  { args = "--match-chroma 0.5" },
+  { args = "--match-chroma 1" },
+]
+
+[[ladder]]
+id = "generate-chroma-even-dark"
+file = "assets/examples/generate/generate-chroma-even-dark.png"
+base = "scheme -g distinct -w {city} --variant dark -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "--chroma-even accents 0", note = "the default" },
+  { args = "--chroma-even accents 0.5" },
+  { args = "--chroma-even accents 1" },
+]
+
+[[ladder]]
+id = "generate-chroma-even-light"
+file = "assets/examples/generate/generate-chroma-even-light.png"
+base = "scheme -g distinct -w {butterfly} --variant light -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "--chroma-even accents 0", note = "the default" },
+  { args = "--chroma-even accents 0.5" },
+  { args = "--chroma-even accents 1" },
+]
+
+[[ladder]]
+id = "generate-lightness-even-dark"
+file = "assets/examples/generate/generate-lightness-even-dark.png"
+base = "scheme -g distinct -w {city} --variant dark -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "--lightness-even accents 0", note = "the default" },
+  { args = "--lightness-even accents 0.5" },
+  { args = "--lightness-even accents 1" },
+]
+
+[[ladder]]
+id = "generate-lightness-even-light"
+file = "assets/examples/generate/generate-lightness-even-light.png"
+base = "scheme -g distinct -w {butterfly} --variant light -o {out}"
+output = "preview.png"
+width = 384
+rungs = [
+  { args = "--lightness-even accents 0", note = "the default" },
+  { args = "--lightness-even accents 0.5" },
+  { args = "--lightness-even accents 1" },
+]

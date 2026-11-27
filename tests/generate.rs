@@ -303,6 +303,21 @@ fn match_one_takes_the_target_schemes_tint() {
         d < 3.0,
         "base01 takes solarized's tint hue ({d:.1} deg off)"
     );
+    // accents pair slot to slot: each takes the same slot's hue
+    let (made_hex, sol_hex) = (made.slot_hexes().unwrap(), solarized.slot_hexes().unwrap());
+    for i in 8..16 {
+        let (m, s) = (
+            rehue::color::hex_to_oklch(&made_hex[i]).unwrap(),
+            rehue::color::hex_to_oklch(&sol_hex[i]).unwrap(),
+        );
+        let d = rehue::color::circ_dist(m.h, s.h);
+        assert!(
+            d < 5.0,
+            "base0{:X} takes solarized's base0{:X} hue ({d:.1} deg off)",
+            i,
+            i
+        );
+    }
 
     // matching fully keeps every accent at 4.5:1, dark and light
     for variant in ["dark", "light"] {
@@ -340,6 +355,87 @@ fn match_one_takes_the_target_schemes_tint() {
             let r = wcag(a, &lch[0]);
             assert!(r >= 4.45, "{variant}: an accent at {r:.2}:1 after matching");
         }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn match_lightness_and_chroma_follow_the_target_slot_to_slot() {
+    let dir = std::env::temp_dir().join(format!("rehue-generate-mlc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let wall = dir.join("wall.png");
+    colorful().save(&wall).unwrap();
+    let out = dir.join("out");
+    let w = wall.to_str().unwrap();
+    let o = out.to_str().unwrap();
+    let lch_of = |path: &std::path::Path| -> Vec<rehue::color::Lch> {
+        rehue::scheme::Scheme::parse_file(path)
+            .unwrap()
+            .slot_hexes()
+            .unwrap()
+            .iter()
+            .map(|h| rehue::color::hex_to_oklch(h).unwrap())
+            .collect()
+    };
+    let run = |extra: &[&str]| {
+        let mut args = vec!["scheme", "-g", "-w", w, "--variant", "dark", "-o", o];
+        args.extend_from_slice(extra);
+        let r = rehue(&args, &dir);
+        assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+        lch_of(&out.join("scheme.yaml"))
+    };
+    let own = run(&[]);
+    let made = run(&[
+        "-i",
+        "gruvbox-dark",
+        "--match-lightness",
+        "1",
+        "--match-chroma",
+        "accents",
+        "1",
+    ]);
+    let gruvbox = lch_of(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("vendor/tinted-schemes/base16/gruvbox-dark.yaml"),
+    );
+    for i in 0..8 {
+        let d = (made[i].l - gruvbox[i].l).abs();
+        assert!(
+            d < 0.01,
+            "base0{i:X} takes gruvbox's lightness ({d:.3} off)"
+        );
+    }
+    for i in 8..16 {
+        // toward gruvbox's chroma (as far as sRGB allows), the wallpaper's own hue
+        let (to, was) = ((made[i].c - gruvbox[i].c).abs(), (own[i].c - gruvbox[i].c).abs());
+        assert!(
+            to <= was + 0.005,
+            "base0{i:X} chroma toward gruvbox's ({to:.3} off, was {was:.3})"
+        );
+        let d = rehue::color::circ_dist(made[i].h, own[i].h);
+        assert!(d < 5.0, "base0{i:X} keeps its own hue ({d:.1} deg off)");
+        let r = wcag(&made[i], &made[0]);
+        assert!(r >= 4.45, "base0{i:X} at {r:.2}:1");
+    }
+
+    // with no target scheme there is nothing to follow
+    for args in [
+        vec!["scheme", "-g", "-w", w, "--match-lightness", "1", "-n"],
+        vec![
+            "scheme",
+            "-i",
+            "gruvbox-dark",
+            "-w",
+            w,
+            "--match-chroma",
+            "1",
+            "-n",
+        ],
+    ] {
+        let r = rehue(&args, &dir);
+        assert!(!r.status.success());
+        assert!(String::from_utf8_lossy(&r.stderr).contains("-i"));
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

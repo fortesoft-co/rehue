@@ -198,6 +198,21 @@ pub enum Commands {
         /// e.g. --lightness-even accents 0.5
         #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
         lightness_even: Vec<String>,
+        /// Pull a role's lightness toward the -i scheme's same slots, 0..1
+        /// (0 off, 1 the target's); with -g and -i only.
+        ///
+        /// Apart from -M: lightness alone keeps the wallpaper's hues on
+        /// the target's lightness.  Accents keep 4.5:1 on base00.
+        ///
+        /// e.g. -g -i gruvbox-dark --match-lightness 1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        match_lightness: Vec<String>,
+        /// Pull a role's chroma toward the -i scheme's same slots, 0..1
+        /// (0 off, 1 the target's); with -g and -i only.
+        ///
+        /// e.g. -g -i gruvbox-dark --match-chroma accents 1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        match_chroma: Vec<String>,
     },
     /// Wallpaper + scheme → wallpaper: repaint the image (or a video) with
     /// the scheme's palette.
@@ -657,7 +672,7 @@ Roles:
 const SCHEME_ROLES: &str = roles_help!(
     "
   Per-role options: assign, cycle, match-hue, lightness, chroma,
-  chroma-even, lightness-even.
+  chroma-even, lightness-even, match-lightness, match-chroma.
   Pass `--option ROLE value`, repeatable per role; a bare
   `--option value` sets `all`, and per-role `--config` records
   outrank it.

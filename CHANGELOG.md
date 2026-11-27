@@ -26,8 +26,12 @@ versions may break).
   or more.
 - `scheme -M` / `--match 0..1`: match-hue and reach in one dial (reach
   45° at 0 up to 180° at 1). With `-g -i SCHEME`, the generated scheme
-  matches toward that scheme, its neutrals blending toward the target's
-  tint; with `-g` alone, toward the wallpaper's hue families.
+  matches toward that scheme slot to slot, each accent toward the same
+  slot's hue and each neutral toward the same neutral's tint; with `-g` alone, toward the wallpaper's hue families.
+- `scheme --match-lightness [ROLE] 0..1` and `--match-chroma [ROLE] 0..1`:
+  with `-g -i SCHEME`, a role's lightness or chroma pulled toward the
+  target's same slots, apart from `-M`, so a scheme can keep its own
+  colors on the target's lightness or chroma.
 - `scheme --nudge`: near-identical accents pushed apart to just
   distinct (off by default).
 - `scheme --chroma-even [ROLE] 0..1` and `--lightness-even [ROLE] 0..1`:
@@ -39,7 +43,8 @@ versions may break).
   doesn't. A generated scheme's author is your username, or the
   `author` key.
 - Config keys for all of it: `generate`, `variant`, `nudge`, `match`,
-  `save`, `replace`, `author`, and per role `chroma-even` and `lightness-even`. An
+  `save`, `replace`, `author`, and per role `chroma-even`,
+  `lightness-even`, `match-lightness` and `match-chroma`. An
   `apply` pipeline that generates needs no `scheme`.
 
 ### Changed
