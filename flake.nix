@@ -21,7 +21,7 @@
         let
           rehue = pkgs.rustPlatform.buildRustPackage {
             pname = "rehue";
-            version = "0.5.0";
+            version = "0.6.0";
             src = self;
             cargoLock.lockFile = ./Cargo.lock;
             meta = with pkgs.lib; {

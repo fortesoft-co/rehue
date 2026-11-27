@@ -15,9 +15,6 @@ shipped.
   foreground slots than base05).
 - **Look book**: a docs page showcasing standout results, each with
   the images and the recipe that made it.
-- **Alternative extraction backends**: optional extraction libraries
-  alongside the built-in histogram + circular k-means (the options
-  themselves are documented in [docs/grading.md](docs/grading.md#extraction)).
 - **Enhance expansion**: beyond v1 (Lanczos + Vulkan SR): denoise and
   JPEG-artifact restoration models (Real-CUGAN / realesrnet), and an
   opt-in Nix SR builder (lavapipe for machines without a GPU driver).

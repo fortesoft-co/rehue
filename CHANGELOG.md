@@ -5,7 +5,17 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-27
+
+The generation release: `rehue scheme -g` makes a base16 scheme from
+a wallpaper alone, still or video, by one of twelve methods, `rswal`
+among them for pywal's picks. Every accent keeps 4.5:1 on the
+background, and red and green stay apart for deuteranopes. `-M`
+matches a generated scheme toward its wallpaper or toward a scheme
+slot to slot; `--match-lightness` and `--match-chroma` borrow a
+scheme's lightness or chroma on their own. `--save` keeps a scheme by
+name for every command, and a video's hues are now measured frame by
+frame.
 
 ### Added
 
@@ -27,7 +37,8 @@ versions may break).
 - `scheme -M` / `--match 0..1`: match-hue and reach in one dial (reach
   45° at 0 up to 180° at 1). With `-g -i SCHEME`, the generated scheme
   matches toward that scheme slot to slot, each accent toward the same
-  slot's hue and each neutral toward the same neutral's tint; with `-g` alone, toward the wallpaper's hue families.
+  slot's hue and each neutral toward the same neutral's tint; with
+  `-g` alone, toward the wallpaper's hue families.
 - `scheme --match-lightness [ROLE] 0..1` and `--match-chroma [ROLE] 0..1`:
   with `-g -i SCHEME`, a role's lightness or chroma pulled toward the
   target's same slots, apart from `-M`, so a scheme can keep its own
@@ -343,6 +354,7 @@ First release.
 - 375 bundled base16 schemes (tinted-theming snapshot).
 - Deterministic, byte-identical output; Nix builders for Stylix.
 
+[0.6.0]: https://github.com/fortesoft-co/rehue/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/fortesoft-co/rehue/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/fortesoft-co/rehue/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/fortesoft-co/rehue/compare/v0.2.0...v0.3.0
