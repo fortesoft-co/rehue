@@ -27,6 +27,18 @@ pub const BASE_SLOTS: [&str; 16] = [
     "base09", "base0a", "base0b", "base0c", "base0d", "base0e", "base0f",
 ];
 
+/// Where saved schemes live: `$XDG_CONFIG_HOME/rehue/schemes`, else
+/// `~/.config/rehue/schemes`.  The default scheme directory.
+pub fn user_dir() -> Option<std::path::PathBuf> {
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
+        })?;
+    Some(config.join("rehue").join("schemes"))
+}
+
 /// Base16 names from the embedded tinted collection, sorted.
 pub fn collection_names() -> impl Iterator<Item = &'static str> {
     collection::SCHEMES
@@ -113,7 +125,8 @@ impl Scheme {
         if input.contains('/') {
             return read(Path::new(input));
         }
-        if let Some(dir) = scheme_dir {
+        let user = scheme_dir.is_none().then(user_dir).flatten();
+        if let Some(dir) = scheme_dir.or(user.as_deref()) {
             for candidate in [
                 dir.join(input),
                 dir.join(format!("{input}.yaml")),
@@ -194,15 +207,30 @@ impl Scheme {
     /// mnemonics downstream; extra keys would pollute consumers such as
     /// `colors.toList`).
     pub fn render(&self, mapped: &BTreeMap<String, String>) -> String {
-        let quoted = |s: &str| s.replace('"', "'");
         let name = self.pick("name", "scheme", "unnamed");
         let author = self.pick("author", "author", "unknown");
+        Self::render_as(
+            mapped,
+            &format!("{name} (hue-mapped)"),
+            &format!("{author} (hue-mapped by rehue)"),
+            self.attrs.get("variant").map(String::as_str),
+        )
+    }
+
+    /// The canonical render with the name, author and variant given.
+    pub fn render_as(
+        mapped: &BTreeMap<String, String>,
+        name: &str,
+        author: &str,
+        variant: Option<&str>,
+    ) -> String {
+        let quoted = |s: &str| s.replace('"', "'");
         let mut lines = vec![
             "system: \"base16\"".to_string(),
-            format!("name: \"{} (hue-mapped)\"", quoted(&name)),
-            format!("author: \"{} (hue-mapped by rehue)\"", quoted(&author)),
+            format!("name: \"{}\"", quoted(name)),
+            format!("author: \"{}\"", quoted(author)),
         ];
-        if let Some(variant) = self.attrs.get("variant")
+        if let Some(variant) = variant
             && !variant.is_empty()
         {
             lines.push(format!("variant: \"{}\"", quoted(variant)));

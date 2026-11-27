@@ -11,6 +11,7 @@ pub mod config;
 pub mod dither;
 pub mod enhance;
 pub mod extract;
+pub mod generate;
 pub mod grade_scheme;
 pub mod grade_wal;
 pub mod grain;

@@ -135,12 +135,21 @@ pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> 
         rgb
     };
 
+    extract_hues_pixels(resized.pixels().map(|p| p.0), params)
+}
+
+/// Extraction from pixels already at working size (no resize): the
+/// generator pools a video's frames this way.
+pub fn extract_hues_pixels(
+    pixels: impl Iterator<Item = [u8; 3]>,
+    params: &ExtractionParams,
+) -> Vec<Cluster> {
     let mut hist_mass = [0.0f64; 360];
     let mut hist_chroma = [0.0f64; 360];
     let lo = params.lightness_range[0];
     let hi = params.lightness_range[1];
-    for pixel in resized.pixels() {
-        let lch = rgb_to_oklch(&[pixel[0], pixel[1], pixel[2]]);
+    for pixel in pixels {
+        let lch = rgb_to_oklch(&pixel);
         if lch.c < params.min_pixel_chroma || !(lo <= lch.l && lch.l <= hi) {
             continue;
         }

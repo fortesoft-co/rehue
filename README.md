@@ -48,6 +48,9 @@ It works in both directions:
   a wallpaper that matches. The picture you love becomes the one that
   matches. Video wallpapers work too, graded frame by frame.
 
+No scheme yet? `rehue scheme -g` generates one from the wallpaper
+alone, and you can grade it like any other.
+
 Use both and the loop closes: rehue a scheme from your wallpaper, then
 repaint the wallpaper with that scheme. Every command takes the thing
 it rehues with `-i`; the other input is `-s` (a scheme) or `-w` (a
@@ -157,7 +160,7 @@ Two more tabs approximate how rehue maps the same 16 slots onto GTK
 <!-- gen:commands -->
 | command | what it does |
 | --- | --- |
-| `rehue scheme` | Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the scheme's structure |
+| `rehue scheme` | Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the scheme's structure; or generate a scheme from the wallpaper alone |
 | `rehue wal` | Wallpaper + scheme → wallpaper: repaint the image (or a video) with the scheme's palette |
 | `rehue icons` | Recolor an icon theme (or one SVG / PNG icon) with a scheme |
 | `rehue inspect` | Show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
@@ -177,6 +180,8 @@ forms:
 | `-o` | output directory |
 | `-c` | config file |
 | `-n` | dry run: preview, write nothing |
+| `-g` | `--generate` (scheme) |
+| `-M` | `--match` (scheme) |
 | `-H` | `--harmonize` |
 | `-p` | `--palette` (wal, icons) |
 | `-l` | `--look` |
@@ -198,6 +203,17 @@ rehue scheme -i nord -w my-photo.jpg --chroma ac 1.3     # brighter accents
 ```
 
 More: [docs/scheme.md](docs/scheme.md), every option with examples.
+
+`-g` generates the scheme from the wallpaper alone: neutrals tinted
+from it, accents from its colors, every accent at 4.5:1 contrast.
+
+```sh
+rehue scheme -g -w my-photo.jpg                          # found, dark or light by the picture
+rehue scheme -g rswal -w my-photo.jpg --save dusk        # pywal's colors; saved as "dusk"
+rehue scheme -g -w my-photo.jpg -i nord -M 0.5           # halfway to nord's hues
+```
+
+More: [docs/generate.md](docs/generate.md), every method and option.
 
 ## wal
 
@@ -354,6 +370,7 @@ setup.
 | page | what's in it |
 | --- | --- |
 | [scheme](docs/scheme.md) | `rehue scheme`: every option, with examples |
+| [generate](docs/generate.md) | `rehue scheme -g`: a scheme from a wallpaper alone |
 | [wal](docs/wal.md) | `rehue wal`: every option, with examples; LUT export |
 | [dither](docs/dither.md) | `wal --dither`: every style and setting, with examples |
 | [video](docs/video.md) | `wal` on a video: banding, dithering, looping, encoding |

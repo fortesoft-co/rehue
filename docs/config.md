@@ -34,8 +34,9 @@ than turning into true or false.
 
 Every key is optional: anything left out keeps its default. A few
 settings exist only as keys: the [extraction](grading.md#extraction)
-settings, and the `folders` color for [icons](icons.md) (which also
-has `--folders`). Unknown keys are errors, with a hint when one looks
+settings, the `author` of a [generated](generate.md) or saved scheme,
+and the `folders` color for [icons](icons.md) (which also has
+`--folders`). Unknown keys are errors, with a hint when one looks
 like a typo.
 
 Per-role settings sit under `roles`, one record per role (full or
@@ -59,7 +60,13 @@ The rest of a run's flags are keys too:
 
 | key | command | what it sets |
 | --- | --- | --- |
-| `scheme-dir` | `scheme`, `wal`, `icons` | the directory scheme names look up first |
+| `scheme-dir` | `scheme`, `wal`, `icons` | the directory scheme names look up first (default `~/.config/rehue/schemes`) |
+| `generate` | `scheme` | a method, or `"auto"`: generate the scheme from the wallpaper |
+| `variant` | `scheme` | a generated scheme `"dark"`, `"light"` or `"auto"` |
+| `nudge` | `scheme` | `true` to push near-identical accents apart |
+| `save` | `scheme` | save the scheme under this name in the schemes directory |
+| `replace` | `scheme` | `true` to let `save` replace a saved scheme without asking |
+| `author` | `scheme` | the author field of a generated or saved scheme (default: your username for a generated one) |
 | `lut`, `lut-level` | `wal` | a LUT of the grade: `"hald"` or `"cube"`, level 2..16 (default 8) |
 | `deband` | `wal` | `true` to deband a video's frames |
 | `grain` | `wal` | an amount, or `true` for the default 4 |

@@ -50,6 +50,9 @@ A run writes:
 - `clusters.json`, the wallpaper's hue families and the settings that
   found them
 
+No scheme to start from? `rehue scheme -g` generates one from the
+wallpaper alone: [generate.md](generate.md).
+
 How rehue finds the wallpaper's hues is covered in
 [extraction](grading.md#extraction); the [roles](grading.md#roles)
 section explains the role argument many flags take.
@@ -139,6 +142,35 @@ rehue scheme --chroma accents 1.6
 ```
 <!-- /gen:ladder:scheme-chroma -->
 
+### chroma-even / lightness-even — per role, `0..1`, default `0`
+
+Pull a role's chroma or lightness toward the role's mean: 0 leaves it,
+1 makes it even. The mean stays, so the scheme is as colorful (or as
+light) as before; only the spread narrows. Accents keep 4.5:1 on
+base00, so an accent sRGB or contrast holds back leaves 1 not quite
+even. Evening the accents' lightness undoes the lightness gap that
+keeps base08 and base0B apart for deuteranopes.
+
+```sh
+rehue scheme -i rose-pine-dawn -w my-photo.jpg --chroma-even accents 1
+rehue scheme -i rose-pine-dawn -w my-photo.jpg --lightness-even accents 0.5
+```
+
+### match — `0..1`
+
+`-M` sets match-hue and reach together: match-hue M, reach 45° at 0
+up to 180° at 1, so `-M 1` gives every accent a wallpaper hue.
+`--match-hue` and `--reach` win over it. With `-g` it is how a
+generated scheme matches a target ([generate.md](generate.md#match-toward-a-scheme)).
+
+### save — a name
+
+`--save NAME` also writes the scheme as `NAME.yaml`, named NAME, in
+your schemes directory (`~/.config/rehue/schemes`, or `--scheme-dir`).
+Scheme names look there first, so `-i NAME` and `wal -s NAME` find it.
+If NAME is already saved, rehue asks before replacing it; `--replace`
+replaces it without asking.
+
 ### reach — degrees, default `45`
 
 The accent claim gate: how far a family hue may sit from an accent
@@ -162,12 +194,15 @@ rehue scheme --reach 180
 <!-- gen:flags:scheme:grading -->
 | flag | value | what it does |
 | --- | --- | --- |
+| `--match` | `0..1` | How fully the scheme matches its target, 0..1: sets match-hue and reach together (reach 45 at 0 up to 180 at 1, every accent) |
 | `--reach` | `DEG` | How far, in hue degrees, an accent can reach to claim a wallpaper hue (default 45) |
 | `--assign` | `[ROLE] VAL` | Give a role's slots hues taken from the wallpaper's families: `auto` = spread the heaviest across, `3` = all from family 3, `0,2,5` = these families across the slots |
 | `--cycle` | `[ROLE] N` | Move each of a role's hues N slots along, wrapping around (slots, not degrees) |
 | `--match-hue` | `[ROLE] 0..1` | How much of the wallpaper's hue the slots take on, 0..1 (default 1) |
 | `--lightness` | `[ROLE] L` | Shift a role's lightness (added; -0.1 is darker) |
 | `--chroma` | `[ROLE] C` | Scale a role's chroma (multiplied; 0.8 muted, 1.3 vivid) |
+| `--chroma-even` | `[ROLE] 0..1` | Pull a role's chroma toward its mean, 0..1 (0 off, 1 even) |
+| `--lightness-even` | `[ROLE] 0..1` | Pull a role's lightness toward its mean, 0..1 (0 off, 1 even) |
 <!-- /gen:flags:scheme:grading -->
 
 The same settings go in a `--config` file, along with the

@@ -6,9 +6,6 @@ shipped.
 - **Scheme pager**: page `inspect --schemes` through `$PAGER`
   (`less -R`) when stdout is a terminal, as git does, with
   `--no-pager`; pipes stay plain.
-- **Scheme generation**: the big one. Derive the lightness/chroma/
-  contrast structure a designer would have built, guided by the
-  wallpaper, so `rehue scheme` works without a reference scheme at all.
 - **Accessibility workshop**: opt-in tweaks and modes for
   accessibility, tested like the generation research and kept out of
   default behavior. Among them: keeping red and green apart for

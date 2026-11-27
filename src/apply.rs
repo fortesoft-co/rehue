@@ -29,7 +29,9 @@ pub struct Pipeline {
     /// The source wallpaper.
     pub wallpaper: PathBuf,
     /// The reference scheme: a bundled name or a path to a yaml file.
-    pub scheme: String,
+    /// Optional when `[rehue.scheme]` generates (then it is the scheme
+    /// `match` takes hues from).
+    pub scheme: Option<String>,
     /// Optional directory searched for scheme names before the bundled set.
     pub scheme_dir: Option<PathBuf>,
     /// Where the outputs land (absent: `$XDG_DATA_HOME/rehue/current`).
@@ -154,12 +156,27 @@ impl Pipeline {
             Some(p) => resolve(base, &p),
             None => default_out()?,
         });
+        let generates = pipeline
+            .rehue
+            .scheme
+            .as_ref()
+            .is_some_and(|s| s.generate.is_some());
+        if pipeline.scheme.is_none() && !generates {
+            return Err(format!(
+                "pipeline {} needs a scheme (or [rehue.scheme] generate = \"auto\")",
+                path.display()
+            ));
+        }
         // A scheme with a '/' is a path (same rule as --scheme); bare names
         // stay names.
-        if pipeline.scheme.contains('/') {
-            pipeline.scheme = resolve(base, Path::new(&pipeline.scheme))
-                .to_string_lossy()
-                .into_owned();
+        if let Some(scheme) = &pipeline.scheme
+            && scheme.contains('/')
+        {
+            pipeline.scheme = Some(
+                resolve(base, Path::new(scheme))
+                    .to_string_lossy()
+                    .into_owned(),
+            );
         }
         let target = &mut pipeline.apply;
         target.tinty_config = target.tinty_config.take().map(|p| resolve(base, &p));

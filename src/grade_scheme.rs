@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::color::{Lch, circ_dist, circ_lerp, hex_to_oklch, oklch_to_hex, round_value};
 use crate::extract::{Cluster, ExtractionParams};
+use crate::generate::{Method, Variant};
 use crate::role::{
     Assign, AssignState, ROLE_NAMES, assign_hues, family_indices, resolve_assign, role_of_slot,
     role_slots, slot_index,
@@ -32,6 +33,8 @@ pub struct SchemeRoleConfig {
     pub match_hue: Option<f64>,
     pub lightness: Option<f64>,
     pub chroma: Option<f64>,
+    pub chroma_even: Option<f64>,
+    pub lightness_even: Option<f64>,
 }
 
 /// Resolved per-role settings the pipeline runs with.
@@ -42,20 +45,39 @@ pub struct SchemeRoleSettings {
     pub match_hue: f64,
     pub lightness: f64,
     pub chroma: f64,
+    pub chroma_even: f64,
+    pub lightness_even: f64,
 }
 
 /// Map-scheme configuration: extraction options, `reach` (the accent
 /// claim gate: how far a family hue may sit from an accent slot's hue and
-/// still claim it) and role overrides.
+/// still claim it), generation, saving and role overrides.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct SchemeConfig {
     #[serde(flatten)]
     pub extraction: ExtractionParams,
-    pub reach: f64,
+    /// Absent: 45, or what `match` sets.
+    pub reach: Option<f64>,
     /// Legibility guard: the least OKLCH lightness gap (0..1) kept
     /// between base05 (text) and base00 (background).  Not a WCAG ratio.
     pub min_text_contrast: f64,
+    /// Generate the scheme from the wallpaper with this method.
+    pub generate: Option<Method>,
+    /// A generated scheme's variant.
+    pub variant: Variant,
+    /// Push near-identical accents apart.
+    pub nudge: bool,
+    /// How fully the scheme matches its target, 0..1: match-hue where
+    /// unset, and reach (45 at 0 up to 180 at 1).
+    #[serde(rename = "match")]
+    pub match_: Option<f64>,
+    /// Also save the scheme under this name in the schemes directory.
+    pub save: Option<String>,
+    /// `save` replaces a saved scheme of the same name without asking.
+    pub replace: bool,
+    /// The author field of a generated or saved scheme.
+    pub author: Option<String>,
     pub roles: HashMap<String, SchemeRoleConfig>,
 }
 
@@ -63,10 +85,27 @@ impl Default for SchemeConfig {
     fn default() -> Self {
         Self {
             extraction: ExtractionParams::default(),
-            reach: 45.0,
+            reach: None,
             min_text_contrast: 0.25,
+            generate: None,
+            variant: Variant::Auto,
+            nudge: false,
+            match_: None,
+            save: None,
+            replace: false,
+            author: None,
             roles: HashMap::new(),
         }
+    }
+}
+
+impl SchemeConfig {
+    /// The accent claim gate in degrees: `reach`, else what `match`
+    /// sets (45 + 135 x match), else 45.
+    pub fn reach(&self) -> f64 {
+        self.reach
+            .or(self.match_.map(|m| 45.0 + 135.0 * m))
+            .unwrap_or(45.0)
     }
 }
 
@@ -80,6 +119,21 @@ pub fn resolved_roles(
             config.min_text_contrast
         ));
     }
+    if let Some(m) = config.match_
+        && !(0.0..=1.0).contains(&m)
+    {
+        return Err(format!("match must be within [0, 1] (got {m})"));
+    }
+    if let Some(r) = config.reach
+        && r < 0.0
+    {
+        return Err(format!("reach is in degrees, 0 or more (got {r})"));
+    }
+    // a generated scheme is its own; it takes the target's hues only
+    // when asked
+    let match_default = config
+        .match_
+        .unwrap_or(if config.generate.is_some() { 0.0 } else { 1.0 });
     let roles = crate::role::canonical_roles(&config.roles)?;
     let all = roles.get("all").cloned().unwrap_or_default();
     let mut out = BTreeMap::new();
@@ -87,11 +141,21 @@ pub fn resolved_roles(
         let given = roles.get(name).cloned().unwrap_or_default();
         let assign = resolve_assign(name, given.assign.or_else(|| all.assign.clone()))?;
         let cycle = given.cycle.or(all.cycle).unwrap_or(0);
-        let match_hue = given.match_hue.or(all.match_hue).unwrap_or(1.0);
+        let match_hue = given.match_hue.or(all.match_hue).unwrap_or(match_default);
         let light = given.lightness.or(all.lightness).unwrap_or(0.0);
         let chroma = given.chroma.or(all.chroma).unwrap_or(1.0);
+        let chroma_even = given.chroma_even.or(all.chroma_even).unwrap_or(0.0);
+        let lightness_even = given.lightness_even.or(all.lightness_even).unwrap_or(0.0);
         if !(0.0..=1.0).contains(&match_hue) {
             return Err(format!("roles.{}.match-hue must be within [0, 1]", name));
+        }
+        for (key, v) in [
+            ("chroma-even", chroma_even),
+            ("lightness-even", lightness_even),
+        ] {
+            if !(0.0..=1.0).contains(&v) {
+                return Err(format!("roles.{name}.{key} must be within [0, 1]"));
+            }
         }
         if chroma <= 0.0 {
             return Err(format!("roles.{}.chroma must be positive", name));
@@ -104,6 +168,8 @@ pub fn resolved_roles(
                 match_hue,
                 lightness: light,
                 chroma,
+                chroma_even,
+                lightness_even,
             },
         );
     }
@@ -155,6 +221,19 @@ fn choose_cluster(
     None
 }
 
+/// Where the neutrals' hues come from.
+#[derive(Debug, Clone)]
+pub enum Neutrals {
+    /// The heaviest wallpaper family (rehuing a scheme).
+    Heaviest,
+    /// Their own (a generated scheme, already tinted from the image).
+    Keep,
+    /// Each blends toward a target scheme's same slot, tint strength
+    /// and all (a generated scheme matching a scheme): opposite hues
+    /// pass near gray halfway, a gray target turns them gray.
+    Slots(Vec<Lch>),
+}
+
 /// The full mapped colours for all 16 slots.
 ///
 /// Per role: either the assign ramp (when set) or the legacy
@@ -168,6 +247,21 @@ pub fn retint(
     clusters: &[Cluster],
     config: &SchemeConfig,
 ) -> Result<BTreeMap<String, String>, String> {
+    Ok(to_hexes(&retint_lch(
+        slot_hexes,
+        clusters,
+        config,
+        &Neutrals::Heaviest,
+    )?))
+}
+
+/// `retint`, with the neutrals' source given, as colors.
+pub fn retint_lch(
+    slot_hexes: &[String],
+    clusters: &[Cluster],
+    config: &SchemeConfig,
+    neutrals: &Neutrals,
+) -> Result<BTreeMap<String, Lch>, String> {
     if slot_hexes.len() != BASE_SLOTS.len() {
         return Err(format!(
             "expected {} base slots, got {}",
@@ -215,7 +309,9 @@ pub fn retint(
                 hues[pos]
             } else if name == "accents" && !eligible.is_empty() {
                 // A matched cluster wins; a near miss keeps the scheme colour.
-                choose_cluster(&eligible, anchor.h, &mut used, config.reach).unwrap_or(anchor.h)
+                choose_cluster(&eligible, anchor.h, &mut used, config.reach()).unwrap_or(anchor.h)
+            } else if !matches!(neutrals, Neutrals::Heaviest) && name != "accents" {
+                anchor.h
             } else {
                 // Neutrals (and accents with no eligible vivid family) adopt
                 // the heaviest family.
@@ -250,16 +346,36 @@ pub fn retint(
         }
     }
 
+    // -- neutrals toward a target scheme: the tint itself blends (a/b),
+    // so chroma moves with the hue --
+    let mut chroma_of: HashMap<usize, f64> = HashMap::new();
+    if let Neutrals::Slots(target) = neutrals {
+        for i in 0..8 {
+            let settings = &regs[role_of_slot(BASE_SLOTS[i])];
+            if settings.assign != AssignState::Off || settings.match_hue <= 0.0 {
+                continue;
+            }
+            let (own, to, t) = (lch_of(i), target[i], settings.match_hue);
+            let a =
+                own.c * own.h.to_radians().cos() * (1.0 - t) + to.c * to.h.to_radians().cos() * t;
+            let b =
+                own.c * own.h.to_radians().sin() * (1.0 - t) + to.c * to.h.to_radians().sin() * t;
+            assigned.insert(i, crate::color::floor_mod(b.atan2(a).to_degrees(), 360.0));
+            chroma_of.insert(i, a.hypot(b));
+        }
+    }
+
     // -- grade: additive L shift, multiplicative chroma, per role --
     let mut graded: BTreeMap<String, Lch> = BTreeMap::new();
     for i in 0..BASE_SLOTS.len() {
         let settings = &regs[role_of_slot(BASE_SLOTS[i])];
         let lch = lch_of(i);
+        let c = chroma_of.get(&i).copied().unwrap_or(lch.c);
         graded.insert(
             BASE_SLOTS[i].to_string(),
             Lch {
                 l: (lch.l + settings.lightness).clamp(0.0, 1.0),
-                c: (lch.c * settings.chroma).max(0.0),
+                c: (c * settings.chroma).max(0.0),
                 h: assigned[&i],
             },
         );
@@ -285,8 +401,26 @@ pub fn retint(
         );
     }
 
-    Ok(graded
+    Ok(graded)
+}
+
+/// The 16 slots as hex, from `retint`'s colors.
+pub fn to_hexes(graded: &BTreeMap<String, Lch>) -> BTreeMap<String, String> {
+    graded
         .iter()
         .map(|(slot, lch)| (slot.clone(), oklch_to_hex(lch)))
-        .collect())
+        .collect()
+}
+
+/// `chroma-even` and `lightness-even`, role by role, on the finished
+/// slots.
+pub fn even_roles(slots: &mut [Lch; 16], config: &SchemeConfig) -> Result<(), String> {
+    let regs = resolved_roles(config)?;
+    for name in ROLE_NAMES {
+        let indices: Vec<usize> = role_slots(name).iter().map(|s| slot_index(s)).collect();
+        let range = indices[0]..indices[indices.len() - 1] + 1;
+        crate::generate::even(slots, range.clone(), regs[name].chroma_even, false);
+        crate::generate::even(slots, range, regs[name].lightness_even, true);
+    }
+    Ok(())
 }

@@ -30,22 +30,64 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Scheme + wallpaper → scheme: adopt the wallpaper's hues, keep the
-    /// scheme's structure.
+    /// scheme's structure; or generate a scheme from the wallpaper alone.
     ///
     /// Rehue a base16 scheme with a wallpaper's hues: hue families are
     /// extracted from the image and adopted slot by slot, while each
     /// slot's lightness, chroma and contrast stay the scheme's own.
+    /// With -g, the wallpaper makes the whole scheme, and -i names a
+    /// scheme to match toward instead.
     ///
     /// Example: rehue scheme -i rose-pine-dawn -w butterfly.webp -o mapped
+    ///
+    /// Example: rehue scheme -g -w butterfly.webp -o generated
     ///
     #[command(after_help = SCHEME_ROLES)]
     Scheme {
         /// The scheme to rehue: a bundled scheme name or a path to a
-        /// base16 YAML.
+        /// base16 YAML.  With -g, the scheme --match takes hues from
+        /// (absent: the wallpaper's own colors).
         ///
         /// e.g. -i rose-pine-dawn   -i ~/schemes/mine.yaml
         #[arg(short, long, value_name = "SCHEME")]
-        input: String,
+        input: Option<String>,
+        /// Generate the scheme from the wallpaper: a method, or `auto`
+        /// (bare -g; found for now).
+        ///
+        /// Methods: found (the image's colors in the slots their hues
+        /// fit), distinct (found, keeping accents apart), rswal (the
+        /// image's own colors, as pywal picks them), conventional,
+        /// image-hues, mono, analogous, complementary,
+        /// split-complementary, triadic, triadic-fill, square.
+        ///
+        /// e.g. -g   -g distinct   -g rswal
+        #[arg(short, long, help_heading = "Generation", value_name = "METHOD", num_args = 0..=1, default_missing_value = "auto")]
+        generate: Option<String>,
+        /// A generated scheme dark or light (default auto: light when the
+        /// wallpaper's median lightness is 0.6 or more).
+        ///
+        /// e.g. --variant light
+        #[arg(long, help_heading = "Generation", value_enum)]
+        variant: Option<crate::generate::Variant>,
+        /// Push near-identical accents apart, to just distinct (off by
+        /// default).
+        ///
+        /// e.g. --nudge
+        #[arg(long, help_heading = "Generation")]
+        nudge: bool,
+        /// Also save the scheme as NAME in the schemes directory
+        /// (--scheme-dir, else ~/.config/rehue/schemes), so -i NAME and
+        /// -s NAME find it.
+        ///
+        /// e.g. --save dusk
+        #[arg(long, value_name = "NAME")]
+        save: Option<String>,
+        /// Let --save replace a saved scheme of the same name without
+        /// asking (it asks on a terminal, and stops elsewhere).
+        ///
+        /// e.g. --save dusk --replace
+        #[arg(long)]
+        replace: bool,
         /// The wallpaper whose hues the scheme takes on: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi;
         /// or a video (mp4, webm, mkv or mov), its hues measured on frames across it.
         ///
@@ -69,7 +111,8 @@ pub enum Commands {
         #[arg(long, value_name = "DIR")]
         scheme_dir: Option<PathBuf>,
         /// Config file (.json, .toml or .yaml): extraction options,
-        /// `min-text-contrast`, `reach`, per-role records and
+        /// `min-text-contrast`, `reach`, `match`, generation (`generate`,
+        /// `variant`, `nudge`), `save`, `replace`, `author`, per-role records and
         /// `scheme-dir`.
         ///
         /// e.g. -c scheme.toml
@@ -82,6 +125,21 @@ pub enum Commands {
         /// e.g. -l pop   -l snap,vivid   (rehue inspect --looks lists them)
         #[arg(short, long, value_name = "NAME")]
         look: Vec<String>,
+        /// How fully the scheme matches its target, 0..1: sets match-hue
+        /// and reach together (reach 45 at 0 up to 180 at 1, every accent).
+        ///
+        /// The target is the wallpaper; with -g, the -i scheme or else
+        /// the wallpaper's own colors.  Explicit --match-hue and --reach
+        /// win.  Defaults: 1 when rehuing (match-hue 1, reach 45), 0 with -g.
+        ///
+        /// e.g. -M 0.5   -g -i gruvbox-dark -M 1
+        #[arg(
+            short = 'M',
+            long = "match",
+            help_heading = "Grading",
+            value_name = "0..1"
+        )]
+        match_: Option<f64>,
         /// How far, in hue degrees, an accent can reach to claim a wallpaper
         /// hue (default 45).
         ///
@@ -124,6 +182,22 @@ pub enum Commands {
         /// e.g. --chroma 1.6   --chroma accents 0.75
         #[arg(long, help_heading = "Grading", value_name = "[ROLE] C", num_args = 1..=2, allow_negative_numbers = true)]
         chroma: Vec<String>,
+        /// Pull a role's chroma toward its mean, 0..1 (0 off, 1 even).
+        ///
+        /// The mean stays; accents keep 4.5:1 on base00, so one sRGB or
+        /// contrast holds back leaves 1 not quite even.
+        ///
+        /// e.g. --chroma-even accents 1
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        chroma_even: Vec<String>,
+        /// Pull a role's lightness toward its mean, 0..1 (0 off, 1 even).
+        ///
+        /// Accents keep 4.5:1 on base00.  Evening accents undoes the
+        /// lightness that keeps base08 and base0B apart for deuteranopes.
+        ///
+        /// e.g. --lightness-even accents 0.5
+        #[arg(long, help_heading = "Grading", value_name = "[ROLE] 0..1", num_args = 1..=2, allow_negative_numbers = true)]
+        lightness_even: Vec<String>,
     },
     /// Wallpaper + scheme → wallpaper: repaint the image (or a video) with
     /// the scheme's palette.
@@ -582,7 +656,8 @@ Roles:
 
 const SCHEME_ROLES: &str = roles_help!(
     "
-  Per-role options: assign, cycle, match-hue, lightness, chroma.
+  Per-role options: assign, cycle, match-hue, lightness, chroma,
+  chroma-even, lightness-even.
   Pass `--option ROLE value`, repeatable per role; a bare
   `--option value` sets `all`, and per-role `--config` records
   outrank it.

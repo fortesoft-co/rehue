@@ -480,6 +480,7 @@ fn source_files() -> Result<String, String> {
     let files: Vec<String> = [
         rs("src"),
         rs("src/bin"),
+        rs("src/generate"),
         vec!["build.rs".into()],
         rs("examples"),
     ]
@@ -792,6 +793,9 @@ fn known_names() -> BTreeSet<String> {
     keys(serde_json::to_value(rehue::grade_scheme::SchemeRoleConfig::default()).unwrap());
     for (k, _) in rehue::extract::ExtractionParams::KEYS {
         out.insert(k.to_string());
+    }
+    for m in rehue::generate::Method::NAMES {
+        out.insert(m.to_string());
     }
     // dither styles, their settings and values, from the code
     {

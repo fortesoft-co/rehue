@@ -5,6 +5,48 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
+## [Unreleased]
+
+### Added
+
+- Scheme generation: `rehue scheme -g` makes a base16 scheme from a
+  wallpaper alone. Neutrals take the wallpaper's leading hue and are
+  as dark or light as its own ends; accents come from its colors at a
+  strength that follows how colorful it is; every accent keeps 4.5:1 on
+  base00, and base08 and base0B stay apart for deuteranopes. Methods:
+  `found` (what bare `-g`, `auto`, runs), `distinct`, `rswal` (pywal's
+  colors, each in the slot nearest its usual color), `conventional`,
+  `image-hues`, `mono`, `analogous`, `complementary`,
+  `split-complementary`, `triadic`, `triadic-fill` and `square`. A
+  wallpaper with no color gets `conventional` with untinted neutrals.
+  Videos work, from frames across the clip. `docs/generate.md` covers
+  it all.
+- `scheme --variant auto|dark|light`: a generated scheme dark or
+  light; auto picks light when the wallpaper's median lightness is 0.6
+  or more.
+- `scheme -M` / `--match 0..1`: match-hue and reach in one dial (reach
+  45° at 0 up to 180° at 1). With `-g -i SCHEME`, the generated scheme
+  matches toward that scheme, its neutrals blending toward the target's
+  tint; with `-g` alone, toward the wallpaper's hue families.
+- `scheme --nudge`: near-identical accents pushed apart to just
+  distinct (off by default).
+- `scheme --chroma-even [ROLE] 0..1` and `--lightness-even [ROLE] 0..1`:
+  a role's chroma or lightness pulled toward its mean.
+- `scheme --save NAME`: the scheme also saved as `NAME.yaml` in
+  `~/.config/rehue/schemes` (`$XDG_CONFIG_HOME/rehue/schemes`), the new
+  default scheme directory, so `-i NAME`, `wal -s NAME` and the rest
+  find it. It asks before replacing a saved scheme; `--replace`
+  doesn't. A generated scheme's author is your username, or the
+  `author` key.
+- Config keys for all of it: `generate`, `variant`, `nudge`, `match`,
+  `save`, `replace`, `author`, and per role `chroma-even` and `lightness-even`. An
+  `apply` pipeline that generates needs no `scheme`.
+
+### Changed
+
+- Scheme names look in `~/.config/rehue/schemes` when no
+  `--scheme-dir` is given, and `inspect --schemes` lists what's there.
+
 ## [0.5.0] - 2026-11-24
 
 The video release: `wal` takes a video wallpaper and grades every

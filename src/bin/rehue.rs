@@ -8,6 +8,7 @@ use clap::Parser;
 use rehue::cli::{Cli, Commands, LutFormat};
 use rehue::color::{Lch, hex_to_oklch, hex_to_rgb, oklch_to_hex, oklch_to_rgb, self_test};
 use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
+use rehue::generate::Method;
 use rehue::role::AssignState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
 use rehue::terminal::{families_strip, scheme_strip};
@@ -164,18 +165,44 @@ fn wal_role(
 /// named role directly (CLI beats the file at that key).
 #[derive(Debug, Default)]
 struct SchemeOverrides {
+    generate: Option<String>,
+    variant: Option<rehue::generate::Variant>,
+    nudge: bool,
+    save: Option<String>,
+    replace: bool,
+    match_: Option<f64>,
     reach: Option<f64>,
     assign: Vec<String>,
     cycle: Vec<String>,
     match_hue: Vec<String>,
     lightness: Vec<String>,
     chroma: Vec<String>,
+    chroma_even: Vec<String>,
+    lightness_even: Vec<String>,
 }
 
 impl SchemeOverrides {
     fn apply(self, config: &mut grade_scheme::SchemeConfig) -> Result<(), String> {
+        if let Some(m) = self.generate {
+            config.generate = Some(Method::parse(&m).map_err(|e| format!("-g: {e}"))?);
+        }
+        if let Some(v) = self.variant {
+            config.variant = v;
+        }
+        if self.nudge {
+            config.nudge = true;
+        }
+        if self.save.is_some() {
+            config.save = self.save;
+        }
+        if self.replace {
+            config.replace = true;
+        }
+        if self.match_.is_some() {
+            config.match_ = self.match_;
+        }
         if let Some(v) = self.reach {
-            config.reach = v;
+            config.reach = Some(v);
         }
         for tokens in self.assign.chunks(2) {
             let (target, value) = dial_arg("assign", tokens)?;
@@ -208,6 +235,16 @@ impl SchemeOverrides {
             let (target, value) = dial_arg("chroma", tokens)?;
             let v = parse_f64("chroma", &value)?;
             role_dial(config, target, move |reg| reg.chroma = Some(v));
+        }
+        for tokens in self.chroma_even.chunks(2) {
+            let (target, value) = dial_arg("chroma-even", tokens)?;
+            let v = parse_f64("chroma-even", &value)?;
+            role_dial(config, target, move |reg| reg.chroma_even = Some(v));
+        }
+        for tokens in self.lightness_even.chunks(2) {
+            let (target, value) = dial_arg("lightness-even", tokens)?;
+            let v = parse_f64("lightness-even", &value)?;
+            role_dial(config, target, move |reg| reg.lightness_even = Some(v));
         }
         Ok(())
     }
@@ -353,34 +390,245 @@ impl WalOverrides {
 }
 
 /// Returns the mapped scheme's yaml (written to `out` unless dry-run).
+/// What generation reads from the wallpaper: a still at working size
+/// (rswal at a quarter size, as pywal reads it), or a video's sampled
+/// frames, each at working size.
+fn analyse_wallpaper(wallpaper: &Path) -> Result<rehue::generate::analysis::Analysis, String> {
+    use rehue::generate::analysis::{analyse, quarter_size, working_size};
+    if video::is_video(wallpaper) {
+        let ffmpeg = video::resolve_ffmpeg(None)?;
+        let probe = video::probe(&ffmpeg, wallpaper)?;
+        let stack = video::sample(&ffmpeg, wallpaper, &probe, false, None)?;
+        let (w, h) = video::sample_size(&probe);
+        let frames: Vec<image::RgbImage> = (0..stack.height() / h.max(1))
+            .map(|i| working_size(&image::imageops::crop_imm(&stack, 0, i * h, w, h).to_image()))
+            .collect();
+        return Ok(analyse(&frames));
+    }
+    let image = image::ImageReader::open(wallpaper)
+        .map_err(|e| format!("can't read wallpaper {}: {}", wallpaper.display(), e))?
+        .with_guessed_format()
+        .map_err(|e| format!("can't read wallpaper {}: {}", wallpaper.display(), e))?
+        .decode()
+        .map_err(|e| format!("can't decode wallpaper {}: {}", wallpaper.display(), e))?
+        .to_rgb8();
+    let mut a = analyse(&[working_size(&image)]);
+    a.rswal_source(&quarter_size(&image));
+    Ok(a)
+}
+
+/// The schemes directory `--save` writes to and names look up first.
+fn schemes_dir(scheme_dir: Option<&Path>) -> Result<PathBuf, String> {
+    scheme_dir
+        .map(Path::to_path_buf)
+        .or_else(rehue::scheme::user_dir)
+        .ok_or_else(|| "no schemes directory: set --scheme-dir (HOME is unset)".to_string())
+}
+
+/// `--save NAME`: the scheme as NAME.yaml in the schemes directory.
+fn saved_path(name: &str, scheme_dir: Option<&Path>) -> Result<PathBuf, String> {
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!(
+            "--save: a name is letters, digits, '-' or '_' (got {name:?})"
+        ));
+    }
+    Ok(schemes_dir(scheme_dir)?.join(format!("{name}.yaml")))
+}
+
+/// Before any work: a saved scheme by this name is only replaced with
+/// `--replace`, or a yes on the terminal.
+fn confirm_replace(path: &Path, name: &str) -> Result<(), String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return Err(format!(
+            "--save: '{name}' is already saved ({}); pass --replace to replace it",
+            path.display()
+        ));
+    }
+    print!(
+        "rehue scheme: replace the saved '{name}' ({})? [y/N] ",
+        path.display()
+    );
+    std::io::stdout().flush().map_err(|e| e.to_string())?;
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|e| format!("reading the answer: {e}"))?;
+    match line.trim().to_ascii_lowercase().as_str() {
+        "y" | "yes" => Ok(()),
+        _ => Err(format!("kept the saved '{name}'; nothing written")),
+    }
+}
+
+fn save_scheme(path: &Path, rendered: &str) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("can't create {}: {}", dir.display(), e))?;
+    }
+    let replaced = path.exists();
+    std::fs::write(path, rendered).map_err(|e| format!("can't write {}: {}", path.display(), e))?;
+    if replaced {
+        println!("rehue scheme: saved {} (replaced)", path.display());
+    } else {
+        println!("rehue scheme: saved {}", path.display());
+    }
+    Ok(())
+}
+
+/// Who ran rehue: the author of a scheme it makes, unless `author` says.
+fn user_name() -> String {
+    ["USER", "LOGNAME", "USERNAME"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+        .unwrap_or_default()
+}
+
+/// The scheme the run starts from: a reference to rehue, or one
+/// generated from the wallpaper (with what it reports).
+struct Start {
+    /// Its 16 slots as hex.
+    hexes: Vec<String>,
+    /// The target's hue families (the wallpaper's, or a scheme's
+    /// accents), and where the neutrals' hues come from.
+    clusters: Vec<extract::Cluster>,
+    neutrals: grade_scheme::Neutrals,
+    generated: Option<rehue::generate::Generated>,
+    method_asked: Option<Method>,
+    analysis: Option<rehue::generate::analysis::Analysis>,
+}
+
 fn run_scheme(
     wallpaper: &Path,
-    parsed: &Scheme,
+    reference: Option<&Scheme>,
     out: &Path,
     config: grade_scheme::SchemeConfig,
     dry_run: bool,
+    scheme_dir: Option<&Path>,
 ) -> Result<String, String> {
-    println!(
-        "rehue scheme: reference '{}' by {}",
-        parsed.meta_name(),
-        parsed.meta_author()
-    );
+    let save_path = match &config.save {
+        Some(name) => {
+            let path = saved_path(name, scheme_dir)?;
+            if path.exists() && !config.replace && !dry_run {
+                confirm_replace(&path, name)?;
+            }
+            Some(path)
+        }
+        None => None,
+    };
+    let start = match config.generate {
+        None => {
+            let parsed = reference.ok_or("pass -i SCHEME to rehue, or -g to generate one")?;
+            println!(
+                "rehue scheme: reference '{}' by {}",
+                parsed.meta_name(),
+                parsed.meta_author()
+            );
+            let clusters = extract::extract_hues(wallpaper, &config.extraction)?;
+            if clusters.is_empty() {
+                println!("rehue scheme: no chromatic signal - scheme hues kept");
+            } else {
+                print_families("scheme", &clusters);
+                println!("rehue scheme: extracted wallpaper families");
+                println!("{}", families_strip(&clusters));
+            }
+            Start {
+                hexes: parsed.slot_hexes()?,
+                clusters,
+                neutrals: grade_scheme::Neutrals::Heaviest,
+                generated: None,
+                method_asked: None,
+                analysis: None,
+            }
+        }
+        Some(asked) => {
+            let a = analyse_wallpaper(wallpaper)?;
+            if !a.families.is_empty() {
+                print_families("scheme", &a.families);
+                println!("{}", families_strip(&a.families));
+            }
+            let g = rehue::generate::generate(&a, asked, config.variant);
+            let auto = if asked == Method::Auto { " (auto)" } else { "" };
+            println!(
+                "rehue scheme: generated {} scheme, method {}{auto}",
+                if g.light { "a light" } else { "a dark" },
+                g.method.name()
+            );
+            for note in &g.notes {
+                println!("rehue scheme: {note}");
+            }
+            let hexes: Vec<String> = g.slots.iter().map(oklch_to_hex).collect();
+            let (clusters, neutrals) = match reference {
+                Some(target) => {
+                    println!(
+                        "rehue scheme: matching toward '{}' by {}",
+                        target.meta_name(),
+                        target.meta_author()
+                    );
+                    let slots: Vec<Lch> = target
+                        .slot_hexes()?
+                        .iter()
+                        .map(|h| hex_to_oklch(h))
+                        .collect::<Result<_, _>>()?;
+                    let accents = slots[8..]
+                        .iter()
+                        .map(|c| extract::Cluster {
+                            hue: c.h,
+                            weight: 1.0 / 8.0,
+                            chroma: c.c,
+                        })
+                        .collect();
+                    (accents, grade_scheme::Neutrals::Slots(slots[..8].to_vec()))
+                }
+                None => (a.families.clone(), grade_scheme::Neutrals::Keep),
+            };
+            Start {
+                hexes,
+                clusters,
+                neutrals,
+                generated: Some(g),
+                method_asked: Some(asked),
+                analysis: Some(a),
+            }
+        }
+    };
+    let slot_hexes = start.hexes;
+    let clusters = start.clusters;
 
-    let slot_hexes = parsed.slot_hexes()?;
-    let clusters = extract::extract_hues(wallpaper, &config.extraction)?;
-    if clusters.is_empty() {
-        println!("rehue scheme: no chromatic signal - scheme hues kept");
-    } else {
-        print_families("scheme", &clusters);
-        println!("rehue scheme: extracted wallpaper families");
-        println!("{}", families_strip(&clusters));
+    let graded = grade_scheme::retint_lch(&slot_hexes, &clusters, &config, &start.neutrals)?;
+    let mut slots: [Lch; 16] = std::array::from_fn(|i| graded[BASE_SLOTS[i]]);
+    // a generated scheme's accents keep 4.5:1 through matching, unless
+    // their lightness is shifted on purpose
+    if let Some(g) = &start.generated
+        && grade_scheme::resolved_roles(&config)?["accents"].lightness == 0.0
+    {
+        let base00 = slots[0];
+        for a in &mut slots[8..] {
+            *a = rehue::generate::hold_contrast(*a, &base00, g.light);
+        }
     }
-
-    let mapped = grade_scheme::retint(&slot_hexes, &clusters, &config)?;
+    if config.nudge && rehue::generate::nudge(&mut slots) {
+        println!("rehue scheme: nudged near-identical accents apart");
+    }
+    grade_scheme::even_roles(&mut slots, &config)?;
+    let mapped: BTreeMap<String, String> = BASE_SLOTS
+        .iter()
+        .zip(&slots)
+        .map(|(slot, lch)| (slot.to_string(), oklch_to_hex(lch)))
+        .collect();
     let regs = grade_scheme::resolved_roles(&config)?;
+    println!(
+        "  match {}  reach {:.0}",
+        config.match_.map_or("-".to_string(), |m| format!("{m:.2}")),
+        config.reach()
+    );
     for name in role::ROLE_NAMES {
         let settings = &regs[name];
-        println!(
+        let mut line = format!(
             "  {:<10} assign {:<12} cycle {}  match-hue {:.2}  lightness {:+.3}  chroma {:.2}",
             name,
             settings.assign.describe(),
@@ -389,19 +637,63 @@ fn run_scheme(
             settings.lightness,
             settings.chroma
         );
+        if settings.chroma_even > 0.0 || settings.lightness_even > 0.0 {
+            line += &format!(
+                "  chroma-even {:.2}  lightness-even {:.2}",
+                settings.chroma_even, settings.lightness_even
+            );
+        }
+        println!("{line}");
     }
 
     let mapped_hexes: Vec<String> = BASE_SLOTS
         .iter()
         .map(|slot| mapped.get(*slot).expect("mapped slot present").clone())
         .collect();
-    println!("rehue scheme: palette - reference");
+    let (first, last) = if start.generated.is_some() {
+        ("generated", "final")
+    } else {
+        ("reference", "mapped")
+    };
+    println!("rehue scheme: palette - {first}");
     println!("{}", scheme_strip(&slot_hexes));
-    println!("rehue scheme: palette - mapped");
+    println!("rehue scheme: palette - {last}");
     println!("{}", scheme_strip(&mapped_hexes));
 
-    let rendered = parsed.render(&mapped);
+    let wall_label = preview::image_label(wallpaper);
+    let rendered = match (&start.generated, reference) {
+        (Some(g), _) => {
+            let stem = wallpaper
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "wallpaper".to_string());
+            let name = config.save.clone().unwrap_or(stem);
+            let variant = if g.light { "light" } else { "dark" };
+            Scheme::render_as(
+                &mapped,
+                &name,
+                &config.author.clone().unwrap_or_else(user_name),
+                Some(variant),
+            )
+        }
+        (None, Some(parsed)) => match &config.save {
+            Some(name) => {
+                let author = config
+                    .author
+                    .clone()
+                    .unwrap_or_else(|| format!("{} (hue-mapped by rehue)", parsed.meta_author()));
+                let variant = parsed.attrs.get("variant").map(String::as_str);
+                Scheme::render_as(&mapped, name, &author, variant)
+            }
+            None => parsed.render(&mapped),
+        },
+        (None, None) => unreachable!("a reference is required without -g"),
+    };
     if dry_run {
+        if let Some(path) = &save_path {
+            let replacing = if path.exists() { " (replacing)" } else { "" };
+            println!("rehue scheme: would save {}{replacing}", path.display());
+        }
         println!("rehue scheme: dry run (nothing written)");
         return Ok(rendered);
     }
@@ -419,8 +711,7 @@ fn run_scheme(
     render_preview(&[&original, &mapped])?
         .save(out.join("preview.png"))
         .map_err(|e| format!("can't write preview.png: {}", e))?;
-    let scheme_name = parsed.meta_name();
-    let wall_label = preview::image_label(wallpaper);
+    let scheme_name = Scheme::parse_text(&rendered)?.meta_name();
     let wall_src = preview::relative_link(out, wallpaper);
     let input = preview::Preview {
         flow: preview::PreviewFlow::SchemeFromWallpaper,
@@ -434,15 +725,27 @@ fn run_scheme(
     std::fs::write(out.join("preview.html"), preview::render(&input)?)
         .map_err(|e| format!("can't write preview.html: {}", e))?;
 
-    let report = serde_json::json!({
+    let mut report = serde_json::json!({
         "params": config,
         "grayscale_wallpaper": clusters.is_empty(),
         "clusters": clusters,
         "dominant_hue": clusters.first().map(|c| c.hue),
     });
+    if let (Some(g), Some(a)) = (&start.generated, &start.analysis) {
+        report["generated"] = serde_json::json!({
+            "method": g.method.name(),
+            "method_asked": start.method_asked.map(Method::name),
+            "variant": if g.light { "light" } else { "dark" },
+            "notes": g.notes,
+            "analysis": a,
+        });
+    }
     write_json_file(&out.join("clusters.json"), &report)?;
 
     println!("rehue scheme: wrote scheme.yaml, preview.png, preview.html, clusters.json");
+    if let Some(path) = &save_path {
+        save_scheme(path, &rendered)?;
+    }
     Ok(rendered)
 }
 
@@ -1821,7 +2124,10 @@ fn print_looks(command: &str, looks: &[rehue::look::Look]) {
 
 fn run_inspect_schemes(filter: &str, scheme_dir: Option<&Path>) -> Result<(), String> {
     let mut entries: Vec<(String, bool)> = Vec::new();
-    if let Some(dir) = scheme_dir {
+    // the saved-schemes directory is the default, and may not exist yet
+    let user = scheme_dir.is_none().then(rehue::scheme::user_dir).flatten();
+    let dir = scheme_dir.or(user.as_deref().filter(|d| d.is_dir()));
+    if let Some(dir) = dir {
         let listing = std::fs::read_dir(dir)
             .map_err(|e| format!("can't read --scheme-dir {}: {}", dir.display(), e))?;
         for entry in listing.flatten() {
@@ -1885,26 +2191,35 @@ fn run_inspect_schemes(filter: &str, scheme_dir: Option<&Path>) -> Result<(), St
 fn run_apply(pipeline_path: &Path, dry_run: bool) -> Result<(), String> {
     let pipeline = apply::Pipeline::load(pipeline_path)?;
     let out = pipeline.out_dir();
-    let reference = Scheme::resolve(&pipeline.scheme, pipeline.scheme_dir.as_deref())?;
+    let reference = pipeline
+        .scheme
+        .as_deref()
+        .map(|name| Scheme::resolve(name, pipeline.scheme_dir.as_deref()))
+        .transpose()?;
 
-    // The scheme that gets applied: mapped when [rehue.scheme] runs, else
-    // the reference as-is.
-    let (scheme_yaml, scheme) = match &pipeline.rehue.scheme {
-        Some(config) => {
+    // The scheme that gets applied: mapped (or generated) when
+    // [rehue.scheme] runs, else the reference as-is.
+    let (scheme_yaml, scheme) = match (&pipeline.rehue.scheme, reference) {
+        (Some(config), reference) => {
             let yaml = run_scheme(
                 &pipeline.wallpaper,
-                &reference,
+                reference.as_ref(),
                 &out.join("scheme"),
                 config.clone(),
                 dry_run,
+                pipeline.scheme_dir.as_deref(),
             )?;
             let mapped = Scheme::parse_text(&yaml)?;
             (yaml, mapped)
         }
-        None => (
-            Scheme::resolve_text(&pipeline.scheme, pipeline.scheme_dir.as_deref())?,
+        (None, Some(reference)) => (
+            Scheme::resolve_text(
+                pipeline.scheme.as_deref().expect("checked at load"),
+                pipeline.scheme_dir.as_deref(),
+            )?,
             reference,
         ),
+        (None, None) => unreachable!("a pipeline without a scheme step names a scheme"),
     };
     let scheme_path = out.join("scheme/scheme.yaml");
 
@@ -1994,12 +2309,20 @@ fn run(command: Commands) -> Result<(), String> {
             config,
             look,
             dry_run,
+            generate,
+            variant,
+            nudge,
+            save,
+            replace,
+            match_,
             reach,
             assign,
             cycle,
             match_hue,
             lightness,
             chroma,
+            chroma_even,
+            lightness_even,
         } => {
             let mut file = rehue::config::read_file(config.as_deref())?;
             let scheme_dir = scheme_dir.or(rehue::config::take_path(
@@ -2016,21 +2339,36 @@ fn run(command: Commands) -> Result<(), String> {
             )?;
             print_looks("scheme", &looks);
             SchemeOverrides {
+                generate,
+                variant,
+                nudge,
+                save,
+                replace,
+                match_,
                 reach,
                 assign,
                 cycle,
                 match_hue,
                 lightness,
                 chroma,
+                chroma_even,
+                lightness_even,
             }
             .apply(&mut map_config)?;
-            let parsed = Scheme::resolve(&input, scheme_dir.as_deref())?;
+            let parsed = match &input {
+                Some(name) => Some(Scheme::resolve(name, scheme_dir.as_deref())?),
+                None if map_config.generate.is_none() => {
+                    return Err("pass -i SCHEME to rehue, or -g to generate one".to_string());
+                }
+                None => None,
+            };
             run_scheme(
                 &wallpaper,
-                &parsed,
+                parsed.as_ref(),
                 out.as_deref().unwrap_or(Path::new("rehue-out")),
                 map_config,
                 dry_run,
+                scheme_dir.as_deref(),
             )
             .map(|_| ())
         }

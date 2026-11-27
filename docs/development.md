@@ -207,6 +207,12 @@ Flakes only see files git tracks: `git add` new files before
 | `src/terminal.rs` | Truecolor ANSI swatch strips for `inspect`. |
 | `src/video.rs` | Video wallpapers: frames in and out through ffmpeg, graded in between. |
 | `src/bin/rehue.rs` | `rehue` CLI: the mapping flows, plus `inspect` and `enhance` utilities. |
+| `src/generate/analysis.rs` | What generation reads from a wallpaper. |
+| `src/generate/finish.rs` | Neutrals, the accents' chroma level, and finishing. |
+| `src/generate/math.rs` | Color math the generator works in. |
+| `src/generate/methods.rs` | The generation methods' accent candidates. |
+| `src/generate/mod.rs` | Scheme generation: a base16 scheme from a wallpaper alone. |
+| `src/generate/rswal.rs` | rswal: the image's own colors as accents, as pywal picks them. |
 | `build.rs` | Embeds `vendor/tinted-schemes` as the bundled scheme table. |
 | `examples/docs-images.rs` | Builds the docs images from `examples/docs/examples.toml`. |
 | `tests/apply.rs` | `rehue apply`: pipeline files, the tinty handoff, the wallpaper command. |
@@ -217,6 +223,7 @@ Flakes only see files git tracks: `git add` new files before
 | `tests/enhance.rs` | `rehue enhance`: the model table, parameter checks, scaling. |
 | `tests/extraction.rs` | Extraction: determinism on a synthetic gradient. |
 | `tests/formats.rs` | Input formats: png, jpeg, webp, gif, tiff, bmp and qoi all read. |
+| `tests/generate.rs` | Scheme generation: the guarantees every generated scheme keeps. |
 | `tests/grade_scheme.rs` | `rehue scheme`: the role pipeline, assign and cycle. |
 | `tests/grade_wal.rs` | `rehue wal`: modes, arrangement, blend dials. |
 | `tests/grain.rs` | Grain: small, centered, monochrome, the same every run, new each frame. |
