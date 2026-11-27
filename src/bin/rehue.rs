@@ -795,13 +795,18 @@ where
     }
 }
 
+/// `frame_height`: a video's sampled frames, stacked this far apart.
 fn wal_clusters(
     regs: &BTreeMap<&'static str, grade_wal::WalRoleSettings>,
     dynamic: &image::DynamicImage,
+    frame_height: Option<u32>,
     config: &grade_wal::WalConfig,
 ) -> Vec<extract::Cluster> {
     if regs.values().any(|r| !matches!(r.assign, AssignState::Off)) {
-        let extracted = extract::extract_hues_dynamic(dynamic, &config.extraction);
+        let extracted = match frame_height {
+            Some(h) => extract::extract_hues_frames(&dynamic.to_rgb8(), h, &config.extraction),
+            None => extract::extract_hues_dynamic(dynamic, &config.extraction),
+        };
         if extracted.is_empty() {
             println!("rehue wal: no chromatic signal - assign inert");
         } else {
@@ -1035,13 +1040,16 @@ fn run_wal(
             .decode()
             .map_err(|e| format!("can't decode wallpaper {}: {}", wallpaper.display(), e))?,
     };
+    let frame_height = video
+        .as_ref()
+        .map(|(_, probe, _)| video::sample_size(probe).1);
     let source = dynamic.to_rgb8();
     // what blend mode measures colorfulness against (the LUT and the
     // report carry it too)
     let vivid = grade_wal::vivid_chroma(source.as_raw());
 
     if dry_run {
-        let clusters = wal_clusters(&regs, &dynamic, &config);
+        let clusters = wal_clusters(&regs, &dynamic, frame_height, &config);
         let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
         let strip: Vec<String> = arranged.iter().map(|s| oklch_to_hex(&s.lch)).collect();
         println!("rehue wal: palette - reference");
@@ -1089,7 +1097,7 @@ fn run_wal(
             }
         }
     } else {
-        let clusters = wal_clusters(&regs, &dynamic, &config);
+        let clusters = wal_clusters(&regs, &dynamic, frame_height, &config);
 
         let (seed_hue, seed_light, seed_chroma) = grade_wal::facade_defaults(&config);
         println!(
@@ -1276,7 +1284,7 @@ fn run_wal(
         let lut_file = if passive {
             write_lut(out, format, level, &parsed.meta_name(), |rgb| *rgb)?
         } else {
-            let clusters = wal_clusters(&regs, &dynamic, &config);
+            let clusters = wal_clusters(&regs, &dynamic, frame_height, &config);
             let arranged = grade_wal::arrange_palette(&slots, &clusters, &regs)?;
             let options = grade_wal::slot_options(&regs, &config)?;
             let map = grade_wal::ColorMap::new(&arranged, &neutral_slots, &options, &config)

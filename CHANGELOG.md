@@ -52,6 +52,13 @@ versions may break).
 - Scheme names look in `~/.config/rehue/schemes` when no
   `--scheme-dir` is given, and `inspect --schemes` lists what's there.
 
+### Fixed
+
+- A video's hues (`scheme -i`, `inspect -w`, `wal --assign`) are
+  measured on each sampled frame at full working size. The frames were
+  squeezed together to about 14×8 px each, which averaged small bright
+  details (city lights, neon) into their surroundings.
+
 ## [0.5.0] - 2026-11-24
 
 The video release: `wal` takes a video wallpaper and grades every

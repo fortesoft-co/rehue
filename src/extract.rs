@@ -109,11 +109,9 @@ pub fn extract_hues(path: &Path, params: &ExtractionParams) -> Result<Vec<Cluste
     if crate::video::is_video(path) {
         let ffmpeg = crate::video::resolve_ffmpeg(None)?;
         let probe = crate::video::probe(&ffmpeg, path)?;
-        let frames = crate::video::sample(&ffmpeg, path, &probe, false, None)?;
-        return Ok(extract_hues_dynamic(
-            &DynamicImage::ImageRgb8(frames),
-            params,
-        ));
+        let stack = crate::video::sample(&ffmpeg, path, &probe, false, None)?;
+        let (_, h) = crate::video::sample_size(&probe);
+        return Ok(extract_hues_frames(&stack, h, params));
     }
     let image = ImageReader::open(path)
         .map_err(|e| format!("can't read wallpaper {}: {}", path.display(), e))?
@@ -124,18 +122,40 @@ pub fn extract_hues(path: &Path, params: &ExtractionParams) -> Result<Vec<Cluste
 
 /// Extraction from an image already in memory (used by tests).
 pub fn extract_hues_dynamic(image: &DynamicImage, params: &ExtractionParams) -> Vec<Cluster> {
-    let rgb = image.to_rgb8();
-    let scale =
-        1.0f64.min(f64::from(params.max_dimension) / f64::from(rgb.width().max(rgb.height())));
-    let resized: image::RgbImage = if scale < 1.0 {
+    let resized = working(image.to_rgb8(), params.max_dimension);
+    extract_hues_pixels(resized.pixels().map(|p| p.0), params)
+}
+
+/// Extraction from a video's sampled frames, stacked top to bottom
+/// `frame_height` apart: each frame shrunk on its own, then pooled, so
+/// each counts the same and none is squeezed by the stack's height.
+pub fn extract_hues_frames(
+    stack: &image::RgbImage,
+    frame_height: u32,
+    params: &ExtractionParams,
+) -> Vec<Cluster> {
+    let h = frame_height.clamp(1, stack.height().max(1));
+    let frames: Vec<image::RgbImage> = (0..stack.height() / h)
+        .map(|i| {
+            working(
+                imageops::crop_imm(stack, 0, i * h, stack.width(), h).to_image(),
+                params.max_dimension,
+            )
+        })
+        .collect();
+    extract_hues_pixels(frames.iter().flat_map(|f| f.pixels().map(|p| p.0)), params)
+}
+
+/// `rgb` with its long side shrunk to `max_dimension` (never enlarged).
+fn working(rgb: image::RgbImage, max_dimension: u32) -> image::RgbImage {
+    let scale = 1.0f64.min(f64::from(max_dimension) / f64::from(rgb.width().max(rgb.height())));
+    if scale < 1.0 {
         let w = 1u32.max((f64::from(rgb.width()) * scale).round_ties_even() as u32);
         let h = 1u32.max((f64::from(rgb.height()) * scale).round_ties_even() as u32);
         imageops::resize(&rgb, w, h, imageops::FilterType::Lanczos3)
     } else {
         rgb
-    };
-
-    extract_hues_pixels(resized.pixels().map(|p| p.0), params)
+    }
 }
 
 /// Extraction from pixels already at working size (no resize): the
