@@ -5,7 +5,14 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
-## [Unreleased]
+## [0.7.0] - 2026-11-27
+
+The enhance release: `rehue enhance` takes a video and scales every
+frame, keeping the audio, and gains two gentler super-resolution
+models: `soft`, which invents no texture, and `general`, a light model
+with a denoise dial. Both are converted from the official Real-ESRGAN
+weights by a script in the repo, built by the flake and shipped with
+each release.
 
 ### Added
 
@@ -378,7 +385,7 @@ First release.
 - 375 bundled base16 schemes (tinted-theming snapshot).
 - Deterministic, byte-identical output; Nix builders for Stylix.
 
-[Unreleased]: https://github.com/fortesoft-co/rehue/compare/v0.6.0...HEAD
+[0.7.0]: https://github.com/fortesoft-co/rehue/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/fortesoft-co/rehue/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/fortesoft-co/rehue/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/fortesoft-co/rehue/compare/v0.3.0...v0.4.0
