@@ -30,9 +30,35 @@
               mainProgram = "rehue";
             };
           };
+
+          # the soft and general models for `rehue enhance --sr`, built
+          # from the official Real-ESRGAN weights (BSD-3-Clause, Xintao
+          # Wang) by scripts/sr-models.py; point --sr-models,
+          # $REHUE_SR_MODELS or sr-models in a config at it.  The same
+          # files ship as rehue-sr-models.tar.gz on each release.
+          sr-models =
+            let
+              weight =
+                release: name: hash:
+                pkgs.fetchurl {
+                  url = "https://github.com/xinntao/Real-ESRGAN/releases/download/${release}/${name}";
+                  inherit hash;
+                };
+              python = pkgs.python3.withPackages (p: [
+                p.torch
+                p.numpy
+              ]);
+            in
+            pkgs.runCommand "rehue-sr-models" { nativeBuildInputs = [ python ]; } ''
+              mkdir weights
+              ln -s ${weight "v0.1.1" "RealESRNet_x4plus.pth" "sha256-qCC5veiah011mdVFVnMIzmwSj8h1SlMgjtoBbUCqgd8="} weights/RealESRNet_x4plus.pth
+              ln -s ${weight "v0.2.5.0" "realesr-general-x4v3.pth" "sha256-jcftuayAzNwww6XcpmFlCTZ/BfvBhK2VtzHwW+zpYpI="} weights/realesr-general-x4v3.pth
+              ln -s ${weight "v0.2.5.0" "realesr-general-wdn-x4v3.pth" "sha256-FkH4xEZLnwl8n92lWJJzcT9nz1nz2QngvWiPDO4mnco="} weights/realesr-general-wdn-x4v3.pth
+              python3 -I ${./scripts/sr-models.py} weights "$out"
+            '';
         in
         {
-          inherit rehue;
+          inherit rehue sr-models;
           default = rehue;
         }
       );
@@ -141,15 +167,23 @@
                 --out "$out"
             '';
 
-          # scale a picture up (`rehue enhance`, Lanczos: the sandbox has
-          # no GPU for --sr); the result is $out/wallpaper.png
+          # scale a picture or video up (`rehue enhance`, Lanczos: the
+          # sandbox has no GPU for --sr); the result is
+          # $out/wallpaper.png, or $out/wallpaper.<ext> for a video
           enhance =
             { wallpaper, config }:
             let
               configFile = pkgs.writeText "rehue-enhance-config.json" (builtins.toJSON config);
+              name = pkgs.lib.toLower (toString wallpaper);
+              video = pkgs.lib.findFirst (ext: pkgs.lib.hasSuffix ".${ext}" name) null [
+                "mp4"
+                "webm"
+                "mkv"
+                "mov"
+              ];
             in
             pkgs.runCommand "rehue-enhance" {
-              nativeBuildInputs = [ rehue ];
+              nativeBuildInputs = [ rehue ] ++ pkgs.lib.optional (video != null) pkgs.ffmpeg-headless;
               wallpaperArg = "${wallpaper}";
               configArg = configFile;
             } ''
@@ -158,7 +192,7 @@
                 --config "$configArg" \
                 --out build
               mkdir -p "$out"
-              mv build/*.png "$out/wallpaper.png"
+              mv build/* "$out/wallpaper.${if video != null then video else "png"}"
             '';
 
           # recolor an icon theme with a scheme (`rehue icons`); the result

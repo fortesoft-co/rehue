@@ -539,32 +539,37 @@ pub enum Commands {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
-    /// Upscale a wallpaper: built-in Lanczos, or Vulkan AI
-    /// super-resolution.
+    /// Upscale a wallpaper, picture or video: built-in Lanczos, or
+    /// Vulkan AI super-resolution.
     ///
-    /// enhance works on the SOURCE picture; the palette transform stays
-    /// in wal.  Lanczos is deterministic and dependency-free.
-    /// --sr shells out to realesrgan-ncnn-vulkan (ncnn + vulkan: no
-    /// CUDA, works on intel/amd/nvidia/software drivers); the model
-    /// runs at its native 4x and the target factor is reached with the
-    /// same Lanczos resampler.
+    /// enhance works on the SOURCE; the palette transform stays in wal.
+    /// Lanczos is deterministic and dependency-free.  --sr shells out to
+    /// realesrgan-ncnn-vulkan (ncnn + vulkan: no CUDA, works on
+    /// intel/amd/nvidia/software drivers); the model runs at its native
+    /// 4x and the target factor is reached with the same Lanczos
+    /// resampler.  A video is scaled frame by frame through ffmpeg,
+    /// keeping its audio.
     ///
     /// Example: rehue enhance -i pic.webp -o up4 --upscale 4
     ///          rehue enhance -i pic.webp -o up4 --upscale 4 --sr
+    ///          rehue enhance -i clip.mp4 -o up2 --upscale 2 --sr --model general
     Enhance {
-        /// The picture to scale: png, jpeg, webp, gif (its first frame), tiff, bmp or qoi.
+        /// The wallpaper to scale: a picture (png, jpeg, webp, gif (its
+        /// first frame), tiff, bmp or qoi) or a video (mp4, webm, mkv or
+        /// mov) through ffmpeg.
         ///
         /// e.g. -i ~/pictures/pic.webp
         #[arg(short, long, value_name = "WALLPAPER")]
         input: PathBuf,
-        /// Directory for the scaled PNG, named after the source's stem
+        /// Directory for the result, named after the source's stem: a
+        /// PNG for a picture, the source's container for a video
         /// (absent: `rehue-out`).
         ///
         /// e.g. -o up4
         #[arg(short, long)]
         out: Option<PathBuf>,
-        /// Config file (.json, .toml or .yaml): `upscale`, `sr`, `model`
-        /// and `sr-tool`.
+        /// Config file (.json, .toml or .yaml): `upscale`, `sr`, `model`,
+        /// `denoise`, `sr-tool`, `sr-models`, `ffmpeg` and `ffmpeg-args`.
         ///
         /// e.g. -c enhance.toml
         #[arg(short, long, value_name = "FILE")]
@@ -583,17 +588,49 @@ pub enum Commands {
         /// e.g. --sr
         #[arg(long, help_heading = "Upscaling")]
         sr: bool,
-        /// SR weights (with --sr):
-        /// photos = general x4plus, anime = x4plus-anime.
+        /// SR weights (with --sr): photos = x4plus, anime = x4plus-anime
+        /// (both shipped with the tool); soft = RealESRNet x4plus, general
+        /// = realesr-general-x4v3 (both from the models directory).
         ///
-        /// e.g. --model photos
+        /// e.g. --model soft
         #[arg(long, help_heading = "Upscaling", value_enum, value_name = "MODEL")]
         model: Option<SrModel>,
+        /// How much --model general smooths: 0, 0.5 or 1; 0 keeps the
+        /// most grain, 1 smooths the most (absent: 0.5).
+        ///
+        /// e.g. --denoise 0
+        #[arg(long, help_heading = "Upscaling", value_name = "LEVEL")]
+        denoise: Option<f32>,
         /// Path to the SR tool (with --sr); else $REHUE_SR_TOOL / $PATH.
         ///
         /// e.g. --sr-tool ~/tools/realesrgan-ncnn-vulkan
         #[arg(long, help_heading = "Upscaling", value_name = "TOOL")]
         sr_tool: Option<PathBuf>,
+        /// Directory with the soft and general models; else
+        /// $REHUE_SR_MODELS, else $XDG_DATA_HOME/rehue/sr-models.
+        ///
+        /// e.g. --sr-models ~/models/rehue
+        #[arg(long, help_heading = "Upscaling", value_name = "DIR")]
+        sr_models: Option<PathBuf>,
+        /// Path to ffmpeg, for a video; else $REHUE_FFMPEG / $PATH.
+        ///
+        /// ffprobe is looked for beside it.  e.g. --ffmpeg ~/bin/ffmpeg
+        #[arg(long, help_heading = "Video", value_name = "FFMPEG")]
+        ffmpeg: Option<PathBuf>,
+        /// Encoding flags for ffmpeg, in place of rehue's codec defaults
+        /// (H.264 crf 16, or VP9 crf 20 for WebM).
+        ///
+        /// Quoted as one argument; rehue keeps the input, mapping,
+        /// filters, length and container.  -pix_fmt sets the output's
+        /// pixel format (yuv420p if not given).  e.g. --ffmpeg-args
+        /// "-c:v libx265 -crf 20 -preset slow"
+        #[arg(
+            long,
+            help_heading = "Video",
+            value_name = "ARGS",
+            allow_hyphen_values = true
+        )]
+        ffmpeg_args: Option<String>,
     },
     /// Run a pipeline file and apply the result: scheme to tinty,
     /// wallpaper to your command.

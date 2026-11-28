@@ -15,9 +15,11 @@ shipped.
   foreground slots than base05).
 - **Look book**: a docs page showcasing standout results, each with
   the images and the recipe that made it.
-- **Enhance expansion**: beyond v1 (Lanczos + Vulkan SR): denoise and
-  JPEG-artifact restoration models (Real-CUGAN / realesrnet), and an
-  opt-in Nix SR builder (lavapipe for machines without a GPU driver).
+- **Nix SR builder**: an opt-in `lib.enhance` that runs super-resolution
+  in the build sandbox on lavapipe (Mesa's software Vulkan). `general`
+  is light enough there (about 10 s for a 934x628 picture on a desktop
+  CPU; the x4plus models take minutes); its output matches the GPU's
+  closely but not byte for byte.
 
 ## On demand
 

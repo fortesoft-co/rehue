@@ -220,7 +220,7 @@ Flakes only see files git tracks: `git add` new files before
 | `tests/config.rs` | Config files: JSON, TOML and YAML, picked by extension. |
 | `tests/dither.rs` | The dither stage: palette colors only, drawn as a pattern. |
 | `tests/docs.rs` | The docs: generated regions, the drift check, links, example images. |
-| `tests/enhance.rs` | `rehue enhance`: the model table, parameter checks, scaling. |
+| `tests/enhance.rs` | `rehue enhance`: models, parameters, scaling, the SR tool and videos. |
 | `tests/extraction.rs` | Extraction: determinism on a synthetic gradient. |
 | `tests/formats.rs` | Input formats: png, jpeg, webp, gif, tiff, bmp and qoi all read. |
 | `tests/generate.rs` | Scheme generation: the guarantees every generated scheme keeps. |

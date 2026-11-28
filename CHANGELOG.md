@@ -5,6 +5,30 @@ All notable changes to rehue. The format follows
 uses [semantic versioning](https://semver.org/) (pre-1.0: minor
 versions may break).
 
+## [Unreleased]
+
+### Added
+
+- `enhance` takes a video (mp4, webm, mkv or mov): every frame is
+  scaled, through super-resolution or Lanczos, and the audio is kept.
+  Frames go to the SR tool in batches; `--ffmpeg` and `--ffmpeg-args`
+  (and their config keys) work as on `wal`.
+- `enhance --model soft` (RealESRNet x4plus: no invented texture) and
+  `--model general` with `--denoise 0|0.5|1` (realesr-general-x4v3, a
+  light model). Both come from a models directory: `--sr-models`,
+  `$REHUE_SR_MODELS` or `~/.local/share/rehue/sr-models`, with the
+  `denoise` and `sr-models` config keys.
+- `scripts/sr-models.py` converts the official Real-ESRGAN weights for
+  realesrgan-ncnn-vulkan (byte-identical to the tool's own conversion);
+  the flake's `sr-models` package builds them from upstream's pinned
+  weights, and each release ships them as `rehue-sr-models.tar.gz`.
+- `lib.enhance` takes a video.
+
+### Changed
+
+- `enhance` runs the SR tool with more threads: the tool saving its
+  4x output was most of the time.
+
 ## [0.6.0] - 2026-11-27
 
 The generation release: `rehue scheme -g` makes a base16 scheme from
@@ -354,6 +378,7 @@ First release.
 - 375 bundled base16 schemes (tinted-theming snapshot).
 - Deterministic, byte-identical output; Nix builders for Stylix.
 
+[Unreleased]: https://github.com/fortesoft-co/rehue/compare/v0.6.0...HEAD
 [0.6.0]: https://github.com/fortesoft-co/rehue/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/fortesoft-co/rehue/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/fortesoft-co/rehue/compare/v0.3.0...v0.4.0

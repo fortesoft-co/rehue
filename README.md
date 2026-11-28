@@ -164,7 +164,7 @@ Two more tabs approximate how rehue maps the same 16 slots onto GTK
 | `rehue wal` | Wallpaper + scheme → wallpaper: repaint the image (or a video) with the scheme's palette |
 | `rehue icons` | Recolor an icon theme (or one SVG / PNG icon) with a scheme |
 | `rehue inspect` | Show a wallpaper's hue families, a scheme's colors, or every scheme (`--schemes`) in the terminal |
-| `rehue enhance` | Upscale a wallpaper: built-in Lanczos, or Vulkan AI super-resolution |
+| `rehue enhance` | Upscale a wallpaper, picture or video: built-in Lanczos, or Vulkan AI super-resolution |
 | `rehue apply` | Run a pipeline file and apply the result: scheme to tinty, wallpaper to your command |
 <!-- /gen:commands -->
 

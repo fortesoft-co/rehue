@@ -70,10 +70,12 @@ The rest of a run's flags are keys too:
 | `lut`, `lut-level` | `wal` | a LUT of the grade: `"hald"` or `"cube"`, level 2..16 (default 8) |
 | `deband` | `wal` | `true` to deband a video's frames |
 | `grain` | `wal` | an amount, or `true` for the default 4 |
-| `ffmpeg` | `wal` | the ffmpeg to run |
-| `ffmpeg-args` | `wal` | encoding flags for ffmpeg, as one string |
+| `ffmpeg` | `wal`, `enhance` | the ffmpeg to run |
+| `ffmpeg-args` | `wal`, `enhance` | encoding flags for ffmpeg, as one string |
 | `loop` | `wal` | the `--loop` string, or a table of its settings |
 | `upscale`, `sr`, `model`, `sr-tool` | `enhance` | the same as its flags |
+| `denoise` | `enhance` | `--model general`'s level: `0`, `0.5` or `1` |
+| `sr-models` | `enhance` | the directory with the `soft` and `general` models |
 
 ```toml
 # wal.toml
@@ -87,7 +89,7 @@ mode = "fade"
 min = "50%"
 ```
 
-A path (`scheme-dir`, `ffmpeg`, `sr-tool`) is taken from the config
+A path (`scheme-dir`, `ffmpeg`, `sr-tool`, `sr-models`) is taken from the config
 file's directory when it is relative. A flag wins over its key, as
 everywhere.
 

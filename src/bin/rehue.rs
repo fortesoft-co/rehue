@@ -7,7 +7,7 @@ use clap::Parser;
 
 use rehue::cli::{Cli, Commands, LutFormat};
 use rehue::color::{Lch, hex_to_oklch, hex_to_rgb, oklch_to_hex, oklch_to_rgb, self_test};
-use rehue::enhance::{EnhanceConfig, SrModel, resolve_sr_tool};
+use rehue::enhance::{EnhanceConfig, SrModel};
 use rehue::generate::Method;
 use rehue::role::AssignState;
 use rehue::scheme::{BASE_SLOTS, Scheme};
@@ -1556,6 +1556,7 @@ struct FrameSteps<'a> {
 /// terminal.  ffmpeg reads frames as fast as it encodes them, so the
 /// count follows the encoder.
 struct Progress {
+    what: &'static str,
     total: u64,
     start: std::time::Instant,
     last: std::time::Instant,
@@ -1564,10 +1565,11 @@ struct Progress {
 }
 
 impl Progress {
-    fn new(total: u64) -> Self {
+    fn new(what: &'static str, total: u64) -> Self {
         use std::io::IsTerminal;
         let start = std::time::Instant::now();
         Progress {
+            what,
             total,
             start,
             // the first count a moment in, when the rate means something
@@ -1588,7 +1590,7 @@ impl Progress {
         self.last = now;
         let elapsed = now.duration_since(self.start).as_secs_f64();
         let rate = frames as f64 / elapsed.max(1e-3);
-        let mut line = format!("rehue wal: frame {frames}");
+        let mut line = format!("{}: frame {frames}", self.what);
         if self.total > 0 {
             let total = self.total.max(frames);
             let left = (total - frames) as f64 / rate.max(1e-3);
@@ -1640,10 +1642,13 @@ fn grade_video(
     let mut frames = 0u64;
     let mut first = None;
     let mut dithered: Vec<u8>;
-    let mut progress = Progress::new(match plan {
-        Some(p) => p.frames() as u64,
-        None => (probe.duration * probe.fps_value()).round() as u64,
-    });
+    let mut progress = Progress::new(
+        "rehue wal",
+        match plan {
+            Some(p) => p.frames() as u64,
+            None => (probe.duration * probe.fps_value()).round() as u64,
+        },
+    );
     while decoder.next(&mut frame)? {
         let counts = if dither.is_some() {
             &mut graded_coverage
@@ -1790,33 +1795,62 @@ fn run_inspect(
 fn run_enhance(
     wallpaper: &Path,
     out: &Path,
-    upscale: u32,
-    sr: bool,
-    model: SrModel,
-    sr_tool: Option<&Path>,
+    cfg: &EnhanceConfig,
+    ffmpeg: Option<&Path>,
+    ffmpeg_args: Option<&str>,
 ) -> Result<(), String> {
-    let tool = if sr {
-        let resolved = resolve_sr_tool(sr_tool)?;
+    cfg.validate()?;
+    let is_video = video::is_video(wallpaper);
+    let encode = match ffmpeg_args {
+        Some(_) if !is_video => {
+            return Err("--ffmpeg-args takes a video (it sets how one is encoded)".to_string());
+        }
+        Some(text) => video::EncodeArgs::parse(text)?,
+        None => video::EncodeArgs::default(),
+    };
+    let sr = if cfg.sr {
+        let sr = rehue::enhance::Sr::resolve(cfg)?;
+        let from = match &sr.models {
+            Some(dir) => format!(" from {}", dir.display()),
+            None => String::new(),
+        };
         println!(
-            "rehue enhance: SR {} (native 4x) via {}",
-            model.tool_name(),
-            resolved.display()
+            "rehue enhance: SR {}{from} (native 4x) via {}",
+            sr.name,
+            sr.tool.display()
         );
-        Some(resolved)
+        Some(sr)
     } else {
         None
     };
-    let artifact = rehue::enhance::run(
-        wallpaper,
-        out,
-        &EnhanceConfig {
-            upscale,
-            sr,
-            model,
-            sr_tool: sr_tool.map(|p| p.to_path_buf()),
-        },
-        tool.as_deref(),
-    )?;
+    let artifact = if is_video {
+        let tool = video::resolve_ffmpeg(ffmpeg)?;
+        let probe = video::probe(&tool, wallpaper)?;
+        println!(
+            "rehue enhance: video {}x{} at {:.3} fps, {:.1} s, to {}x{}",
+            probe.width,
+            probe.height,
+            probe.fps_value(),
+            probe.duration,
+            probe.width * cfg.upscale,
+            probe.height * cfg.upscale
+        );
+        let mut progress = Progress::new(
+            "rehue enhance",
+            (probe.duration * probe.fps_value()).round() as u64,
+        );
+        rehue::enhance::run_video(
+            wallpaper,
+            out,
+            cfg,
+            sr.as_ref(),
+            &tool,
+            &encode,
+            &mut |frames| progress.tick(frames),
+        )?
+    } else {
+        rehue::enhance::run(wallpaper, out, cfg, sr.as_ref())?
+    };
     println!("rehue enhance: wrote {}", artifact.display());
     Ok(())
 }
@@ -2536,25 +2570,34 @@ fn run(command: Commands) -> Result<(), String> {
             upscale,
             sr,
             model,
+            denoise,
             sr_tool,
+            sr_models,
+            ffmpeg,
+            ffmpeg_args,
         } => {
             let file: rehue::enhance::EnhanceFile =
                 rehue::config::from_value(rehue::config::read_file(config.as_deref())?)
                     .map_err(|e| format!("{}: {e}", config_label(config.as_deref())))?;
+            let relative =
+                |p: Option<PathBuf>| p.map(|p| rehue::config::relative_to(config.as_deref(), p));
             let upscale = upscale
                 .or(file.upscale)
                 .ok_or("enhance needs --upscale (or upscale in the config)".to_string())?;
-            let sr_tool = sr_tool.or_else(|| {
-                file.sr_tool
-                    .map(|p| rehue::config::relative_to(config.as_deref(), p))
-            });
+            let cfg = EnhanceConfig {
+                upscale,
+                sr: sr || file.sr,
+                model: model.or(file.model).unwrap_or(SrModel::Photos),
+                denoise: denoise.or(file.denoise),
+                sr_tool: sr_tool.or_else(|| relative(file.sr_tool)),
+                sr_models: sr_models.or_else(|| relative(file.sr_models)),
+            };
             run_enhance(
                 &input,
                 out.as_deref().unwrap_or(Path::new("rehue-out")),
-                upscale,
-                sr || file.sr,
-                model.or(file.model).unwrap_or(SrModel::Photos),
-                sr_tool.as_deref(),
+                &cfg,
+                ffmpeg.or_else(|| relative(file.ffmpeg)).as_deref(),
+                ffmpeg_args.or(file.ffmpeg_args).as_deref(),
             )
         }
         Commands::Apply { pipeline, dry_run } => run_apply(&pipeline, dry_run),
